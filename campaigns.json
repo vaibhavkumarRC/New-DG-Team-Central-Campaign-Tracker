@@ -7,7 +7,8 @@
     "status": "Active",
     "segment": "Athena Core",
     "start_date": "2026-03-24",
-    "end_date": "2026-04-07"
+    "end_date": "2026-04-09",
+    "manual_s1": null
   },
   {
     "id": "2",
@@ -168,5 +169,76 @@
     "segment": "Competitor Engagement",
     "start_date": "2026-03-26",
     "end_date": "2026-04-09"
+  },
+  {
+    "id": "1774948313508",
+    "name": "Infusion Center Data_Hursh_23 March",
+    "sdr_owner": "Hursh",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "Infusion Center Data",
+    "start_date": "2026-03-23",
+    "end_date": ""
+  },
+  {
+    "id": "1775041403179",
+    "name": "Skilled Nursing Facility_Ananya_31 March",
+    "sdr_owner": "Ananya",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "SNF",
+    "start_date": "2026-03-31",
+    "end_date": ""
+  },
+  {
+    "id": "1775041634829",
+    "name": "Rehabilitation_Rithick_31 March",
+    "sdr_owner": "Rithick",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "Rehab",
+    "start_date": "2026-03-31",
+    "end_date": ""
+  },
+  {
+    "id": "1775112658917",
+    "name": "2026 LUGPA Conf_Akil",
+    "sdr_owner": "Akil Krishna",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "LUGPA Conference",
+    "start_date": "2026-04-02",
+    "end_date": "",
+    "manual_s1": null
+  },
+  {
+    "id": "1775112741411",
+    "name": "2026 LUGPA Conf_Shahana",
+    "sdr_owner": "Shahana",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "LUGPA Conference",
+    "start_date": "2026-04-02",
+    "end_date": ""
+  },
+  {
+    "id": "1775114932259",
+    "name": "Athena Data for Ananya",
+    "sdr_owner": "Ananya",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-02-17",
+    "end_date": ""
+  },
+  {
+    "id": "1775115862879",
+    "name": "2026 HFMA Leader Conf_Ananya_1st April",
+    "sdr_owner": "Ananya",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "Conference",
+    "start_date": "2026-04-01",
+    "end_date": ""
   }
 ]

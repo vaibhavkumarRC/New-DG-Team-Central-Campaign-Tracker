@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Campaign Command Center · RapidClaims</title>
+<title>DG Team Campaign Command Center · RapidClaims</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -59,7 +59,16 @@ body {
 .header-inner {
   max-width:1800px; margin:0 auto; padding:0 28px;
   display:flex; align-items:center; justify-content:space-between;
-  height:68px;
+  height:68px; position:relative;
+}
+.admin-badge-center {
+  position:absolute; left:50%; transform:translateX(-50%);
+  display:none; align-items:center; gap:6px;
+  background:linear-gradient(135deg,var(--gold-dark),var(--gold));
+  color:#0A0A0A; font-size:12px; font-weight:800;
+  padding:6px 16px; border-radius:20px;
+  box-shadow:0 0 16px rgba(212,175,55,0.45);
+  letter-spacing:.3px; white-space:nowrap; pointer-events:none;
 }
 .header-brand { display:flex; align-items:center; gap:14px; }
 .header-icon {
@@ -153,7 +162,7 @@ body {
 }
 
 /* ── KPI CARDS ── */
-.kpi-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:14px; margin-bottom:24px; }
+.kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(155px,1fr)); gap:14px; margin-bottom:24px; }
 .kpi-card {
   background: var(--surface);
   border:1px solid var(--border);
@@ -317,6 +326,53 @@ tfoot td {
 .sdr-camp-name { color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px; }
 .sdr-camp-val  { font-weight:700; color:var(--green); }
 
+/* ── LEADERBOARD ── */
+.lb-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.lb-header {
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+  background: linear-gradient(135deg, #060E17 0%, var(--surface) 100%);
+}
+.lb-title { font-size: 16px; font-weight: 800; color: var(--gold); letter-spacing: -.3px; }
+.lb-subtitle { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.lb-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.lb-body { padding: 18px 22px; display: flex; flex-direction: column; gap: 9px; }
+.lb-row {
+  display: grid;
+  grid-template-columns: 36px 140px 1fr 90px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: background .15s;
+}
+.lb-row:hover { background: var(--surface2); }
+.lb-row.rank-1 { background: rgba(212,175,55,.07); border: 1px solid rgba(212,175,55,.18); }
+.lb-row.rank-2 { background: rgba(156,163,175,.05); border: 1px solid rgba(156,163,175,.12); }
+.lb-row.rank-3 { background: rgba(180,83,9,.05);    border: 1px solid rgba(180,83,9,.12); }
+.lb-rank {
+  font-size: 20px; font-weight: 900; text-align: center; line-height: 1;
+}
+.lb-rank.plain { font-size: 12px; color: var(--text-dim); }
+.lb-identity { display: flex; align-items: center; gap: 8px; overflow: hidden; }
+.lb-name { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-bar-wrap { position: relative; }
+.lb-bar-track { background: var(--surface3); border-radius: 6px; height: 22px; overflow: hidden; }
+.lb-bar-fill { height: 100%; border-radius: 6px; transition: width .9s cubic-bezier(.4,0,.2,1); min-width: 3px; position: relative; }
+.lb-bar-fill::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.12) 100%);
+  border-radius: 6px;
+}
+.lb-value { text-align: right; font-size: 13px; font-weight: 800; white-space: nowrap; }
+
 /* ── MANAGE TAB ── */
 .manage-layout { display:grid; grid-template-columns:380px 1fr; gap:20px; align-items:start; }
 .form-card {
@@ -456,19 +512,23 @@ tfoot td {
 <header class="header">
   <div class="header-inner">
     <div class="header-brand">
-      <div class="header-icon">⚡</div>
+      <img src="/static/logo.png" alt="RapidClaims"
+           style="height:42px;width:42px;object-fit:cover;flex-shrink:0;border-radius:10px"
+           onerror="this.style.display='none';document.getElementById('fallbackIcon').style.display='flex'">
+      <div id="fallbackIcon" class="header-icon" style="display:none">⚡</div>
       <div>
-        <div class="header-title">Campaign Command Center</div>
+        <div class="header-title">DG Team Campaign Command Center</div>
         <div class="header-sub">RapidClaims · Live Salesforce Data</div>
       </div>
     </div>
+    <div id="adminBadge" class="admin-badge-center">🔑 Admin View — Vaibhav</div>
     <div class="header-right">
       <div class="countdown-badge" id="countdown">Next sync in 10:00</div>
       <div class="sync-pill">
         <div class="sync-dot idle" id="syncDot"></div>
         <span id="syncLabel">—</span>
       </div>
-      <button class="btn btn-gold" id="syncBtn" onclick="triggerSync()">
+      <button class="btn btn-gold admin-only" id="syncBtn" onclick="triggerSync()">
         <span id="syncBtnTxt">↺ Sync Now</span>
       </button>
     </div>
@@ -493,6 +553,17 @@ tfoot td {
     <div class="section-hdr" style="flex-wrap:wrap;gap:12px">
       <div class="section-title">Overview</div>
       <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-left:auto">
+        <!-- Period Filter -->
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.5px;white-space:nowrap;text-transform:uppercase">Period</span>
+          <div style="display:flex;gap:4px">
+            <button id="dash-period-all" class="chip active" onclick="setTimePeriod('all')">All</button>
+            <button id="dash-period-7d"  class="chip"        onclick="setTimePeriod('7d')">7D</button>
+            <button id="dash-period-30d" class="chip"        onclick="setTimePeriod('30d')">30D</button>
+            <button id="dash-period-qtd" class="chip"        onclick="setTimePeriod('qtd')">QTD</button>
+          </div>
+          <span id="dash-periodDateRange" style="font-size:10.5px;color:var(--text-dim);white-space:nowrap"></span>
+        </div>
         <!-- SDR Filter -->
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.5px;white-space:nowrap;text-transform:uppercase">SDR Filter</span>
@@ -505,10 +576,17 @@ tfoot td {
         <div id="lastSyncLabel" style="font-size:11px;color:var(--text-dim)"></div>
       </div>
     </div>
+    <!-- Period loading banner -->
+    <div id="periodLoadingBanner" style="display:none;align-items:center;gap:12px;
+         background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+         padding:12px 20px;margin-bottom:16px;font-size:12.5px;color:var(--text-muted)">
+      <div class="spinner" style="width:16px;height:16px;flex-shrink:0"></div>
+      <span id="periodLoadingText">Fetching data from Salesforce…</span>
+    </div>
     <div class="kpi-grid" id="kpiGrid"></div>
 
     <!-- ── Quick-Add Campaign ── -->
-    <div id="quickAddBar" style="
+    <div id="quickAddBar" class="admin-only" style="
       background:var(--surface); border:1px solid var(--border);
       border-radius:var(--radius-lg); padding:16px 20px;
       margin-bottom:24px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -538,10 +616,7 @@ tfoot td {
     </div>
 
     <div class="leaderboard">
-      <div class="leaderboard-card">
-        <div class="chart-title">👥 SDR Leaderboard</div>
-        <div id="sdrLeaderboard"></div>
-      </div>
+      <div id="sdrLeaderboard"></div>
       <div class="leaderboard-card">
         <div class="chart-title">📊 Campaign Status Breakdown</div>
         <div style="position:relative;height:240px">
@@ -553,11 +628,30 @@ tfoot td {
 
   <!-- CAMPAIGNS -->
   <div id="tab-campaigns" class="tab-panel">
+    <div class="section-hdr" style="flex-wrap:wrap;gap:12px;margin-bottom:12px">
+      <div class="section-title">Campaigns</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
+        <span style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.5px;text-transform:uppercase">Period</span>
+        <div style="display:flex;gap:4px">
+          <button id="camp-period-all" class="chip active" onclick="setTimePeriod('all')">All</button>
+          <button id="camp-period-7d"  class="chip"        onclick="setTimePeriod('7d')">7D</button>
+          <button id="camp-period-30d" class="chip"        onclick="setTimePeriod('30d')">30D</button>
+          <button id="camp-period-qtd" class="chip"        onclick="setTimePeriod('qtd')">QTD</button>
+        </div>
+        <span id="camp-periodDateRange" style="font-size:10.5px;color:var(--text-dim);white-space:nowrap"></span>
+      </div>
+    </div>
+    <div id="campPeriodLoadingBanner" style="display:none;align-items:center;gap:12px;
+         background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+         padding:12px 20px;margin-bottom:12px;font-size:12.5px;color:var(--text-muted)">
+      <div class="spinner" style="width:16px;height:16px;flex-shrink:0"></div>
+      <span>Fetching data from Salesforce…</span>
+    </div>
     <div class="toolbar">
       <input class="search-box" id="searchBox" type="search" placeholder="🔍  Search campaigns…" oninput="renderCampaigns()">
       <div class="filter-chips" id="statusChips"></div>
       <div style="margin-left:auto; display:flex; gap:8px;">
-        <button class="btn btn-ghost btn-sm" onclick="switchTab('manage')">+ Add Campaign</button>
+        <button class="btn btn-ghost btn-sm admin-only" onclick="switchTab('manage')">+ Add Campaign</button>
       </div>
     </div>
     <div class="table-wrap">
@@ -577,10 +671,31 @@ tfoot td {
 
   <!-- SDR PERFORMANCE -->
   <div id="tab-sdr" class="tab-panel">
-    <div class="section-hdr">
-      <div class="section-title">SDR Performance</div>
-      <div style="font-size:11px;color:var(--text-dim)">Calls/Emails/Leads from campaign ownership · Meetings from Meeting_Generated_by__c in Salesforce</div>
+    <div class="section-hdr" style="flex-wrap:wrap;gap:12px">
+      <div>
+        <div class="section-title">SDR Performance</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:2px">Calls/Emails/Leads from campaign ownership · Meetings from Meeting_Generated_by__c in Salesforce</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
+        <span style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.5px;text-transform:uppercase">Period</span>
+        <div style="display:flex;gap:4px">
+          <button id="sdr-period-all" class="chip active" onclick="setTimePeriod('all')">All</button>
+          <button id="sdr-period-7d"  class="chip"        onclick="setTimePeriod('7d')">7D</button>
+          <button id="sdr-period-30d" class="chip"        onclick="setTimePeriod('30d')">30D</button>
+          <button id="sdr-period-qtd" class="chip"        onclick="setTimePeriod('qtd')">QTD</button>
+        </div>
+        <span id="sdr-periodDateRange" style="font-size:10.5px;color:var(--text-dim);white-space:nowrap"></span>
+      </div>
     </div>
+    <div id="sdrPeriodLoadingBanner" style="display:none;align-items:center;gap:12px;
+         background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+         padding:12px 20px;margin-bottom:16px;font-size:12.5px;color:var(--text-muted)">
+      <div class="spinner" style="width:16px;height:16px;flex-shrink:0"></div>
+      <span>Fetching data from Salesforce…</span>
+    </div>
+    <!-- LEADERBOARD -->
+    <div id="leaderboardSection" style="margin-bottom:28px"></div>
+    <!-- SDR CARDS -->
     <div class="sdr-grid" id="sdrGrid"></div>
     <div id="sdrEmpty" class="empty" style="display:none">
       <div class="empty-icon">👥</div>
@@ -672,6 +787,30 @@ tfoot td {
   </div>
 </div>
 
+<!-- ── S1 OPPORTUNITIES MODAL ── -->
+<div class="modal-overlay" id="s1Overlay" onclick="closeS1Modal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:960px">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title">🏆 S1 Created — Opportunity Details</div>
+        <div class="modal-sub" id="s1ModalSub">Loading…</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+        <input class="search-box" id="s1Search" type="search" placeholder="Search name / account / SDR…" style="max-width:240px;margin:0" oninput="filterS1Table()">
+        <button class="modal-close" onclick="closeS1Modal()">×</button>
+      </div>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <div id="s1TableWrap" style="overflow-x:auto">
+        <div style="padding:40px;text-align:center;color:var(--text-dim)">
+          <div class="spinner" style="width:24px;height:24px;margin:0 auto 12px"></div>
+          Fetching opportunities from Salesforce…
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── CAMPAIGN DETAIL MODAL ── -->
 <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
   <div class="modal-box" onclick="event.stopPropagation()" id="modalBox">
@@ -681,11 +820,42 @@ tfoot td {
         <div class="modal-sub"  id="modalSub"></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-left:12px">
-        <button class="btn btn-edit btn-sm" id="modalEditBtn" onclick="">✏️ Edit</button>
+        <button class="btn btn-edit btn-sm admin-only" id="modalEditBtn" onclick="">✏️ Edit</button>
         <button class="modal-close" onclick="closeModal()">×</button>
       </div>
     </div>
     <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- ── SDR DETAIL MODAL ── -->
+<div class="modal-overlay" id="sdrDetailOverlay" onclick="closeSdrDetailModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:960px">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title" id="sdrDetailTitle">SDR Detail</div>
+        <div class="modal-sub"  id="sdrDetailSub"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+        <input class="search-box" id="sdrDetailSearch" type="search" placeholder="Search…"
+               style="max-width:200px;margin:0" oninput="filterSdrDetailTable()">
+        <button class="modal-close" onclick="closeSdrDetailModal()">×</button>
+      </div>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <!-- Tab pills -->
+      <div style="display:flex;gap:6px;padding:14px 20px 0;border-bottom:1px solid var(--border)">
+        <button id="sdrTab-opps"  class="chip active" onclick="switchSdrTab('opps')">💰 Opportunities</button>
+        <button id="sdrTab-done"  class="chip"        onclick="switchSdrTab('done')">✅ Meeting Done</button>
+        <button id="sdrTab-sql"   class="chip"        onclick="switchSdrTab('sql')">💎 SQL Generated</button>
+      </div>
+      <div id="sdrDetailBody" style="overflow-x:auto;min-height:200px">
+        <div style="padding:40px;text-align:center;color:var(--text-dim)">
+          <div class="spinner" style="width:24px;height:24px;margin:0 auto 12px"></div>
+          Loading…
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -739,7 +909,12 @@ tfoot td {
           <input class="form-input" id="editEndDate" type="date">
         </div>
       </div>
-      <div style="display:flex;gap:10px;margin-top:6px">
+      <div class="form-group" style="background:rgba(244,114,182,0.06);border:1px solid rgba(244,114,182,0.2);border-radius:8px;padding:12px 14px;margin-top:4px">
+        <label class="form-label" style="color:#F472B6">🏆 S1 Override <span style="font-size:10px;color:var(--text-dim);text-transform:none;letter-spacing:0">(leave blank to use Salesforce query)</span></label>
+        <input class="form-input" id="editManualS1" type="number" min="0" placeholder="e.g. 3  —  overrides Salesforce S1 count" style="border-color:rgba(244,114,182,0.3)">
+        <div style="font-size:10.5px;color:var(--text-dim);margin-top:6px">⚠️ Set this only when Salesforce isn't picking up the correct S1. Enter 0 to force zero.</div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px">
         <button class="btn btn-gold" style="flex:1" onclick="saveEditCampaign()">💾 Save &amp; Re-sync</button>
         <button class="btn btn-ghost" onclick="closeEditModal()">Cancel</button>
       </div>
@@ -748,6 +923,26 @@ tfoot td {
 </div>
 
 <script>
+// ── SDR TARGETS ──────────────────────────────────────────────────────────────
+// Meeting Done target = Meeting Done-Nurture + Meeting Done-Not Interested + Meeting Done-SQL
+const SDR_TARGETS = {
+  'Akil Krishna': { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Anurup':   { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Ananya':   { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Anushka':  { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Deborah':  { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Felix':    { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Isaac':    { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Hreeman':  { meeting_done: 6,  s1: 2, npv:  450000 },
+  'Michelle': { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Samrudhi': { meeting_done: 16, s1: 6, npv: 1300000 },
+  'Shahana':  { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Rithick':  { meeting_done: 16, s1: 6, npv: 1300000 },
+  'Akhilesh': { meeting_done: 16, s1: 5, npv: 1080000 },
+  'Sukhneet': { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Saka':     { meeting_done: 16, s1: 5, npv: 1080000 },
+};
+
 // ── STATE ────────────────────────────────────────────────────────────────────
 const S = {
   data:         { campaigns:[], sdr_stats:[], last_sync:null, is_syncing:false, sync_progress:0 },
@@ -757,12 +952,23 @@ const S = {
   sortCol:      'meetings',
   sortDir:      -1,
   charts:       {},
-  countdown:    600,
+  countdown:    300,
+  isAdmin:      false,
+  adminToken:   '',
   cTimer:       null,
+  timePeriod:   'all',
+  periodData:   null,
+  lbMetric:     'meetings',
 };
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 const fmt  = n => n == null ? '—' : Number(n).toLocaleString();
+const fmtCurrency = n => {
+  if(n == null || isNaN(n)) return '—';
+  if(n >= 1000000) return '$' + (n/1000000).toFixed(2) + 'M';
+  if(n >= 1000)    return '$' + (n/1000).toFixed(1)    + 'K';
+  return '$' + Number(n).toLocaleString();
+};
 const pct  = (a,b) => (b > 0 ? (a/b*100).toFixed(1)+'%' : '—');
 const esc  = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const q    = id => document.getElementById(id);
@@ -787,6 +993,53 @@ function initials(name) {
   return (name||'?').split(/[\s_]+/).slice(0,2).map(w=>w[0]).join('').toUpperCase();
 }
 
+// ── ADMIN ─────────────────────────────────────────────────────────────────────
+function authHeaders() {
+  return S.isAdmin ? { 'Content-Type':'application/json', 'X-Admin-Token': S.adminToken }
+                   : { 'Content-Type':'application/json' };
+}
+
+async function initAdminMode() {
+  const params = new URLSearchParams(window.location.search);
+  const token  = params.get('admin') || sessionStorage.getItem('adminToken') || '';
+  if(!token) { applyAdminMode(false); return; }
+  try {
+    const r = await fetch('/api/check-admin', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({token})
+    });
+    const d = await r.json();
+    if(d.ok) {
+      S.isAdmin    = true;
+      S.adminToken = token;
+      sessionStorage.setItem('adminToken', token);
+      // Clean token from URL without reload
+      const url = new URL(window.location);
+      url.searchParams.delete('admin');
+      window.history.replaceState({}, '', url);
+    }
+  } catch(e) { /* network error — default to viewer */ }
+  applyAdminMode(S.isAdmin);
+}
+
+function applyAdminMode(isAdmin) {
+  // Elements only admins should see
+  document.querySelectorAll('.admin-only').forEach(el => {
+    el.style.display = isAdmin ? '' : 'none';
+  });
+  if(isAdmin) {
+    document.querySelector('[data-tab="manage"]').style.display = '';
+    const badge = q('adminBadge');
+    if(badge) badge.style.display = 'flex';
+
+    showToast('🔑 Admin mode active', 2000);
+  } else {
+    // Hide Manage tab for viewers
+    document.querySelector('[data-tab="manage"]').style.display = 'none';
+  }
+}
+
 // ── API ──────────────────────────────────────────────────────────────────────
 async function fetchData() {
   try {
@@ -799,7 +1052,7 @@ async function fetchData() {
 
 async function triggerSync() {
   if(S.data.is_syncing) return;
-  await fetch('/api/sync', {method:'POST'});
+  await fetch('/api/sync', {method:'POST', headers: authHeaders()});
   S.data.is_syncing = true;
   updateSyncStatus();
   // Poll until done
@@ -813,7 +1066,7 @@ async function addCampaign(e) {
   e.preventDefault();
   const fd = new FormData(e.target);
   const body = Object.fromEntries(fd.entries());
-  const r = await fetch('/api/campaigns',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const r = await fetch('/api/campaigns',{method:'POST',headers:authHeaders(),body:JSON.stringify(body)});
   if(r.ok){
     showToast('✅ Campaign added! Syncing data…');
     e.target.reset();
@@ -827,7 +1080,7 @@ async function addCampaign(e) {
 
 async function deleteCampaign(id, name) {
   if(!confirm(`Remove "${name}" from the tracker?\nThis only removes it from the dashboard — Salesforce data is untouched.`)) return;
-  await fetch(`/api/campaigns/${id}`,{method:'DELETE'});
+  await fetch(`/api/campaigns/${id}`,{method:'DELETE', headers: authHeaders()});
   showToast('🗑️ Campaign removed');
   await fetchData();
 }
@@ -856,7 +1109,7 @@ function updateSyncStatus() {
 }
 
 function startCountdown() {
-  S.countdown = 600;
+  S.countdown = 300;
   clearInterval(S.cTimer);
   S.cTimer = setInterval(()=>{
     S.countdown--;
@@ -864,7 +1117,7 @@ function startCountdown() {
     const s = String(S.countdown%60).padStart(2,'0');
     const el = q('countdown');
     if(el) el.textContent = `Next sync in ${m}:${s}`;
-    if(S.countdown <= 0){ fetchData(); S.countdown = 600; }
+    if(S.countdown <= 0){ fetchData(); S.countdown = 300; }
   },1000);
 }
 
@@ -894,8 +1147,66 @@ function setDashSdrFilter(val) {
   renderDashboard();
 }
 
+// Period button IDs across all tabs: [prefix][period]
+const PERIOD_PREFIXES = ['dash-', 'camp-', 'sdr-'];
+
+function syncPeriodUI(period) {
+  const fmtD = s => { try { return new Date(s+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); } catch { return s; } };
+  const dateLabel = (S.periodData && period !== 'all')
+    ? `${fmtD(S.periodData.start_date)} – ${fmtD(S.periodData.end_date)}` : '';
+
+  PERIOD_PREFIXES.forEach(pfx => {
+    ['all','7d','30d','qtd'].forEach(p => {
+      const btn = q(`${pfx}period-${p}`);
+      if (btn) btn.classList.toggle('active', p === period);
+    });
+    const lbl = q(`${pfx}periodDateRange`);
+    if (lbl) lbl.textContent = dateLabel;
+  });
+}
+
+function setLoadingBanners(visible, text) {
+  ['periodLoadingBanner','campPeriodLoadingBanner','sdrPeriodLoadingBanner'].forEach(id => {
+    const el = q(id);
+    if (!el) return;
+    el.style.display = visible ? 'flex' : 'none';
+    if (visible) { const t = el.querySelector('span'); if(t) t.textContent = text; }
+  });
+}
+
+async function setTimePeriod(period) {
+  if (S.timePeriod === period) return;
+  S.timePeriod = period;
+  syncPeriodUI(period);
+
+  if (period === 'all') {
+    S.periodData = null;
+    setLoadingBanners(false);
+    renderAll();
+    return;
+  }
+
+  setLoadingBanners(true, `Fetching ${period.toUpperCase()} data from Salesforce…`);
+  S.periodData = null;
+  renderAll();
+
+  try {
+    const r = await fetch(`/api/time-data?period=${period}`);
+    const d = await r.json();
+    S.periodData = d;
+    syncPeriodUI(period);
+  } catch(e) {
+    setLoadingBanners(true, `Failed to load: ${e.message}`);
+    return;
+  }
+
+  setLoadingBanners(false);
+  renderAll();
+}
+
 function renderDashboard() {
-  const allCps = S.data.campaigns || [];
+  const src    = (S.timePeriod !== 'all' && S.periodData) ? S.periodData : S.data;
+  const allCps = src.campaigns || [];
 
   // ── Populate SDR dropdown ────────────────────────────────────────────────
   const sdrNames = [...new Set(
@@ -930,21 +1241,36 @@ function renderDashboard() {
   const totalCalls    = sum(cps,'total_calls');
   const totalEmails   = sum(cps,'total_emails');
   const totalMeetings = sum(cps,'meetings');
-  const totalS1       = sum(cps,'s1_created');
+  const totalMtgDone  = sum(cps,'meeting_done');
+  const totalNoShow   = sum(cps,'meeting_noshow');
+  const totalSqlGen   = sum(cps,'sql_gen');
   const activeCamps   = cps.filter(c=>c.status==='Active').length;
 
+  // S1 count comes from sdr_stats (opportunity query) to match what the modal shows
+  const allSdrStats     = src.sdr_stats || [];
+  const filteredSdrStats = S.dashSdrFilter === 'All'
+    ? allSdrStats
+    : allSdrStats.filter(s => s.name === S.dashSdrFilter);
+  const totalS1 = sum(filteredSdrStats, 's1_count');
+
   // ── KPI cards ────────────────────────────────────────────────────────────
-  const meetingsOnClick = S.dashSdrFilter === 'All'
-    ? 'openMeetingsModal()'
-    : `openMeetingsModal('${S.dashSdrFilter.replace(/'/g,"\\'")}')`;
+  const _sdr = S.dashSdrFilter === 'All' ? '' : S.dashSdrFilter.replace(/'/g,"\\'");
+  const meetingsOnClick  = _sdr ? `openMeetingsModal('${_sdr}')` : 'openMeetingsModal()';
+  const mtgDoneOnClick   = _sdr ? `openStatusLeadsModal('done','${_sdr}')` : "openStatusLeadsModal('done')";
+  const noShowOnClick    = _sdr ? `openStatusLeadsModal('noshow','${_sdr}')` : "openStatusLeadsModal('noshow')";
+  const sqlOnClick       = _sdr ? `openStatusLeadsModal('sql','${_sdr}')` : "openStatusLeadsModal('sql')";
+  const s1OnClick        = _sdr ? `openS1Modal('${_sdr}')` : 'openS1Modal()';
 
   const kpis = [
-    {label:'Campaigns',  value:cps.length,        sub:`${activeCamps} active`,                         icon:'🎯', color:'var(--gold)'},
-    {label:'Total Leads',value:fmt(totalLeads),    sub:'in pipeline',                                   icon:'👤', color:'var(--blue)'},
-    {label:'Calls Made', value:fmt(totalCalls),    sub:pct(totalCalls,totalLeads)+' coverage',           icon:'📞', color:'var(--purple)'},
-    {label:'Emails Sent',value:fmt(totalEmails),   sub:pct(totalEmails,totalLeads)+' coverage',          icon:'📧', color:'var(--amber)'},
-    {label:'Meetings',   value:fmt(totalMeetings), sub:'Click to see lead details',                      icon:'🤝', color:'var(--green)', clickable:true, onclick:meetingsOnClick},
-    {label:'S1 Created', value:fmt(totalS1),       sub:pct(totalS1,totalMeetings)+' of meetings',        icon:'🏆', color:'#F472B6'},
+    {label:'Campaigns',      value:cps.length,           sub:`${activeCamps} active`,                              icon:'🎯', color:'var(--gold)'},
+    {label:'Total Leads',    value:fmt(totalLeads),       sub:'in pipeline',                                        icon:'👤', color:'var(--blue)'},
+    {label:'Calls Made',     value:fmt(totalCalls),       sub:pct(totalCalls,totalLeads)+' coverage',               icon:'📞', color:'var(--purple)'},
+    {label:'Emails Sent',    value:fmt(totalEmails),      sub:pct(totalEmails,totalLeads)+' coverage',              icon:'📧', color:'var(--amber)'},
+    {label:'Mtgs Generated', value:fmt(totalMeetings),    sub:'Click to see leads',                                 icon:'🤝', color:'var(--green)',  clickable:true, onclick:meetingsOnClick},
+    {label:'Mtgs Done',      value:fmt(totalMtgDone),     sub:'Click to see leads',                                 icon:'✅', color:'#34D399',        clickable:true, onclick:mtgDoneOnClick},
+    {label:'No Show',        value:fmt(totalNoShow),      sub:'Click to see leads',                                 icon:'❌', color:'var(--red)',      clickable:true, onclick:noShowOnClick},
+    {label:'SQL Generated',  value:fmt(totalSqlGen),      sub:'Click to see leads',                                 icon:'💎', color:'#A78BFA',        clickable:true, onclick:sqlOnClick},
+    {label:'S1 Created',     value:fmt(totalS1),          sub:'Click to see opportunities',                         icon:'🏆', color:'#F472B6', clickable:true, onclick:s1OnClick},
   ];
 
   q('kpiGrid').innerHTML = kpis.map(k=>`
@@ -996,44 +1322,41 @@ function renderDashboard() {
           <th>Campaign</th>
           <th style="text-align:center">SDR</th>
           <th style="text-align:right">Leads</th>
-          <th style="text-align:right">Calls</th>
-          <th style="text-align:right">Emails</th>
-          <th style="text-align:right;color:var(--green)">Meetings</th>
+          <th style="text-align:right;color:var(--purple)">Calls</th>
+          <th style="text-align:right;color:var(--amber)">Emails</th>
+          <th style="text-align:right;color:var(--green)">Mtg Gen</th>
+          <th style="text-align:right;color:#34D399">Mtg Done</th>
+          <th style="text-align:right;color:var(--red)">No Show</th>
+          <th style="text-align:right;color:#A78BFA">SQL</th>
           <th style="text-align:right;color:#F472B6">S1</th>
-          <th style="min-width:100px">Progress</th>
         </tr></thead>
         <tbody>
           ${sorted.map((c,i)=>{
-            const barW = maxMtg > 0 ? ((c.meetings||0)/maxMtg*100).toFixed(1) : 0;
-            const mtgRate = pct(c.meetings, c.total_calls);
             return `<tr onclick="openModal('${c.id}')" style="cursor:pointer">
               <td class="td-center" style="color:var(--text-dim)">${i+1}</td>
               <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;font-weight:600" title="${esc(c.name)}">${esc(c.name)}</td>
               <td style="text-align:center;color:var(--text-muted);font-size:11px;white-space:nowrap">${esc(c.sdr_owner||'—')}</td>
               <td class="td-num" style="color:var(--blue)">${fmt(c.total_leads)}</td>
-              <td class="td-num" style="color:var(--purple)">${fmt(c.total_calls)}</td>
-              <td class="td-num" style="color:var(--amber)">${fmt(c.total_emails)}</td>
-              <td class="td-num" style="color:var(--green);font-weight:800;font-size:13px">${fmt(c.meetings)}</td>
-              <td class="td-num" style="color:#F472B6;font-weight:700">${fmt(c.s1_created)}</td>
-              <td style="padding-right:16px">
-                <div style="display:flex;align-items:center;gap:6px">
-                  <div style="flex:1;background:var(--surface3);border-radius:3px;height:6px;overflow:hidden">
-                    <div style="width:${barW}%;height:100%;background:linear-gradient(90deg,var(--gold-dark),var(--gold));border-radius:3px;transition:width .8s ease"></div>
-                  </div>
-                  <span style="font-size:10px;color:var(--text-dim);min-width:28px;text-align:right">${mtgRate}</span>
-                </div>
-              </td>
+              <td class="td-num" style="color:var(--purple);font-weight:700">${fmt(c.total_calls||0)}</td>
+              <td class="td-num" style="color:var(--amber);font-weight:700">${fmt(c.total_emails||0)}</td>
+              <td class="td-num" style="color:var(--green);font-weight:800">${fmt(c.meetings)}</td>
+              <td class="td-num" style="color:#34D399;font-weight:700">${fmt(c.meeting_done||0)}</td>
+              <td class="td-num" style="color:var(--red);font-weight:700">${fmt(c.meeting_noshow||0)}</td>
+              <td class="td-num" style="color:#A78BFA;font-weight:700">${fmt(c.sql_gen||0)}</td>
+              <td class="td-num" style="color:#F472B6;font-weight:700">${fmt(c.s1_created)}${c.s1_is_manual?'<span title="Manually set" style="font-size:9px;margin-left:3px;opacity:.7">✏️</span>':''}</td>
             </tr>`;
           }).join('')}
         </tbody>
         <tfoot><tr>
           <td colspan="3" style="font-size:11px">TOTAL — ${sorted.length} campaigns</td>
           <td class="td-num">${fmt(totalLeads)}</td>
-          <td class="td-num">${fmt(totalCalls)}</td>
-          <td class="td-num">${fmt(totalEmails)}</td>
+          <td class="td-num" style="color:var(--purple)">${fmt(totalCalls)}</td>
+          <td class="td-num" style="color:var(--amber)">${fmt(totalEmails)}</td>
           <td class="td-num" style="color:var(--green)">${fmt(totalMeetings)}</td>
+          <td class="td-num" style="color:#34D399">${fmt(totalMtgDone)}</td>
+          <td class="td-num" style="color:var(--red)">${fmt(totalNoShow)}</td>
+          <td class="td-num" style="color:#A78BFA">${fmt(totalSqlGen)}</td>
           <td class="td-num" style="color:#F472B6">${fmt(totalS1)}</td>
-          <td></td>
         </tr></tfoot>
       </table>`;
   }
@@ -1046,38 +1369,8 @@ function renderDashboard() {
     ['rgba(34,197,94,0.8)','rgba(245,158,11,0.8)','rgba(59,130,246,0.8)']
   );
 
-  // ── SDR leaderboard ───────────────────────────────────────────────────────
-  // When filtered by SDR, show that SDR's campaigns as the leaderboard
-  let leaderItems;
-  if(S.dashSdrFilter !== 'All') {
-    // Show per-campaign meetings breakdown for this SDR
-    leaderItems = sorted.filter(c=>c.meetings>0);
-    const maxM2 = leaderItems[0]?.meetings || 1;
-    q('sdrLeaderboard').innerHTML = leaderItems.length ? leaderItems.map((c,i)=>`
-      <div class="sdr-item">
-        <div class="sdr-rank ${i===0?'gold':i===1?'silver':i===2?'bronze':''}">${i+1}</div>
-        <div class="sdr-name" style="font-size:11.5px;max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${esc(c.name)}">${esc(c.name)}</div>
-        <div class="sdr-bar-wrap">
-          <div class="sdr-bar" style="width:${(c.meetings/maxM2*100).toFixed(1)}%"></div>
-        </div>
-        <div class="sdr-mtgs">${c.meetings}</div>
-      </div>`).join('') :
-      '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:20px">No meetings yet for this SDR</div>';
-  } else {
-    const sdrs = (S.data.sdr_stats||[]).slice(0,8);
-    const maxM  = sdrs[0]?.meetings||1;
-    const rankClass = i => i===0?'gold':i===1?'silver':i===2?'bronze':'';
-    q('sdrLeaderboard').innerHTML = sdrs.length ? sdrs.map((s,i)=>`
-      <div class="sdr-item">
-        <div class="sdr-rank ${rankClass(i)}">${i+1}</div>
-        <div class="sdr-name">${esc(s.name)}</div>
-        <div class="sdr-bar-wrap">
-          <div class="sdr-bar" style="width:${(s.meetings/maxM*100).toFixed(1)}%"></div>
-        </div>
-        <div class="sdr-mtgs">${s.meetings}</div>
-      </div>`).join('') :
-      '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:20px">No meeting data yet</div>';
-  }
+  // ── SDR leaderboard (full component) ─────────────────────────────────────
+  renderLeaderboard('sdrLeaderboard', src.sdr_stats || []);
 }
 
 function drawBarChart(id, data, opts={}) {
@@ -1130,7 +1423,8 @@ function drawDoughnut(id, labels, data, colors) {
 function renderCampaigns() {
   const search   = (q('searchBox')?.value||'').toLowerCase();
   const statusF  = S.filterStatus;
-  let cps = (S.data.campaigns||[]).filter(c=>{
+  const src = (S.timePeriod !== 'all' && S.periodData) ? S.periodData : S.data;
+  let cps = (src.campaigns||[]).filter(c=>{
     if(statusF!=='All' && c.status!==statusF) return false;
     if(search && !c.name.toLowerCase().includes(search) &&
        !(c.sdr_owner||'').toLowerCase().includes(search)) return false;
@@ -1149,19 +1443,22 @@ function renderCampaigns() {
   });
 
   const cols = [
-    {k:'#',           label:'#',          w:'40px'},
-    {k:'name',        label:'Campaign'},
-    {k:'sdr_owner',   label:'SDR Owner'},
-    {k:'email_owner', label:'Email Owner'},
-    {k:'status',      label:'Status'},
-    {k:'total_leads', label:'Leads',       num:true},
-    {k:'total_calls', label:'Calls',       num:true},
-    {k:'total_emails',label:'Emails',      num:true},
-    {k:'meetings',    label:'Meetings',    num:true},
-    {k:'s1_created',  label:'S1 Created',  num:true},
-    {k:'call_cov',    label:'Call Cov%',   num:true, auto:true},
-    {k:'mtg_rate',    label:'Mtg Rate%',   num:true, auto:true},
-    {k:'s1_rate',     label:'S1/Leads%',   num:true, auto:true},
+    {k:'#',              label:'#',          w:'40px'},
+    {k:'name',           label:'Campaign'},
+    {k:'sdr_owner',      label:'SDR Owner'},
+    {k:'email_owner',    label:'Email Owner'},
+    {k:'status',         label:'Status'},
+    {k:'total_leads',    label:'Leads',       num:true},
+    {k:'total_calls',    label:'Calls',       num:true},
+    {k:'total_emails',   label:'Emails',      num:true},
+    {k:'meetings',       label:'Mtg Gen',     num:true},
+    {k:'meeting_done',   label:'Mtg Done',    num:true},
+    {k:'meeting_noshow', label:'No Show',     num:true},
+    {k:'sql_gen',        label:'SQL',         num:true},
+    {k:'s1_created',     label:'S1 Created',  num:true},
+    {k:'call_cov',       label:'Call Cov%',   num:true, auto:true},
+    {k:'mtg_rate',       label:'Mtg Rate%',   num:true, auto:true},
+    {k:'s1_rate',        label:'S1/Leads%',   num:true, auto:true},
   ];
 
   q('campThead').innerHTML = cols.map(c=>`
@@ -1192,7 +1489,10 @@ function renderCampaigns() {
       <td class="td-num">${fmt(c.total_calls)}</td>
       <td class="td-num">${fmt(c.total_emails)}</td>
       <td class="td-num" style="color:var(--green);font-weight:700">${fmt(c.meetings)}</td>
-      <td class="td-num" style="color:#F472B6;font-weight:700">${fmt(c.s1_created)}</td>
+      <td class="td-num" style="color:#34D399;font-weight:700">${fmt(c.meeting_done||0)}</td>
+      <td class="td-num" style="color:var(--red);font-weight:700">${fmt(c.meeting_noshow||0)}</td>
+      <td class="td-num" style="color:#A78BFA;font-weight:700">${fmt(c.sql_gen||0)}</td>
+      <td class="td-num" style="color:#F472B6;font-weight:700">${fmt(c.s1_created)}${c.s1_is_manual?'<span title="Manually set" style="font-size:9px;margin-left:3px;opacity:.7">✏️</span>':''}</td>
       <td class="td-num"><span class="metric-pct ${pctClass(callCov)}">${callCov}</span></td>
       <td class="td-num"><span class="metric-pct ${pctClass(mtgRate)}">${mtgRate}</span></td>
       <td class="td-num"><span class="metric-pct ${pctClass(s1Rate)}">${s1Rate}</span></td>
@@ -1201,13 +1501,17 @@ function renderCampaigns() {
 
   // Footer totals
   const tL=sum(cps,'total_leads'), tC=sum(cps,'total_calls'),
-        tE=sum(cps,'total_emails'), tM=sum(cps,'meetings'), tS=sum(cps,'s1_created');
+        tE=sum(cps,'total_emails'), tM=sum(cps,'meetings'), tS=sum(cps,'s1_created'),
+        tMD=sum(cps,'meeting_done'), tNS=sum(cps,'meeting_noshow'), tSQL=sum(cps,'sql_gen');
   q('campTfoot').innerHTML = `<tr>
     <td colspan="5">TOTAL (${cps.length} campaigns)</td>
     <td class="td-num">${fmt(tL)}</td>
     <td class="td-num">${fmt(tC)}</td>
     <td class="td-num">${fmt(tE)}</td>
     <td class="td-num">${fmt(tM)}</td>
+    <td class="td-num" style="color:#34D399">${fmt(tMD)}</td>
+    <td class="td-num" style="color:var(--red)">${fmt(tNS)}</td>
+    <td class="td-num" style="color:#A78BFA">${fmt(tSQL)}</td>
     <td class="td-num">${fmt(tS)}</td>
     <td class="td-num">${pct(tC,tL)}</td>
     <td class="td-num">${pct(tM,tC)}</td>
@@ -1223,17 +1527,126 @@ function sortBy(k) {
 }
 
 // ── SDR PERFORMANCE ──────────────────────────────────────────────────────────
+const LB_METRICS = [
+  { key:'meetings',  label:'Meetings Gen',  icon:'🤝', color:'#22C55E',  fmtFn: v => fmt(v) },
+  { key:'mtg_done',  label:'Mtg Done',      icon:'✅', color:'#34D399',  fmtFn: v => fmt(v) },
+  { key:'s1',        label:'S1 Created',    icon:'🏆', color:'#F472B6',  fmtFn: v => fmt(v) },
+  { key:'npv',       label:'NPV',           icon:'💰', color:'#D4AF37',  fmtFn: v => fmtCurrency(v) },
+];
+
+function lbValue(s, key) {
+  if (key === 'meetings') return s.meetings     || 0;
+  if (key === 'mtg_done') return (s.meeting_done || 0) + (s.sql_gen || 0);
+  if (key === 's1')       return s.s1_count     || 0;
+  if (key === 'npv')      return s.npv_generated|| 0;
+  return 0;
+}
+
+// Cache of last sdrs passed to each leaderboard container so setLbMetric can re-render without recomputing
+const _lbData = {};
+
+function setLbMetric(key) {
+  S.lbMetric = key;
+  Object.keys(_lbData).forEach(id => { if (q(id)) renderLeaderboard(id, _lbData[id]); });
+}
+
+function renderLeaderboard(containerId, sdrs) {
+  const el = q(containerId);
+  if (!el) return;
+  _lbData[containerId] = sdrs || [];
+  if (!sdrs || !sdrs.length) { el.innerHTML = ''; return; }
+
+  const m      = LB_METRICS.find(x => x.key === S.lbMetric) || LB_METRICS[0];
+  const sorted = [...sdrs].sort((a, b) => lbValue(b, m.key) - lbValue(a, m.key));
+  const maxVal = lbValue(sorted[0], m.key) || 1;
+
+  const MEDALS = ['🥇','🥈','🥉'];
+  const RANK_COLORS = ['#D4AF37','#9CA3AF','#CD7F32'];
+
+  const rows = sorted.map((s, i) => {
+    const val    = lbValue(s, m.key);
+    const barPct = ((val / maxVal) * 100).toFixed(1);
+    const rankCls = i < 3 ? `rank-${i+1}` : '';
+    const rankEl  = i < 3
+      ? `<div class="lb-rank">${MEDALS[i]}</div>`
+      : `<div class="lb-rank plain">#${i+1}</div>`;
+    const valColor = i === 0 ? m.color : i === 1 ? RANK_COLORS[1] : i === 2 ? RANK_COLORS[2] : 'var(--text-muted)';
+    const barOpacity = i === 0 ? '1' : i === 1 ? '.75' : i === 2 ? '.6' : '.4';
+    const avatarStyle = i === 0
+      ? 'background:linear-gradient(135deg,var(--gold-dark),var(--gold-light));color:#0A0A0A;width:30px;height:30px;font-size:11px'
+      : 'width:30px;height:30px;font-size:11px';
+
+    return `
+      <div class="lb-row ${rankCls}">
+        ${rankEl}
+        <div class="lb-identity">
+          <div class="sdr-avatar" style="${avatarStyle}">${initials(s.name)}</div>
+          <div class="lb-name">${esc(s.name)}</div>
+        </div>
+        <div class="lb-bar-wrap">
+          <div class="lb-bar-track">
+            <div class="lb-bar-fill" style="width:${barPct}%;background:${m.color};opacity:${barOpacity}"></div>
+          </div>
+        </div>
+        <div class="lb-value" style="color:${valColor}">${m.fmtFn(val)}</div>
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="lb-card">
+      <div class="lb-header">
+        <div>
+          <div class="lb-title">🏆 Leaderboard</div>
+          <div class="lb-subtitle">Ranked by ${m.icon} ${m.label}</div>
+        </div>
+        <div class="lb-tabs">
+          ${LB_METRICS.map(met => `
+            <button class="chip ${met.key === S.lbMetric ? 'active' : ''}"
+                    style="${met.key === S.lbMetric ? `background:${met.color}22;color:${met.color};border-color:${met.color}55;` : ''}"
+                    onclick="setLbMetric('${met.key}')">
+              ${met.icon} ${met.label}
+            </button>`).join('')}
+        </div>
+      </div>
+      <div class="lb-body">${rows}</div>
+    </div>`;
+}
+
 function renderSDR() {
-  const sdrs = S.data.sdr_stats||[];
-  // Show all SDRs — even those with 0 meetings (they'll have calls/emails/leads)
-  if(!sdrs.length){ q('sdrEmpty').style.display='block'; q('sdrGrid').innerHTML=''; return; }
+  const src  = (S.timePeriod !== 'all' && S.periodData) ? S.periodData : S.data;
+  const sdrs = src.sdr_stats || [];
+  if(!sdrs.length){ q('sdrEmpty').style.display='block'; q('sdrGrid').innerHTML=''; q('leaderboardSection').innerHTML=''; return; }
   q('sdrEmpty').style.display='none';
-  q('sdrEmpty').style.display='none';
+  renderLeaderboard('leaderboardSection', sdrs);
 
-  const maxMtg = Math.max(...sdrs.map(s=>s.meetings||0), 1);
+  q('sdrGrid').innerHTML = sdrs.map((s,i)=>{
+    const tgt = SDR_TARGETS[s.name] || null;
+    // Meeting Done (for target) = nurture/not-interested + sql
+    const mtgDoneTotal = (s.meeting_done||0) + (s.sql_gen||0);
+    const mtgDoneTgt   = tgt ? tgt.meeting_done : null;
+    const s1Tgt        = tgt ? tgt.s1 : null;
+    const mtgDonePct   = mtgDoneTgt ? Math.min(100,(mtgDoneTotal/mtgDoneTgt*100)) : null;
+    const s1Pct        = s1Tgt ? Math.min(100,((s.s1_from_camps||s.sql_gen||0)/s1Tgt*100)) : null;
 
-  q('sdrGrid').innerHTML = sdrs.map((s,i)=>`
-    <div class="sdr-card">
+    function targetBar(achieved, target, color) {
+      if(!target) return '';
+      const pctVal = Math.min(100,(achieved/target*100)).toFixed(1);
+      const pctNum = parseFloat(pctVal);
+      const barCol = pctNum >= 100 ? 'var(--green)' : pctNum >= 60 ? 'var(--amber)' : 'var(--red)';
+      return `
+        <div style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;margin-bottom:4px">
+            <span style="color:var(--text-muted);font-weight:600">${achieved} <span style="color:var(--text-dim);font-weight:400">/ ${target} target</span></span>
+            <span style="font-weight:700;color:${barCol}">${pctVal}%</span>
+          </div>
+          <div style="background:var(--surface3);border-radius:4px;height:6px;overflow:hidden">
+            <div style="width:${pctVal}%;height:100%;background:${barCol};border-radius:4px;transition:width .8s ease"></div>
+          </div>
+        </div>`;
+    }
+
+    return `
+    <div class="sdr-card" onclick="openSdrDetailModal('${esc(s.name).replace(/'/g,"\\'")}')">
       <div class="sdr-card-header">
         <div class="sdr-avatar">${initials(s.name)}</div>
         <div>
@@ -1242,42 +1655,84 @@ function renderSDR() {
         </div>
         <div style="margin-left:auto;font-size:11px;color:var(--text-dim)">#${i+1}</div>
       </div>
-      <div class="sdr-stats-row">
+
+      <!-- Meeting funnel stats -->
+      <div class="sdr-stats-row" style="gap:10px;margin-bottom:10px">
         <div class="sdr-stat">
-          <div class="sdr-stat-val" style="color:var(--green)">${fmt(s.meetings)}</div>
-          <div class="sdr-stat-lbl">Meetings</div>
+          <div class="sdr-stat-val" style="color:var(--green);font-size:17px">${fmt(s.meetings)}</div>
+          <div class="sdr-stat-lbl">Mtg Gen</div>
         </div>
         <div class="sdr-stat">
-          <div class="sdr-stat-val" style="color:var(--purple)">${fmt(s.calls||0)}</div>
+          <div class="sdr-stat-val" style="color:#34D399;font-size:17px">${fmt((s.meeting_done||0)+(s.sql_gen||0))}</div>
+          <div class="sdr-stat-lbl">Mtg Done</div>
+        </div>
+        <div class="sdr-stat">
+          <div class="sdr-stat-val" style="color:var(--red);font-size:17px">${fmt(s.meeting_noshow||0)}</div>
+          <div class="sdr-stat-lbl">No Show</div>
+        </div>
+        <div class="sdr-stat">
+          <div class="sdr-stat-val" style="color:#A78BFA;font-size:17px">${fmt(s.sql_gen||0)}</div>
+          <div class="sdr-stat-lbl">SQL</div>
+        </div>
+      </div>
+
+      <!-- Activity stats -->
+      <div class="sdr-stats-row" style="gap:10px;margin-bottom:12px">
+        <div class="sdr-stat">
+          <div class="sdr-stat-val" style="color:var(--purple);font-size:15px">${fmt(s.calls||0)}</div>
           <div class="sdr-stat-lbl">Calls</div>
         </div>
         <div class="sdr-stat">
-          <div class="sdr-stat-val" style="color:var(--amber)">${fmt(s.emails||0)}</div>
+          <div class="sdr-stat-val" style="color:var(--amber);font-size:15px">${fmt(s.emails||0)}</div>
           <div class="sdr-stat-lbl">Emails</div>
         </div>
         <div class="sdr-stat">
-          <div class="sdr-stat-val" style="color:var(--blue)">${fmt(s.leads||0)}</div>
+          <div class="sdr-stat-val" style="color:var(--blue);font-size:15px">${fmt(s.leads||0)}</div>
           <div class="sdr-stat-lbl">Leads</div>
         </div>
-      </div>
-      <div style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-bottom:4px">
-          <span>Meeting rate</span>
-          <span>${pct(s.meetings, s.calls||0)}</span>
-        </div>
-        <div class="progress-wrap">
-          <div class="progress-bar" style="width:${((s.meetings||0)/maxMtg*100).toFixed(1)}%"></div>
+        <div class="sdr-stat">
+          <div class="sdr-stat-val" style="color:#F472B6;font-size:15px">${fmt(s.s1_count||0)}</div>
+          <div class="sdr-stat-lbl">S1</div>
         </div>
       </div>
+
+      ${tgt ? `
+      <div style="border-top:1px solid var(--border);padding-top:12px;margin-bottom:4px">
+        <div style="font-size:10px;font-weight:700;color:var(--text-dim);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">Target Progress</div>
+        <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">Meeting Done (Done+SQL)</div>
+        ${targetBar(mtgDoneTotal, mtgDoneTgt, '#34D399')}
+        <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">S1 Created</div>
+        ${targetBar(s.s1_count||0, s1Tgt, '#F472B6')}
+        <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">NPV Generated</div>
+        ${(()=>{
+          const npvAchieved = s.npv_generated || 0;
+          const npvTgt = tgt.npv;
+          const npvPct = Math.min(100,(npvAchieved/npvTgt*100)).toFixed(1);
+          const npvNum = parseFloat(npvPct);
+          const barCol = npvNum >= 100 ? 'var(--green)' : npvNum >= 60 ? 'var(--amber)' : 'var(--red)';
+          return `
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;margin-bottom:4px">
+              <span style="color:var(--text-muted);font-weight:600">${fmtCurrency(npvAchieved)} <span style="color:var(--text-dim);font-weight:400">/ ${fmtCurrency(npvTgt)}</span></span>
+              <span style="font-weight:700;color:${barCol}">${npvPct}%</span>
+            </div>
+            <div style="background:var(--surface3);border-radius:4px;height:6px;overflow:hidden">
+              <div style="width:${npvPct}%;height:100%;background:${barCol};border-radius:4px;transition:width .8s ease"></div>
+            </div>
+          </div>`;
+        })()}
+      </div>` : ''}
+
       <div class="sdr-camp-list">
-        ${s.campaigns.slice(0,4).map(c=>`
+        ${s.campaigns.slice(0,3).map(c=>`
           <div class="sdr-camp-row">
             <span class="sdr-camp-name" title="${esc(c.name)}">${esc(c.name)}</span>
             <span class="sdr-camp-val">${c.meetings} mtgs</span>
           </div>`).join('')}
-        ${s.campaigns.length>4?`<div style="font-size:10.5px;color:var(--text-dim);padding-top:4px">+${s.campaigns.length-4} more campaigns</div>`:''}
+        ${s.campaigns.length>3?`<div style="font-size:10.5px;color:var(--text-dim);padding-top:4px">+${s.campaigns.length-3} more campaigns</div>`:''}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 // ── MANAGE TAB ───────────────────────────────────────────────────────────────
@@ -1294,7 +1749,7 @@ function renderManage() {
           ${c.status}${c.start_date?' · From '+fmtDay(c.start_date):''}${c.end_date?' → '+fmtDay(c.end_date):''}
         </div>
       </div>
-      <div class="manage-item-actions">
+      <div class="manage-item-actions admin-only">
         <button class="btn btn-edit btn-sm" onclick="event.stopPropagation();openEditModal('${c.id}')">✏️ Edit</button>
         <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteCampaign('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">Remove</button>
       </div>
@@ -1319,15 +1774,20 @@ function openModal(id) {
   q('modalBody').innerHTML = `
     <div class="modal-kpi-row">
       <div class="modal-kpi"><div class="modal-kpi-val" style="color:var(--blue)">${fmt(c.total_leads)}</div><div class="modal-kpi-lbl">Total Leads</div></div>
-      <div class="modal-kpi" style="cursor:pointer" onclick="closeModal();openMeetingsModal('${esc(c.name).replace(/'/g,"\\'")}')" title="Click to see meeting leads">
-        <div class="modal-kpi-val" style="color:var(--green)">${fmt(c.meetings)}</div>
-        <div class="modal-kpi-lbl">Meetings ↗</div>
-      </div>
-      <div class="modal-kpi"><div class="modal-kpi-val" style="color:#F472B6">${fmt(c.s1_created)}</div><div class="modal-kpi-lbl">S1 Created</div></div>
-    </div>
-    <div class="modal-kpi-row">
       <div class="modal-kpi"><div class="modal-kpi-val" style="color:var(--purple)">${fmt(c.total_calls)}</div><div class="modal-kpi-lbl">Calls Made</div></div>
       <div class="modal-kpi"><div class="modal-kpi-val" style="color:var(--amber)">${fmt(c.total_emails)}</div><div class="modal-kpi-lbl">Emails Sent</div></div>
+    </div>
+    <div class="modal-kpi-row">
+      <div class="modal-kpi" style="cursor:pointer" onclick="closeModal();openMeetingsModal('${esc(c.name).replace(/'/g,"\\'")}')" title="Click to see meeting leads">
+        <div class="modal-kpi-val" style="color:var(--green)">${fmt(c.meetings)}</div>
+        <div class="modal-kpi-lbl">Mtg Generated ↗</div>
+      </div>
+      <div class="modal-kpi"><div class="modal-kpi-val" style="color:#34D399">${fmt(c.meeting_done||0)}</div><div class="modal-kpi-lbl">Meeting Done</div></div>
+      <div class="modal-kpi"><div class="modal-kpi-val" style="color:var(--red)">${fmt(c.meeting_noshow||0)}</div><div class="modal-kpi-lbl">No Show</div></div>
+    </div>
+    <div class="modal-kpi-row">
+      <div class="modal-kpi"><div class="modal-kpi-val" style="color:#A78BFA">${fmt(c.sql_gen||0)}</div><div class="modal-kpi-lbl">SQL Generated</div></div>
+      <div class="modal-kpi"><div class="modal-kpi-val" style="color:#F472B6">${fmt(c.s1_created)}</div><div class="modal-kpi-lbl">S1 Created</div></div>
       <div class="modal-kpi">
         <div class="modal-kpi-val" style="font-size:15px">${c.start_date?fmtDay(c.start_date):'—'}</div>
         <div class="modal-kpi-lbl">Date Range</div>
@@ -1399,7 +1859,7 @@ async function quickAddCampaign() {
   try {
     const r = await fetch('/api/campaigns', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(),
       body: JSON.stringify({ name, status: 'Active' })   // SDR auto-extracted server-side
     });
     if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Server error'); }
@@ -1410,7 +1870,7 @@ async function quickAddCampaign() {
     input.value = '';
 
     // Trigger sync and refresh
-    await fetch('/api/sync', { method: 'POST' });
+    await fetch('/api/sync', { method: 'POST', headers: authHeaders() });
     await fetchData();
 
     // Poll until sync done
@@ -1496,9 +1956,13 @@ function renderMeetingsTable(leads) {
       </tr></thead>
       <tbody>
         ${leads.map((l,i)=>`
-          <tr style="cursor:default">
+          <tr style="cursor:${l.sf_url?'pointer':'default'}"
+              ${l.sf_url ? `onclick="window.open('${l.sf_url}','_blank')" title="Open in Salesforce"` : ''}>
             <td class="td-center" style="color:var(--text-dim)">${i+1}</td>
-            <td style="font-weight:600;white-space:nowrap">${esc(l.name)}</td>
+            <td style="font-weight:600;white-space:nowrap">
+              ${esc(l.name)}
+              ${l.sf_url ? '<span style="font-size:10px;margin-left:4px;color:var(--gold);opacity:.7">↗</span>' : ''}
+            </td>
             <td style="color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(l.title)}">${esc(l.title)}</td>
             <td style="font-weight:500;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(l.company)}">${esc(l.company)}</td>
             <td style="color:var(--text-muted);font-size:11.5px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(l.campaign)}">${esc(l.campaign)}</td>
@@ -1514,6 +1978,176 @@ function closeMeetingsModal(e) {
   q('meetingsOverlay').classList.remove('open');
 }
 
+// ── S1 OPPORTUNITIES MODAL ────────────────────────────────────────────────────
+let _s1AllOpps = [];
+
+async function openS1Modal(sdrFilter) {
+  q('s1Overlay').classList.add('open');
+  q('s1Search').value = '';
+  q('s1ModalSub').textContent = sdrFilter ? `SDR: ${sdrFilter} · loading…` : 'All SDRs · loading…';
+  q('s1TableWrap').innerHTML = `
+    <div style="padding:40px;text-align:center;color:var(--text-dim)">
+      <div class="spinner" style="width:24px;height:24px;margin:0 auto 12px"></div>
+      Fetching opportunities from Salesforce…
+    </div>`;
+
+  try {
+    const url = sdrFilter
+      ? `/api/s1-opportunities?sdr=${encodeURIComponent(sdrFilter)}`
+      : '/api/s1-opportunities';
+    const r = await fetch(url);
+    const d = await r.json();
+    _s1AllOpps = d.opportunities || [];
+    q('s1ModalSub').textContent = sdrFilter
+      ? `SDR: ${sdrFilter} · ${_s1AllOpps.length} opportunities`
+      : `All SDRs · ${_s1AllOpps.length} total opportunities`;
+    renderS1Table(_s1AllOpps);
+  } catch(e) {
+    q('s1TableWrap').innerHTML = `<div style="padding:30px;color:var(--red);text-align:center">Failed to load: ${e.message}</div>`;
+  }
+}
+
+function filterS1Table() {
+  const q2 = (q('s1Search')?.value || '').toLowerCase();
+  const filtered = q2
+    ? _s1AllOpps.filter(o =>
+        (o.name    || '').toLowerCase().includes(q2) ||
+        (o.account || '').toLowerCase().includes(q2) ||
+        (o.sdr     || '').toLowerCase().includes(q2) ||
+        (o.stage   || '').toLowerCase().includes(q2))
+    : _s1AllOpps;
+  renderS1Table(filtered);
+}
+
+function renderS1Table(opps) {
+  if (!opps.length) {
+    q('s1TableWrap').innerHTML = '<div class="empty" style="padding:40px"><div class="empty-icon">🏆</div>No opportunities found.</div>';
+    return;
+  }
+  const fmtAmt = v => v ? '$' + Number(v).toLocaleString('en-US', {maximumFractionDigits:0}) : '—';
+  const fmtDate = s => {
+    if (!s) return '—';
+    try { return new Date(s + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}); }
+    catch { return s; }
+  };
+  q('s1TableWrap').innerHTML = `
+    <table>
+      <thead><tr>
+        <th style="width:36px">#</th>
+        <th>Opportunity</th>
+        <th>Account</th>
+        <th>Stage</th>
+        <th style="text-align:right">Amount</th>
+        <th>SDR Owner</th>
+        <th>Created</th>
+      </tr></thead>
+      <tbody>
+        ${opps.map((o, i) => `
+          <tr style="cursor:${o.sf_url ? 'pointer' : 'default'}"
+              ${o.sf_url ? `onclick="window.open('${o.sf_url}','_blank')" title="Open in Salesforce"` : ''}>
+            <td class="td-center" style="color:var(--text-dim)">${i + 1}</td>
+            <td style="font-weight:600;white-space:nowrap">
+              ${esc(o.name)}
+              ${o.sf_url ? '<span style="font-size:10px;margin-left:4px;color:var(--gold);opacity:.7">↗</span>' : ''}
+            </td>
+            <td style="font-weight:500;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(o.account)}">${esc(o.account)}</td>
+            <td style="color:var(--text-muted);font-size:11.5px;white-space:nowrap">${esc(o.stage)}</td>
+            <td class="td-num" style="color:#F472B6;font-weight:700">${fmtAmt(o.amount)}</td>
+            <td style="color:var(--green);font-weight:600;white-space:nowrap">${esc(o.sdr)}</td>
+            <td style="color:var(--text-dim);white-space:nowrap">${fmtDate(o.date)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function closeS1Modal(e) {
+  if (e && e.target !== q('s1Overlay')) return;
+  q('s1Overlay').classList.remove('open');
+}
+
+// ── STATUS LEADS MODAL (Meeting Done / No Show / SQL) ─────────────────────────
+const STATUS_LABELS = {
+  done:   { title:'✅ Meeting Done — Lead Details',    sub:'Leads with status: Meeting Done-Nurture / Not Interested / Unqualified' },
+  noshow: { title:'❌ No Show — Lead Details',          sub:'Leads with status: Meeting No Show' },
+  sql:    { title:'💎 SQL Generated — Lead Details',   sub:'Leads with status: Meeting Done-SQL' },
+};
+let _statusAllLeads = [];
+
+async function openStatusLeadsModal(status, sdrFilter) {
+  const meta = STATUS_LABELS[status] || { title:'Lead Details', sub:'' };
+  q('meetingsOverlay').classList.add('open');
+  q('meetingsSearch').value = '';
+  q('meetingsModalSub').textContent = meta.sub + (sdrFilter ? ` · SDR: ${sdrFilter}` : '') + ' · loading…';
+  q('meetingsTableWrap').innerHTML = `
+    <div style="padding:40px;text-align:center;color:var(--text-dim)">
+      <div class="spinner" style="width:24px;height:24px;margin:0 auto 12px"></div>
+      Fetching leads from Salesforce…
+    </div>`;
+  // Temporarily swap title
+  const titleEl = q('meetingsOverlay').querySelector('.modal-title');
+  const prevTitle = titleEl.textContent;
+  titleEl.textContent = meta.title;
+
+  try {
+    let url = `/api/status-leads?status=${status}`;
+    if(sdrFilter) url += `&sdr=${encodeURIComponent(sdrFilter)}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    _statusAllLeads = d.leads || [];
+    q('meetingsModalSub').textContent = meta.sub + (sdrFilter ? ` · ${sdrFilter}` : '') + ` · ${_statusAllLeads.length} leads`;
+    renderStatusLeadsTable(_statusAllLeads);
+  } catch(e) {
+    q('meetingsTableWrap').innerHTML = `<div style="padding:30px;color:var(--red);text-align:center">Failed to load: ${e.message}</div>`;
+  }
+
+  // Patch search to filter status leads instead of meetings
+  q('meetingsSearch').oninput = () => {
+    const q2 = (q('meetingsSearch')?.value||'').toLowerCase();
+    const filtered = q2 ? _statusAllLeads.filter(l =>
+      (l.name||'').toLowerCase().includes(q2) ||
+      (l.company||'').toLowerCase().includes(q2) ||
+      (l.sdr||'').toLowerCase().includes(q2)) : _statusAllLeads;
+    renderStatusLeadsTable(filtered);
+  };
+}
+
+function renderStatusLeadsTable(leads) {
+  const fmtD = s => { if(!s) return '—'; try{ return new Date(s).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }catch{return s;} };
+  if(!leads.length){
+    q('meetingsTableWrap').innerHTML = '<div class="empty" style="padding:40px"><div class="empty-icon">📋</div>No leads found.</div>';
+    return;
+  }
+  q('meetingsTableWrap').innerHTML = `
+    <table>
+      <thead><tr>
+        <th style="width:36px">#</th>
+        <th>Name</th>
+        <th>Title</th>
+        <th>Company</th>
+        <th>Campaign</th>
+        <th>SDR</th>
+        <th>Status</th>
+        <th>Date</th>
+      </tr></thead>
+      <tbody>
+        ${leads.map((l,i)=>`
+          <tr style="cursor:${l.sf_url?'pointer':'default'}"
+              ${l.sf_url?`onclick="window.open('${l.sf_url}','_blank')" title="Open in Salesforce"`:''}>
+            <td class="td-center" style="color:var(--text-dim)">${i+1}</td>
+            <td style="font-weight:600;white-space:nowrap">
+              ${esc(l.name)}${l.sf_url?'<span style="font-size:10px;margin-left:4px;color:var(--gold);opacity:.7">↗</span>':''}
+            </td>
+            <td style="color:var(--text-muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.title)}</td>
+            <td style="font-weight:500;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.company)}</td>
+            <td style="color:var(--text-muted);font-size:11.5px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.campaign)}</td>
+            <td style="color:var(--green);font-weight:600;white-space:nowrap">${esc(l.sdr)}</td>
+            <td style="font-size:11px;white-space:nowrap"><span style="background:var(--surface3);padding:2px 7px;border-radius:10px">${esc(l.status)}</span></td>
+            <td style="color:var(--text-dim);white-space:nowrap">${fmtD(l.date)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
 // ── EDIT CAMPAIGN MODAL ──────────────────────────────────────────────────────
 function openEditModal(id) {
   const c = (S.data.campaigns||[]).find(x=>x.id===id);
@@ -1527,6 +2161,7 @@ function openEditModal(id) {
   q('editSegment').value      = c.segment     || '';
   q('editStartDate').value    = c.start_date  || '';
   q('editEndDate').value      = c.end_date    || '';
+  q('editManualS1').value     = c.manual_s1 != null ? c.manual_s1 : '';
   q('editModalSub').textContent = c.name;
 
   q('editOverlay').classList.add('open');
@@ -1536,6 +2171,7 @@ async function saveEditCampaign() {
   const id = q('editCampaignId').value;
   if(!id) return;
 
+  const s1Raw = q('editManualS1').value.trim();
   const body = {
     sdr_owner:   q('editSdr').value.trim(),
     email_owner: q('editEmail').value.trim(),
@@ -1543,12 +2179,13 @@ async function saveEditCampaign() {
     segment:     q('editSegment').value.trim(),
     start_date:  q('editStartDate').value,
     end_date:    q('editEndDate').value,
+    manual_s1:   s1Raw === '' ? null : parseInt(s1Raw, 10),
   };
 
   try {
     const r = await fetch(`/api/campaigns/${id}`, {
       method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
+      headers: authHeaders(),
       body: JSON.stringify(body)
     });
     if(!r.ok) throw new Error('Save failed');
@@ -1580,13 +2217,174 @@ function showToast(msg, ms=3000) {
   setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .4s'; setTimeout(()=>el.remove(),400); }, ms);
 }
 
+// ── SDR DETAIL MODAL ─────────────────────────────────────────────────────────
+let _sdrDetailData   = { opportunities:[], meeting_done_leads:[], sql_leads:[] };
+let _sdrDetailTab    = 'opps';
+let _sdrDetailSearch = '';
+
+async function openSdrDetailModal(sdrName) {
+  _sdrDetailTab = 'opps';
+  _sdrDetailSearch = '';
+  q('sdrDetailTitle').textContent = sdrName;
+  q('sdrDetailSub').textContent   = 'Loading data from Salesforce…';
+  q('sdrDetailSearch').value      = '';
+  q('sdrDetailBody').innerHTML    = `
+    <div style="padding:40px;text-align:center;color:var(--text-dim)">
+      <div class="spinner" style="width:24px;height:24px;margin:0 auto 12px"></div>
+      Fetching from Salesforce…
+    </div>`;
+  ['opps','done','sql'].forEach(t => {
+    q(`sdrTab-${t}`).className = t === 'opps' ? 'chip active' : 'chip';
+  });
+  q('sdrDetailOverlay').classList.add('open');
+
+  try {
+    const r = await fetch(`/api/sdr-detail?sdr=${encodeURIComponent(sdrName)}`);
+    _sdrDetailData = await r.json();
+    const o = _sdrDetailData.opportunities.length;
+    const d = _sdrDetailData.meeting_done_leads.length;
+    const s = _sdrDetailData.sql_leads.length;
+    q('sdrDetailSub').textContent = `${o} opportunit${o!==1?'ies':'y'} · ${d} meeting done · ${s} SQL`;
+    renderSdrDetailTab();
+  } catch(e) {
+    q('sdrDetailBody').innerHTML = `<div style="padding:30px;color:var(--red);text-align:center">Failed to load: ${e.message}</div>`;
+  }
+}
+
+function switchSdrTab(tab) {
+  _sdrDetailTab    = tab;
+  _sdrDetailSearch = '';
+  q('sdrDetailSearch').value = '';
+  ['opps','done','sql'].forEach(t => {
+    q(`sdrTab-${t}`).className = t === tab ? 'chip active' : 'chip';
+  });
+  renderSdrDetailTab();
+}
+
+function filterSdrDetailTable() {
+  _sdrDetailSearch = (q('sdrDetailSearch')?.value || '').toLowerCase();
+  renderSdrDetailTab();
+}
+
+function renderSdrDetailTab() {
+  const fmtD   = s => { if(!s) return '—'; try{ return new Date(s).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }catch{return s;} };
+  const sfLink = (url, label) => url
+    ? `<span style="font-weight:600">${esc(label)}<span style="font-size:10px;margin-left:4px;color:var(--gold);opacity:.7">↗</span></span>`
+    : `<span style="font-weight:600">${esc(label)}</span>`;
+  const rowClick = url => url ? `style="cursor:pointer" onclick="window.open('${url}','_blank')" title="Open in Salesforce"` : '';
+  const srch = _sdrDetailSearch;
+
+  if(_sdrDetailTab === 'opps') {
+    let rows = _sdrDetailData.opportunities || [];
+    if(srch) rows = rows.filter(r =>
+      (r.name||'').toLowerCase().includes(srch) ||
+      (r.account||'').toLowerCase().includes(srch) ||
+      (r.stage||'').toLowerCase().includes(srch));
+    const total = rows.reduce((s,r) => s + (r.amount||0), 0);
+    q('sdrDetailBody').innerHTML = rows.length ? `
+      <table>
+        <thead><tr>
+          <th style="width:36px">#</th>
+          <th>Opportunity Name</th>
+          <th>Account</th>
+          <th>Stage</th>
+          <th style="text-align:right;color:#A78BFA">Amount</th>
+          <th>Created</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map((r,i)=>`
+            <tr ${rowClick(r.sf_url)}>
+              <td class="td-center" style="color:var(--text-dim)">${i+1}</td>
+              <td>${sfLink(r.sf_url, r.name)}</td>
+              <td style="color:var(--text-muted)">${esc(r.account)}</td>
+              <td><span style="background:var(--surface3);padding:2px 7px;border-radius:10px;font-size:11px">${esc(r.stage)}</span></td>
+              <td class="td-num" style="color:#A78BFA;font-weight:700">${fmtCurrency(r.amount)}</td>
+              <td style="color:var(--text-dim);white-space:nowrap">${fmtD(r.date)}</td>
+            </tr>`).join('')}
+        </tbody>
+        <tfoot><tr>
+          <td colspan="4" style="font-size:11px">TOTAL — ${rows.length} opportunities</td>
+          <td class="td-num" style="color:#A78BFA;font-weight:800">${fmtCurrency(total)}</td>
+          <td></td>
+        </tr></tfoot>
+      </table>` :
+      '<div class="empty" style="padding:40px"><div class="empty-icon">💰</div>No opportunities found after April 1, 2026.</div>';
+
+  } else if(_sdrDetailTab === 'done') {
+    let rows = _sdrDetailData.meeting_done_leads || [];
+    if(srch) rows = rows.filter(r =>
+      (r.name||'').toLowerCase().includes(srch) ||
+      (r.company||'').toLowerCase().includes(srch));
+    q('sdrDetailBody').innerHTML = rows.length ? `
+      <table>
+        <thead><tr>
+          <th style="width:36px">#</th>
+          <th>Name</th>
+          <th>Title</th>
+          <th>Company</th>
+          <th>Campaign</th>
+          <th>Status</th>
+          <th>Date</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map((r,i)=>`
+            <tr ${rowClick(r.sf_url)}>
+              <td class="td-center" style="color:var(--text-dim)">${i+1}</td>
+              <td>${sfLink(r.sf_url, r.name)}</td>
+              <td style="color:var(--text-muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.title)}</td>
+              <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.company)}</td>
+              <td style="color:var(--text-muted);font-size:11.5px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.campaign)}</td>
+              <td style="font-size:11px;white-space:nowrap"><span style="background:rgba(52,211,153,0.12);color:#34D399;padding:2px 7px;border-radius:10px">${esc(r.status)}</span></td>
+              <td style="color:var(--text-dim);white-space:nowrap">${fmtD(r.date)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>` :
+      '<div class="empty" style="padding:40px"><div class="empty-icon">✅</div>No Meeting Done leads found.</div>';
+
+  } else {
+    let rows = _sdrDetailData.sql_leads || [];
+    if(srch) rows = rows.filter(r =>
+      (r.name||'').toLowerCase().includes(srch) ||
+      (r.company||'').toLowerCase().includes(srch));
+    q('sdrDetailBody').innerHTML = rows.length ? `
+      <table>
+        <thead><tr>
+          <th style="width:36px">#</th>
+          <th>Name</th>
+          <th>Title</th>
+          <th>Company</th>
+          <th>Campaign</th>
+          <th>Date</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map((r,i)=>`
+            <tr ${rowClick(r.sf_url)}>
+              <td class="td-center" style="color:var(--text-dim)">${i+1}</td>
+              <td>${sfLink(r.sf_url, r.name)}</td>
+              <td style="color:var(--text-muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.title)}</td>
+              <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.company)}</td>
+              <td style="color:var(--text-muted);font-size:11.5px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.campaign)}</td>
+              <td style="color:var(--text-dim);white-space:nowrap">${fmtD(r.date)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>` :
+      '<div class="empty" style="padding:40px"><div class="empty-icon">💎</div>No SQL leads found.</div>';
+  }
+}
+
+function closeSdrDetailModal(e) {
+  if(e && e.target !== q('sdrDetailOverlay')) return;
+  q('sdrDetailOverlay').classList.remove('open');
+}
+
 // ── INIT ─────────────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click',()=>switchTab(btn.dataset.tab));
 });
 
-document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeModal(); closeMeetingsModal(); closeEditModal(); } });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeModal(); closeMeetingsModal(); closeEditModal(); closeSdrDetailModal(); } });
 
+initAdminMode();
 fetchData();
 startCountdown();
 setInterval(fetchData, 10000);   // Poll Flask every 10s to pick up sync progress updates
