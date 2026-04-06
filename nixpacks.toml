@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["nodejs_20", "bash"]
 
 [phases.install]
 cmds = [
@@ -8,4 +8,4 @@ cmds = [
 ]
 
 [start]
-cmd = "sf org login sfdx-url --sfdx-url-stdin --set-default <<< \"$SFDX_AUTH_URL\" && python3 app.py"
+cmd = "bash start.sh"
