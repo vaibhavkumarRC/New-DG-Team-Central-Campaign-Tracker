@@ -1,6 +1,3 @@
 [build]
-builder = "dockerfile"
-
-[deploy]
-startCommand = "bash -c 'sf org login sfdx-url --sfdx-url-stdin --set-default <<< \"$SFDX_AUTH_URL\" && python3 app.py'"
-restartPolicyType = "on_failure"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
