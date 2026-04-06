@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = [
+  "pip install -r requirements.txt",
+  "npm install -g @salesforce/cli"
+]
+
+[start]
+cmd = "sf org login sfdx-url --sfdx-url-stdin --set-default <<< \"$SFDX_AUTH_URL\" && python3 app.py"
