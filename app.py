@@ -855,4 +855,5 @@ if __name__ == '__main__':
     print('  →   http://localhost:5001')
     print('  ↺   Auto-syncs every 10 minutes from Salesforce')
     print('='*55 + '\n')
-    app.run(debug=False, port=5001, use_reloader=False)
+    port = int(os.environ.get('PORT', 5001))
+    app.run(debug=False, host='0.0.0.0', port=port, use_reloader=False)
