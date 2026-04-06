@@ -35,6 +35,10 @@ cache = {
     'sync_progress': 0, 'errors': []
 }
 
+# ── Period data cache (7d / 30d / qtd) ───────────────────────────────────────
+PERIOD_CACHE_TTL = 600   # 10 minutes
+period_cache = {}        # key: period → {'data': {...}, 'fetched_at': datetime}
+
 # ── Salesforce helpers ────────────────────────────────────────────────────────
 
 def soql(query):
@@ -724,21 +728,28 @@ def api_sdr_detail():
 @app.route('/api/time-data')
 def api_time_data():
     """Return campaign metrics filtered to a time period.
-    ?period=7d|30d|qtd
-    Runs live Salesforce queries; ignores the in-memory cache."""
+    ?period=7d|30d|qtd  — results cached for PERIOD_CACHE_TTL seconds."""
     period = request.args.get('period', '').strip().lower()
+    refresh = request.args.get('refresh', '').strip().lower() == '1'
     start, end = period_dates(period)
     if not start:
         return jsonify({'error': 'Invalid period. Use 7d, 30d, or qtd.'}), 400
+
+    # ── Serve from cache if fresh ────────────────────────────────────────────
+    cached = period_cache.get(period)
+    if cached and not refresh:
+        age = (datetime.now() - cached['fetched_at']).total_seconds()
+        if age < PERIOD_CACHE_TTL:
+            print(f'[period_cache] HIT {period} (age {int(age)}s)')
+            return jsonify(cached['data'])
+    print(f'[period_cache] MISS {period} — fetching from Salesforce…')
 
     camps = load_campaigns()
     if not camps:
         return jsonify({'campaigns': [], 'sdr_stats': [], 'period': period,
                         'start_date': start, 'end_date': end})
 
-    results  = []
-    done_n   = [0]
-    total    = len(camps)
+    results = []
 
     with ThreadPoolExecutor(max_workers=3) as ex:
         futs = {ex.submit(campaign_metrics, c, start, end): c for c in camps}
@@ -752,7 +763,6 @@ def api_time_data():
                                 's1_created': 0, 'sdr_breakdown': [],
                                 'meeting_done': 0, 'meeting_noshow': 0,
                                 'sql_gen': 0, 'status_sdr_breakdown': []})
-            done_n[0] += 1
 
     # Restore original campaign order
     order = {c['id']: i for i, c in enumerate(camps)}
@@ -764,6 +774,17 @@ def api_time_data():
 
     sdr_opp_stats = fetch_sdr_opp_stats(start_date=start, end_date=end)
     sdr_stats     = build_sdr_stats(active, sdr_opp_stats)
+
+    payload = {
+        'campaigns':  active,
+        'sdr_stats':  sdr_stats,
+        'period':     period,
+        'start_date': start,
+        'end_date':   end,
+    }
+
+    # ── Store in cache ───────────────────────────────────────────────────────
+    period_cache[period] = {'data': payload, 'fetched_at': datetime.now()}
 
     return jsonify({
         'campaigns':  active,
