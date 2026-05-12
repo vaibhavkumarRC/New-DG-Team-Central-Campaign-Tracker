@@ -452,8 +452,8 @@ def sync():
     total      = len(camps)
     done_n     = [0]
 
-    # Process campaigns 3 at a time (each campaign already uses 6 threads internally)
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    # Process campaigns 1 at a time on Railway to avoid memory pressure
+    with ThreadPoolExecutor(max_workers=1) as ex:
         futs = {ex.submit(campaign_metrics, c): c for c in camps}
         for f in as_completed(futs):
             try:
