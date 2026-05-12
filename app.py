@@ -606,6 +606,15 @@ def api_camps_add():
     save_campaigns(camps)
     return jsonify(c), 201
 
+@app.route('/api/campaigns/import', methods=['POST'])
+@require_admin
+def api_camps_import():
+    data = request.json
+    if not isinstance(data, list):
+        return jsonify({'error': 'Expected a JSON array'}), 400
+    save_campaigns(data)
+    return jsonify({'imported': len(data)}), 200
+
 @app.route('/api/meetings-leads')
 def api_meetings_leads():
     """Return leads where Meeting_Generated_on__c is not null. Optional ?campaign= filter.
