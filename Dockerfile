@@ -1,11 +1,13 @@
 FROM python:3.11-slim
 
-# Install Node.js + Salesforce CLI
-RUN apt-get update && apt-get install -y curl && \
+# Install Node.js 20 (required for Salesforce CLI)
+RUN apt-get update && apt-get install -y curl gnupg && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
-    npm install -g @salesforce/cli && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Salesforce CLI globally
+RUN npm install -g @salesforce/cli
 
 WORKDIR /app
 COPY requirements.txt .
@@ -13,7 +15,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# /data will be mounted as Railway persistent volume for campaigns.json
+RUN mkdir -p /data
+
 EXPOSE 5001
 
-# Authenticate SF CLI from env var, then start the app
-CMD sf org login sfdx-url --sfdx-url-stdin --set-default <<< "$SFDX_AUTH_URL" && python3 app.py
+# app.py handles SF JWT auth on startup via setup_sf_auth()
+CMD ["bash", "start.sh"]
