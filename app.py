@@ -238,44 +238,48 @@ def campaign_metrics(c, start_override=None, end_override=None):
     has_manual_s1 = manual_s1 is not None and manual_s1 != ''
 
     results = {}
-    queries = {
-        'leads':    f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}'",
-        'calls':    f"SELECT COUNT(Id) FROM Task WHERE (Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%') AND WhoId IN ({lead}){dt_task}",
-        'emails':   f"SELECT COUNT(Id) FROM Task WHERE (Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%') AND WhoId IN ({lead}){dt_task}",
-        'meetings': f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' AND Meeting_Generated_on__c != null{dt_mtg}",
-        'sdr':      (f"SELECT Meeting_Generated_by__c, COUNT(Id) FROM Lead "
-                     f"WHERE Campaign__c = '{n}' AND Meeting_Generated_on__c != null{dt_mtg} "
-                     f"AND Meeting_Generated_by__c != null "
-                     f"GROUP BY Meeting_Generated_by__c ORDER BY COUNT(Id) DESC LIMIT 20"),
-        'meeting_done':   (f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' "
-                           f"AND Meeting_Status__c IN ('Meeting Done-Nurture', 'Meeting Done- Not Interested', 'Meeting Done-Unqualified'){dt_mtg}"),
-        'meeting_noshow': (f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' "
-                           f"AND Meeting_Status__c = 'Meeting No Show'{dt_mtg}"),
-        'sql_gen':        (f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' "
-                           f"AND Status = 'SQL'{dt_mtg}"),
-        'status_sdr':     (f"SELECT Meeting_Generated_by__c, Meeting_Status__c, COUNT(Id) FROM Lead "
-                           f"WHERE Campaign__c = '{n}' "
-                           f"AND Meeting_Status__c IN ('Meeting Done-Nurture', "
-                           f"'Meeting Done- Not Interested', 'Meeting Done-Unqualified', 'Meeting No Show'){dt_mtg} "
-                           f"AND Meeting_Generated_by__c != null "
-                           f"GROUP BY Meeting_Generated_by__c, Meeting_Status__c"),
-        'sql_sdr':        (f"SELECT Meeting_Generated_by__c, COUNT(Id) FROM Lead "
-                           f"WHERE Campaign__c = '{n}' "
-                           f"AND Status = 'SQL' "
-                           f"AND Meeting_Generated_by__c != null "
-                           f"GROUP BY Meeting_Generated_by__c"),
-    }
-    # Only query Salesforce for S1 if no manual override
-    if not has_manual_s1:
-        queries['s1'] = (f"SELECT COUNT(Id) FROM Opportunity "
-                         f"WHERE Id IN (SELECT ConvertedOpportunityId FROM Lead "
-                         f"WHERE Campaign__c = '{n}' AND IsConverted = true)")
 
-    # Run all sub-queries in parallel
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        futs = {ex.submit(soql, q): k for k, q in queries.items()}
-        for f in as_completed(futs):
-            results[futs[f]] = f.result()
+    # Fetch leads count first — if 0, skip all other queries to save resources
+    results['leads'] = soql(f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}'")
+    total_leads_check = cnt(results['leads'])
+
+    if total_leads_check > 0:
+        queries = {
+            'calls':    f"SELECT COUNT(Id) FROM Task WHERE (Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%') AND WhoId IN ({lead}){dt_task}",
+            'emails':   f"SELECT COUNT(Id) FROM Task WHERE (Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%') AND WhoId IN ({lead}){dt_task}",
+            'meetings': f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' AND Meeting_Generated_on__c != null{dt_mtg}",
+            'sdr':      (f"SELECT Meeting_Generated_by__c, COUNT(Id) FROM Lead "
+                         f"WHERE Campaign__c = '{n}' AND Meeting_Generated_on__c != null{dt_mtg} "
+                         f"AND Meeting_Generated_by__c != null "
+                         f"GROUP BY Meeting_Generated_by__c ORDER BY COUNT(Id) DESC LIMIT 20"),
+            'meeting_done':   (f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' "
+                               f"AND Meeting_Status__c IN ('Meeting Done-Nurture', 'Meeting Done- Not Interested', 'Meeting Done-Unqualified'){dt_mtg}"),
+            'meeting_noshow': (f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' "
+                               f"AND Meeting_Status__c = 'Meeting No Show'{dt_mtg}"),
+            'sql_gen':        (f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' "
+                               f"AND Status = 'SQL'{dt_mtg}"),
+            'status_sdr':     (f"SELECT Meeting_Generated_by__c, Meeting_Status__c, COUNT(Id) FROM Lead "
+                               f"WHERE Campaign__c = '{n}' "
+                               f"AND Meeting_Status__c IN ('Meeting Done-Nurture', "
+                               f"'Meeting Done- Not Interested', 'Meeting Done-Unqualified', 'Meeting No Show'){dt_mtg} "
+                               f"AND Meeting_Generated_by__c != null "
+                               f"GROUP BY Meeting_Generated_by__c, Meeting_Status__c"),
+            'sql_sdr':        (f"SELECT Meeting_Generated_by__c, COUNT(Id) FROM Lead "
+                               f"WHERE Campaign__c = '{n}' "
+                               f"AND Status = 'SQL' "
+                               f"AND Meeting_Generated_by__c != null "
+                               f"GROUP BY Meeting_Generated_by__c"),
+        }
+        if not has_manual_s1:
+            queries['s1'] = (f"SELECT COUNT(Id) FROM Opportunity "
+                             f"WHERE Id IN (SELECT ConvertedOpportunityId FROM Lead "
+                             f"WHERE Campaign__c = '{n}' AND IsConverted = true)")
+
+        # Run remaining queries 3 at a time to limit concurrent sf CLI processes
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            futs = {ex.submit(soql, q): k for k, q in queries.items()}
+            for f in as_completed(futs):
+                results[futs[f]] = f.result()
 
     sdr_bk = []
     if results.get('sdr') and results['sdr'].get('records'):
@@ -308,11 +312,9 @@ def campaign_metrics(c, start_override=None, end_override=None):
                 status_sdr_bk[sdr_name] = {'meeting_done': 0, 'meeting_noshow': 0, 'sql_gen': 0}
             status_sdr_bk[sdr_name]['sql_gen'] += count
 
-    total_leads = cnt(results.get('leads'))
-    # If no leads found, calls/emails subquery would match ALL tasks (Salesforce IN-empty bug)
-    # so zero them out to avoid inflated global counts
-    total_calls  = cnt(results.get('calls'))  if total_leads > 0 else 0
-    total_emails = cnt(results.get('emails')) if total_leads > 0 else 0
+    total_leads  = cnt(results.get('leads'))
+    total_calls  = cnt(results.get('calls'))
+    total_emails = cnt(results.get('emails'))
 
     return {
         **c,
