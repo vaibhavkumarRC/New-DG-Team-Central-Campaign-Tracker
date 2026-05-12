@@ -1081,7 +1081,7 @@ def api_reporting_s1():
     q = (f"SELECT Id, Name, Amount, StageName, Account.Name, "
          f"SDR_Owner__c, Source__c, CreatedDate "
          f"FROM Opportunity "
-         f"WHERE SDR_Owner__c != null"
+         f"WHERE StageName != null"
          f"{dt} "
          f"ORDER BY CreatedDate DESC NULLS LAST LIMIT 1000")
 
@@ -1089,18 +1089,20 @@ def api_reporting_s1():
     records = result.get('records', []) if result else []
     opps    = []
     for r in records:
-        oid = r.get('Id') or ''
-        acc = (r.get('Account') or {})
+        oid     = r.get('Id') or ''
+        acc     = (r.get('Account') or {})
+        sdr_raw = (r.get('SDR_Owner__c') or '').strip()
         opps.append({
-            'id':      oid,
-            'name':    r.get('Name') or '—',
-            'account': acc.get('Name') or '—',
-            'stage':   r.get('StageName') or '—',
-            'source':  r.get('Source__c') or '—',
-            'amount':  float(r.get('Amount') or 0),
-            'sdr':     norm_sdr((r.get('SDR_Owner__c') or '').strip()),
-            'date':    (r.get('CreatedDate') or '')[:10],
-            'sf_url':  f"{SF_BASE_URL}/lightning/r/Opportunity/{oid}/view" if oid else '',
+            'id':         oid,
+            'name':       r.get('Name') or '—',
+            'account':    acc.get('Name') or '—',
+            'stage':      r.get('StageName') or '—',
+            'source':     r.get('Source__c') or '—',
+            'amount':     float(r.get('Amount') or 0),
+            'sdr':        norm_sdr(sdr_raw) if sdr_raw else '—',
+            'deal_type':  'DG Generated' if sdr_raw else 'By Other Sources',
+            'date':       (r.get('CreatedDate') or '')[:10],
+            'sf_url':     f"{SF_BASE_URL}/lightning/r/Opportunity/{oid}/view" if oid else '',
         })
     return jsonify({'opportunities': opps, 'total': len(opps)})
 

@@ -982,6 +982,11 @@ tfoot td {
       <div id="s1rTableWrap" style="display:none">
         <div class="toolbar" style="margin-bottom:12px">
           <input class="search-box" id="s1rSearch" placeholder="🔍  Search opp name, account, SDR, stage…" oninput="filterRptTable('s1r')" style="max-width:260px">
+          <select id="s1rDealTypeFilter" onchange="filterRptTable('s1r')" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
+            <option value="">All Deal Types</option>
+            <option value="DG Generated">DG Generated</option>
+            <option value="By Other Sources">By Other Sources</option>
+          </select>
           <select id="s1rSdrFilter" onchange="filterRptTable('s1r')" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
             <option value="">All SDR Owners</option>
           </select>
@@ -991,6 +996,7 @@ tfoot td {
           <table id="s1rTable">
             <thead>
               <tr>
+                <th onclick="sortRptTable('s1r','deal_type')" id="s1rTh-deal_type">Deal Type ↕</th>
                 <th onclick="sortRptTable('s1r','sdr')" id="s1rTh-sdr">SDR Owner ↕</th>
                 <th onclick="sortRptTable('s1r','source')" id="s1rTh-source">Source ↕</th>
                 <th onclick="sortRptTable('s1r','stage')" id="s1rTh-stage">Stage ↕</th>
@@ -2937,11 +2943,13 @@ function applyRptSearch(section) {
       return matchQ && matchSeller && matchSource;
     });
   } else if(section==='s1r') {
-    const sdrF = document.getElementById('s1rSdrFilter')?.value || '';
+    const sdrF      = document.getElementById('s1rSdrFilter')?.value || '';
+    const dealTypeF = document.getElementById('s1rDealTypeFilter')?.value || '';
     filtered = data.filter(r => {
-      const matchQ = !q || `${r.name} ${r.account} ${r.sdr} ${r.stage} ${r.source}`.toLowerCase().includes(q);
-      const matchSdr = !sdrF || r.sdr === sdrF;
-      return matchQ && matchSdr;
+      const matchQ        = !q || `${r.name} ${r.account} ${r.sdr} ${r.stage} ${r.source} ${r.deal_type}`.toLowerCase().includes(q);
+      const matchSdr      = !sdrF || r.sdr === sdrF;
+      const matchDealType = !dealTypeF || r.deal_type === dealTypeF;
+      return matchQ && matchSdr && matchDealType;
     });
   } else {
     filtered = q ? data.filter(r=>`${r.name} ${r.account} ${r.sdr} ${r.stage} ${r.source}`.toLowerCase().includes(q)) : [...data];
@@ -3117,6 +3125,9 @@ function drawS1rTable(rows) {
     const sc = stageColor(r.stage);
     return `
     <tr onclick="window.open('${r.sf_url}','_blank')" title="Open in Salesforce" style="${r.sf_url?'cursor:pointer':''}">
+      <td>
+        <span class="badge" style="${r.deal_type==='DG Generated'?'background:rgba(34,197,94,0.12);color:#22C55E':'background:rgba(156,163,175,0.12);color:#9CA3AF'}">${r.deal_type}</span>
+      </td>
       <td>
         <span style="display:inline-flex;align-items:center;gap:6px">
           <span style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#A88A24,#D4AF37);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#0a0a0a;flex-shrink:0">${(r.sdr||'?')[0]}</span>
