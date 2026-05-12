@@ -44,24 +44,25 @@ period_cache = {}        # key: period → {'data': {...}, 'fetched_at': datetim
 
 # ── Salesforce helpers ────────────────────────────────────────────────────────
 
-def soql(query):
+def soql(query, retries=2, timeout=120):
     """Run a SOQL query via sf CLI and return the result dict, or None on error."""
-    try:
-        env = os.environ.copy()
-        # Include both Mac Homebrew paths and standard Linux/Railway paths
-        env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env.get('PATH', '')
-        r = subprocess.run(
-            ['sf', 'data', 'query', '--query', query, '--json', '--target-org', SF_ORG],
-            capture_output=True, text=True, timeout=60, env=env
-        )
-        d = json.loads(r.stdout)
-        if d.get('status') == 0:
-            return d.get('result')
-        print(f'[SOQL] error: {d.get("message","unknown")}')
-        return None
-    except Exception as e:
-        print(f'[SOQL] exception: {e}')
-        return None
+    env = os.environ.copy()
+    env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env.get('PATH', '')
+    for attempt in range(retries):
+        try:
+            r = subprocess.run(
+                ['sf', 'data', 'query', '--query', query, '--json', '--target-org', SF_ORG],
+                capture_output=True, text=True, timeout=timeout, env=env
+            )
+            d = json.loads(r.stdout)
+            if d.get('status') == 0:
+                return d.get('result')
+            print(f'[SOQL] error (attempt {attempt+1}): {d.get("message","unknown")}')
+        except Exception as e:
+            print(f'[SOQL] exception (attempt {attempt+1}): {e}')
+        if attempt < retries - 1:
+            time.sleep(3)
+    return None
 
 
 def setup_sf_auth():
