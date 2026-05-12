@@ -1455,16 +1455,27 @@ function updateSyncStatus() {
   }
 }
 
+function secsUntil5amIST() {
+  const now = new Date();
+  const nowUTC = now.getTime() + now.getTimezoneOffset() * 60000;
+  const nowIST = new Date(nowUTC + 5.5 * 3600000);
+  const next5am = new Date(nowIST);
+  next5am.setHours(5, 0, 0, 0);
+  if (nowIST >= next5am) next5am.setDate(next5am.getDate() + 1);
+  return Math.floor((next5am - nowIST) / 1000);
+}
+
 function startCountdown() {
-  S.countdown = 1800;
+  S.countdown = secsUntil5amIST();
   clearInterval(S.cTimer);
   S.cTimer = setInterval(()=>{
     S.countdown--;
-    const m = String(Math.floor(S.countdown/60)).padStart(2,'0');
-    const s = String(S.countdown%60).padStart(2,'0');
+    if (S.countdown <= 0) { fetchData(); S.countdown = secsUntil5amIST(); }
+    const h = Math.floor(S.countdown / 3600);
+    const m = String(Math.floor((S.countdown % 3600) / 60)).padStart(2,'0');
+    const s = String(S.countdown % 60).padStart(2,'0');
     const el = q('countdown');
-    if(el) el.textContent = `Next sync in ${m}:${s}`;
-    if(S.countdown <= 0){ fetchData(); S.countdown = 300; }
+    if(el) el.textContent = h > 0 ? `Next sync in ${h}:${m}:${s}` : `Next sync in ${m}:${s}`;
   },1000);
 }
 
