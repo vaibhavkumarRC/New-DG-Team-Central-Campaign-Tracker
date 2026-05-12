@@ -541,6 +541,7 @@ tfoot td {
     <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
     <button class="tab-btn" data-tab="campaigns">📋 Campaigns</button>
     <button class="tab-btn" data-tab="sdr">👥 SDR Performance</button>
+    <button class="tab-btn" data-tab="reporting">📈 SDR Reporting 2026 (MQL/SQL/S1)</button>
     <button class="tab-btn" data-tab="manage">⚙️ Manage</button>
   </div>
 </nav>
@@ -607,11 +608,19 @@ tfoot td {
         <div id="funnelChart"></div>
       </div>
       <div class="chart-card" style="padding:0;overflow:hidden">
-        <div class="chart-title" style="padding:18px 20px 14px;border-bottom:1px solid var(--border);margin-bottom:0">
-          🏆 Campaign Performance
-          <span id="campTableSdrTag" style="margin-left:8px;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--gold-glow);color:var(--gold);display:none"></span>
+        <div style="padding:14px 20px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--text)">
+            🏆 Campaign Performance
+            <span id="campTableSdrTag" style="margin-left:4px;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--gold-glow);color:var(--gold);display:none"></span>
+          </div>
+          <div style="display:flex;gap:4px">
+            <button id="cpf-All"       class="chip active" onclick="setCampPerfFilter('All')">All</button>
+            <button id="cpf-Active"    class="chip"        onclick="setCampPerfFilter('Active')">🟢 Active</button>
+            <button id="cpf-Completed" class="chip"        onclick="setCampPerfFilter('Completed')">🔵 Completed</button>
+            <button id="cpf-Paused"    class="chip"        onclick="setCampPerfFilter('Paused')">🟡 Paused</button>
+          </div>
         </div>
-        <div id="campaignTableWrap" style="overflow-y:auto;max-height:295px"></div>
+        <div id="campaignTableWrap" style="overflow-y:auto;max-height:280px"></div>
       </div>
     </div>
 
@@ -649,6 +658,9 @@ tfoot td {
     </div>
     <div class="toolbar">
       <input class="search-box" id="searchBox" type="search" placeholder="🔍  Search campaigns…" oninput="renderCampaigns()">
+      <select class="form-select" id="campSdrFilter" style="height:32px;padding:0 8px;font-size:12.5px;min-width:130px" onchange="renderCampaigns()">
+        <option value="">All SDRs</option>
+      </select>
       <div class="filter-chips" id="statusChips"></div>
       <div style="margin-left:auto; display:flex; gap:8px;">
         <button class="btn btn-ghost btn-sm admin-only" onclick="switchTab('manage')">+ Add Campaign</button>
@@ -703,6 +715,303 @@ tfoot td {
     </div>
   </div>
 
+  <!-- SDR REPORTING 2026 -->
+  <div id="tab-reporting" class="tab-panel">
+
+    <!-- ── MQL SECTION ── -->
+    <div style="margin-bottom:32px">
+      <div class="section-hdr" style="flex-wrap:wrap;gap:12px;margin-bottom:18px">
+        <div class="section-title" style="font-size:16px">🟡 MQL Leads</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
+          <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Period</span>
+          <div style="display:flex;gap:4px">
+            <button id="mql-7d"     class="chip"       onclick="setRptPeriod('mql','7d')">7D</button>
+            <button id="mql-30d"    class="chip active" onclick="setRptPeriod('mql','30d')">30D</button>
+            <button id="mql-qtd"    class="chip"       onclick="setRptPeriod('mql','qtd')">QTD</button>
+            <button id="mql-custom" class="chip"       onclick="setRptPeriod('mql','custom')">📅 Custom</button>
+          </div>
+          <div id="mqlCustomPicker" style="display:none;align-items:center;gap:6px">
+            <input type="date" id="mqlCustomStart" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px" onchange="applyRptCustomDate('mql')">
+            <span style="font-size:11px;color:var(--text-muted)">→</span>
+            <input type="date" id="mqlCustomEnd" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px" onchange="applyRptCustomDate('mql')">
+          </div>
+          <span id="mqlDateRange" style="font-size:10.5px;color:var(--text-dim);white-space:nowrap"></span>
+        </div>
+      </div>
+
+      <!-- MQL KPI row -->
+      <div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+        <div class="kpi-card" style="--kpi-color:#F59E0B;min-width:140px;flex:0 0 auto">
+          <div class="kpi-label">Total MQL</div>
+          <div class="kpi-value" id="mqlTotal">—</div>
+          <div class="kpi-sub">Selected period</div>
+          <div class="kpi-icon">🟡</div>
+        </div>
+        <div class="kpi-card" style="--kpi-color:#3B82F6;min-width:140px;flex:0 0 auto">
+          <div class="kpi-label">Unique SDRs</div>
+          <div class="kpi-value" id="mqlSdrs">—</div>
+          <div class="kpi-sub">Meeting generated by</div>
+          <div class="kpi-icon">👤</div>
+        </div>
+        <div class="kpi-card" style="--kpi-color:#22C55E;min-width:140px;flex:0 0 auto">
+          <div class="kpi-label">Unique Channels</div>
+          <div class="kpi-value" id="mqlChannels">—</div>
+          <div class="kpi-sub">Meeting channels</div>
+          <div class="kpi-icon">📡</div>
+        </div>
+      </div>
+
+      <!-- MQL Table -->
+      <div id="mqlLoading" style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px">
+        <span style="font-size:22px;display:block;margin-bottom:8px">⏳</span>Loading MQL data…
+      </div>
+      <div id="mqlTableWrap" style="display:none">
+        <div class="toolbar" style="margin-bottom:12px">
+          <input class="search-box" id="mqlSearch" placeholder="🔍  Search name, company, SDR…" oninput="filterRptTable('mql')" style="max-width:260px">
+          <select id="mqlSdrFilter" onchange="filterRptTable('mql')" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
+            <option value="">All SDRs</option>
+          </select>
+          <span id="mqlCount" style="font-size:11.5px;color:var(--text-muted);margin-left:4px"></span>
+        </div>
+        <div class="table-wrap">
+          <table id="mqlTable">
+            <thead>
+              <tr>
+                <th onclick="sortRptTable('mql','generated_by')" id="mqlTh-generated_by">Meeting Generated By ↕</th>
+                <th onclick="sortRptTable('mql','date')" id="mqlTh-date">Meeting Date ↕</th>
+                <th onclick="sortRptTable('mql','channel')" id="mqlTh-channel">Channel ↕</th>
+                <th onclick="sortRptTable('mql','type')" id="mqlTh-type">Meeting Type ↕</th>
+                <th onclick="sortRptTable('mql','seller')" id="mqlTh-seller">Seller Name ↕</th>
+                <th onclick="sortRptTable('mql','source')" id="mqlTh-source">Meeting Source ↕</th>
+                <th onclick="sortRptTable('mql','follow_up_owner')" id="mqlTh-follow_up_owner">Follow Up Owner ↕</th>
+                <th onclick="sortRptTable('mql','name')" id="mqlTh-name">Lead Name ↕</th>
+                <th onclick="sortRptTable('mql','company')" id="mqlTh-company">Company ↕</th>
+              </tr>
+            </thead>
+            <tbody id="mqlBody"></tbody>
+            <tfoot><tr id="mqlFoot"></tr></tfoot>
+          </table>
+        </div>
+      </div>
+      <div id="mqlEmpty" class="empty" style="display:none">
+        <div class="empty-icon">🟡</div>No MQL leads found for this period.
+      </div>
+    </div>
+
+    <!-- ── SQL SECTION ── -->
+    <div style="margin-bottom:32px">
+      <div class="section-hdr" style="flex-wrap:wrap;gap:12px;margin-bottom:18px">
+        <div class="section-title" style="font-size:16px">💎 SQL Leads</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
+          <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Period</span>
+          <div style="display:flex;gap:4px">
+            <button id="sql-7d"     class="chip"       onclick="setRptPeriod('sql','7d')">7D</button>
+            <button id="sql-30d"    class="chip active" onclick="setRptPeriod('sql','30d')">30D</button>
+            <button id="sql-qtd"    class="chip"       onclick="setRptPeriod('sql','qtd')">QTD</button>
+            <button id="sql-custom" class="chip"       onclick="setRptPeriod('sql','custom')">📅 Custom</button>
+          </div>
+          <div id="sqlCustomPicker" style="display:none;align-items:center;gap:6px">
+            <input type="date" id="sqlCustomStart" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px" onchange="applyRptCustomDate('sql')">
+            <span style="font-size:11px;color:var(--text-muted)">→</span>
+            <input type="date" id="sqlCustomEnd" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px" onchange="applyRptCustomDate('sql')">
+          </div>
+          <span id="sqlDateRange" style="font-size:10.5px;color:var(--text-dim);white-space:nowrap"></span>
+        </div>
+      </div>
+
+      <!-- SQL KPI row -->
+      <div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+        <div class="kpi-card" style="--kpi-color:#A78BFA;min-width:140px;flex:0 0 auto">
+          <div class="kpi-label">Total SQL</div>
+          <div class="kpi-value" id="sqlTotal">—</div>
+          <div class="kpi-sub">Selected period</div>
+          <div class="kpi-icon">💎</div>
+        </div>
+        <div class="kpi-card" style="--kpi-color:#3B82F6;min-width:140px;flex:0 0 auto">
+          <div class="kpi-label">Unique Sellers</div>
+          <div class="kpi-value" id="sqlSellers">—</div>
+          <div class="kpi-sub">SQL seller/owner</div>
+          <div class="kpi-icon">👤</div>
+        </div>
+        <div class="kpi-card" style="--kpi-color:#22C55E;min-width:140px;flex:0 0 auto">
+          <div class="kpi-label">Unique Sources</div>
+          <div class="kpi-value" id="sqlSources">—</div>
+          <div class="kpi-sub">SQL source</div>
+          <div class="kpi-icon">🔗</div>
+        </div>
+      </div>
+
+      <!-- SQL Table -->
+      <div id="sqlLoading" style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px">
+        <span style="font-size:22px;display:block;margin-bottom:8px">⏳</span>Loading SQL data…
+      </div>
+      <div id="sqlTableWrap" style="display:none">
+        <div class="toolbar" style="margin-bottom:12px">
+          <input class="search-box" id="sqlSearch" placeholder="🔍  Search name, company, seller…" oninput="filterRptTable('sql')" style="max-width:200px">
+          <select id="sqlSellerFilter" onchange="filterRptTable('sql')" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
+            <option value="">All Sellers</option>
+          </select>
+          <select id="sqlSourceFilter" onchange="filterRptTable('sql')" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
+            <option value="">All Sources</option>
+          </select>
+          <span id="sqlCount" style="font-size:11.5px;color:var(--text-muted);margin-left:4px"></span>
+        </div>
+        <div class="table-wrap">
+          <table id="sqlTable">
+            <thead>
+              <tr>
+                <th onclick="sortRptTable('sql','seller')" id="sqlTh-seller">SQL Seller/Owner ↕</th>
+                <th onclick="sortRptTable('sql','date')" id="sqlTh-date">SQL Converted Date ↕</th>
+                <th onclick="sortRptTable('sql','source')" id="sqlTh-source">SQL Source ↕</th>
+                <th onclick="sortRptTable('sql','follow_up_owner')" id="sqlTh-follow_up_owner">Follow Up Owner ↕</th>
+                <th onclick="sortRptTable('sql','name')" id="sqlTh-name">Lead Name ↕</th>
+                <th onclick="sortRptTable('sql','company')" id="sqlTh-company">Company ↕</th>
+              </tr>
+            </thead>
+            <tbody id="sqlBody"></tbody>
+            <tfoot><tr id="sqlFoot"></tr></tfoot>
+          </table>
+        </div>
+      </div>
+      <div id="sqlEmpty" class="empty" style="display:none">
+        <div class="empty-icon">💎</div>No SQL leads found for this period.
+      </div>
+    </div>
+
+    <!-- ── MQL → SQL FUNNEL ── -->
+    <div style="margin-bottom:32px">
+      <div class="section-hdr" style="margin-bottom:18px">
+        <div class="section-title" style="font-size:16px">🔽 MQL → SQL Conversion Funnel</div>
+        <span style="font-size:11px;color:var(--text-dim)">(based on currently selected MQL &amp; SQL periods)</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:860px">
+        <!-- Funnel visual -->
+        <div class="chart-card" style="padding:24px 28px">
+          <div id="funnelWrap">
+            <div class="funnel-item">
+              <div class="funnel-meta">
+                <span class="funnel-label">🟡 MQL Generated</span>
+                <span class="funnel-val" id="funnelMqlVal" style="color:#F59E0B">—</span>
+              </div>
+              <div class="funnel-track">
+                <div class="funnel-bar" id="funnelMqlBar" style="width:100%;background:linear-gradient(90deg,#D97706,#F59E0B)">100%</div>
+              </div>
+            </div>
+            <div style="text-align:center;margin:6px 0;font-size:11px;color:var(--text-dim)">↓ converted to SQL</div>
+            <div class="funnel-item">
+              <div class="funnel-meta">
+                <span class="funnel-label">💎 SQL Generated</span>
+                <span class="funnel-val" id="funnelSqlVal" style="color:#A78BFA">—</span>
+              </div>
+              <div class="funnel-track">
+                <div class="funnel-bar" id="funnelSqlBar" style="width:0%;background:linear-gradient(90deg,#7C3AED,#A78BFA)">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Conversion stats -->
+        <div class="chart-card" style="padding:24px 28px;display:flex;flex-direction:column;justify-content:center;gap:18px">
+          <div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">MQL → SQL Conversion Rate</div>
+            <div id="funnelConvRate" style="font-size:38px;font-weight:900;color:var(--gold)">—</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+              <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Total MQL</div>
+              <div id="funnelMqlStat" style="font-size:22px;font-weight:800;color:#F59E0B">—</div>
+            </div>
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+              <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Total SQL</div>
+              <div id="funnelSqlStat" style="font-size:22px;font-weight:800;color:#A78BFA">—</div>
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--text-dim);line-height:1.5">
+            Funnel reflects the selected period for each section. MQL filtered by <em>Meeting Generated On</em>, SQL filtered by <em>SQL Converted Date</em>.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── S1 OPPORTUNITIES SECTION ── -->
+    <div style="margin-bottom:32px">
+      <div class="section-hdr" style="flex-wrap:wrap;gap:12px;margin-bottom:18px">
+        <div class="section-title" style="font-size:16px">🚀 S1 Opportunities Created</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+          <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Period</span>
+          <div style="display:flex;gap:4px">
+            <button id="s1r-7d"  class="chip"        onclick="setRptPeriod('s1r','7d')">7D</button>
+            <button id="s1r-30d" class="chip active"  onclick="setRptPeriod('s1r','30d')">30D</button>
+            <button id="s1r-qtd" class="chip"        onclick="setRptPeriod('s1r','qtd')">QTD</button>
+          </div>
+          <span id="s1rDateRange" style="font-size:10.5px;color:var(--text-dim);white-space:nowrap"></span>
+        </div>
+      </div>
+
+      <!-- S1 KPI row -->
+      <div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+        <div class="kpi-card" style="--kpi-color:#22C55E;min-width:140px;flex:0 0 auto">
+          <div class="kpi-label">Total S1</div>
+          <div class="kpi-value" id="s1rTotal">—</div>
+          <div class="kpi-sub">Opportunities created</div>
+          <div class="kpi-icon">🚀</div>
+        </div>
+        <div class="kpi-card" style="--kpi-color:#D4AF37;min-width:140px;flex:0 0 auto">
+          <div class="kpi-label">Total Pipeline</div>
+          <div class="kpi-value" id="s1rAmount" style="font-size:19px">—</div>
+          <div class="kpi-sub">Sum of opportunity value</div>
+          <div class="kpi-icon">💰</div>
+        </div>
+        <div class="kpi-card" style="--kpi-color:#3B82F6;min-width:140px;flex:0 0 auto">
+          <div class="kpi-label">Unique SDR Owners</div>
+          <div class="kpi-value" id="s1rSdrs">—</div>
+          <div class="kpi-sub">SDR owners</div>
+          <div class="kpi-icon">👤</div>
+        </div>
+        <div class="kpi-card" style="--kpi-color:#F59E0B;min-width:140px;flex:0 0 auto">
+          <div class="kpi-label">Unique Stages</div>
+          <div class="kpi-value" id="s1rStages">—</div>
+          <div class="kpi-sub">Pipeline stages</div>
+          <div class="kpi-icon">📊</div>
+        </div>
+      </div>
+
+      <!-- S1 Table -->
+      <div id="s1rLoading" style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px">
+        <span style="font-size:22px;display:block;margin-bottom:8px">⏳</span>Loading S1 data…
+      </div>
+      <div id="s1rTableWrap" style="display:none">
+        <div class="toolbar" style="margin-bottom:12px">
+          <input class="search-box" id="s1rSearch" placeholder="🔍  Search opp name, account, SDR, stage…" oninput="filterRptTable('s1r')" style="max-width:260px">
+          <select id="s1rSdrFilter" onchange="filterRptTable('s1r')" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
+            <option value="">All SDR Owners</option>
+          </select>
+          <span id="s1rCount" style="font-size:11.5px;color:var(--text-muted);margin-left:4px"></span>
+        </div>
+        <div class="table-wrap">
+          <table id="s1rTable">
+            <thead>
+              <tr>
+                <th onclick="sortRptTable('s1r','sdr')" id="s1rTh-sdr">SDR Owner ↕</th>
+                <th onclick="sortRptTable('s1r','source')" id="s1rTh-source">Source ↕</th>
+                <th onclick="sortRptTable('s1r','stage')" id="s1rTh-stage">Stage ↕</th>
+                <th onclick="sortRptTable('s1r','name')" id="s1rTh-name">Opportunity Name ↕</th>
+                <th onclick="sortRptTable('s1r','account')" id="s1rTh-account">Account ↕</th>
+                <th onclick="sortRptTable('s1r','amount')" id="s1rTh-amount" style="text-align:right">Amount ↕</th>
+                <th onclick="sortRptTable('s1r','date')" id="s1rTh-date">Created Date ↕</th>
+              </tr>
+            </thead>
+            <tbody id="s1rBody"></tbody>
+            <tfoot><tr id="s1rFoot"></tr></tfoot>
+          </table>
+        </div>
+      </div>
+      <div id="s1rEmpty" class="empty" style="display:none">
+        <div class="empty-icon">🚀</div>No opportunities found for this period.
+      </div>
+    </div>
+
+  </div><!-- /tab-reporting -->
+
   <!-- MANAGE -->
   <div id="tab-manage" class="tab-panel">
     <div class="manage-layout">
@@ -716,7 +1025,24 @@ tfoot td {
           <div class="form-grid-2">
             <div class="form-group">
               <label class="form-label">SDR Owner</label>
-              <input class="form-input" name="sdr_owner" placeholder="SDR name">
+              <select class="form-select" name="sdr_owner">
+                <option value="">— Select SDR —</option>
+                <option>Akhilesh Stan</option>
+                <option>Akil Krishna</option>
+                <option>Ananya Rao</option>
+                <option>Anurup Bhattacharjee</option>
+                <option>Anushka HB</option>
+                <option>Deborah Deborah</option>
+                <option>Felix Sam</option>
+                <option>Hreeman Saha</option>
+                <option>Isaac Bartels</option>
+                <option>Michelle B</option>
+                <option>Rithick S</option>
+                <option>Saka Thapa</option>
+                <option>Samridhi Dutta</option>
+                <option>Shahana Abbasi</option>
+                <option>Sukhneet Sukhneet</option>
+              </select>
             </div>
             <div class="form-group">
               <label class="form-label">Email Owner</label>
@@ -755,6 +1081,9 @@ tfoot td {
         <div class="section-hdr">
           <div class="section-title">Manage Campaigns</div>
           <div style="font-size:11px;color:var(--text-dim)" id="manageCampCount"></div>
+          <select class="form-select" id="manageSdrFilter" style="height:28px;padding:0 8px;font-size:12px;min-width:120px;margin-left:auto" onchange="renderManage()">
+            <option value="">All SDRs</option>
+          </select>
         </div>
         <div class="manage-list" id="manageList"></div>
       </div>
@@ -878,7 +1207,24 @@ tfoot td {
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label">SDR Owner</label>
-          <input class="form-input" id="editSdr" placeholder="SDR name">
+          <select class="form-select" id="editSdr">
+            <option value="">— Select SDR —</option>
+            <option>Akhilesh Stan</option>
+            <option>Akil Krishna</option>
+            <option>Ananya Rao</option>
+            <option>Anurup Bhattacharjee</option>
+            <option>Anushka HB</option>
+            <option>Deborah Deborah</option>
+            <option>Felix Sam</option>
+            <option>Hreeman Saha</option>
+            <option>Isaac Bartels</option>
+            <option>Michelle B</option>
+            <option>Rithick S</option>
+            <option>Saka Thapa</option>
+            <option>Samridhi Dutta</option>
+            <option>Shahana Abbasi</option>
+            <option>Sukhneet Sukhneet</option>
+          </select>
         </div>
         <div class="form-group">
           <label class="form-label">Email Owner</label>
@@ -946,13 +1292,14 @@ const SDR_TARGETS = {
 // ── STATE ────────────────────────────────────────────────────────────────────
 const S = {
   data:         { campaigns:[], sdr_stats:[], last_sync:null, is_syncing:false, sync_progress:0 },
-  activeTab:    'dashboard',
-  filterStatus: 'All',
-  dashSdrFilter:'All',
+  activeTab:      'dashboard',
+  filterStatus:   'All',
+  dashSdrFilter:  'All',
+  campPerfFilter: 'All',
   sortCol:      'meetings',
   sortDir:      -1,
   charts:       {},
-  countdown:    300,
+  countdown:    1800,
   isAdmin:      false,
   adminToken:   '',
   cTimer:       null,
@@ -1109,7 +1456,7 @@ function updateSyncStatus() {
 }
 
 function startCountdown() {
-  S.countdown = 300;
+  S.countdown = 1800;
   clearInterval(S.cTimer);
   S.cTimer = setInterval(()=>{
     S.countdown--;
@@ -1137,6 +1484,7 @@ function renderCurrentTab() {
   if(S.activeTab==='dashboard') renderDashboard();
   if(S.activeTab==='campaigns') renderCampaigns();
   if(S.activeTab==='sdr')       renderSDR();
+  if(S.activeTab==='reporting') renderReportingTab();
   if(S.activeTab==='manage')    renderManage();
 }
 function renderAll() { renderDashboard(); renderCampaigns(); renderSDR(); renderManage(); }
@@ -1144,6 +1492,16 @@ function renderAll() { renderDashboard(); renderCampaigns(); renderSDR(); render
 // ── DASHBOARD ────────────────────────────────────────────────────────────────
 function setDashSdrFilter(val) {
   S.dashSdrFilter = val;
+  renderDashboard();
+}
+
+function setCampPerfFilter(val) {
+  S.campPerfFilter = val;
+  // Update chip active states
+  ['All','Active','Completed','Paused'].forEach(s => {
+    const el = document.getElementById(`cpf-${s}`);
+    if(el) el.classList.toggle('active', s === val);
+  });
   renderDashboard();
 }
 
@@ -1309,7 +1667,10 @@ function renderDashboard() {
   }).join('');
 
   // ── Campaign Performance Table (replaces bar chart) ───────────────────────
-  const sorted = [...cps].sort((a,b)=>(b.meetings||0)-(a.meetings||0));
+  const perfFiltered = S.campPerfFilter === 'All'
+    ? cps
+    : cps.filter(c => (c.status || 'Active') === S.campPerfFilter);
+  const sorted = [...perfFiltered].sort((a,b)=>(b.meetings||0)-(a.meetings||0));
   const maxMtg = sorted[0]?.meetings || 1;
 
   if(!sorted.length) {
@@ -1423,9 +1784,22 @@ function drawDoughnut(id, labels, data, colors) {
 function renderCampaigns() {
   const search   = (q('searchBox')?.value||'').toLowerCase();
   const statusF  = S.filterStatus;
+  const sdrF     = (q('campSdrFilter')?.value||'').toLowerCase();
   const src = (S.timePeriod !== 'all' && S.periodData) ? S.periodData : S.data;
-  let cps = (src.campaigns||[]).filter(c=>{
+  const allCps   = src.campaigns||[];
+
+  // Populate SDR dropdown (keep current selection)
+  const sdrSel = q('campSdrFilter');
+  if(sdrSel) {
+    const sdrs = [...new Set(allCps.map(c=>c.sdr_owner||'').filter(Boolean))].sort();
+    const cur  = sdrSel.value;
+    sdrSel.innerHTML = '<option value="">All SDRs</option>' +
+      sdrs.map(s=>`<option value="${s.toLowerCase()}"${s.toLowerCase()===cur?'selected':''}>${s}</option>`).join('');
+  }
+
+  let cps = allCps.filter(c=>{
     if(statusF!=='All' && c.status!==statusF) return false;
+    if(sdrF && (c.sdr_owner||'').toLowerCase() !== sdrF) return false;
     if(search && !c.name.toLowerCase().includes(search) &&
        !(c.sdr_owner||'').toLowerCase().includes(search)) return false;
     return true;
@@ -1737,7 +2111,19 @@ function renderSDR() {
 
 // ── MANAGE TAB ───────────────────────────────────────────────────────────────
 function renderManage() {
-  const cps = S.data.campaigns||[];
+  const allCps = S.data.campaigns||[];
+  const sdrSel = q('manageSdrFilter');
+  const sdrF   = (sdrSel?.value||'').toLowerCase();
+
+  // Populate SDR dropdown (keep current selection)
+  if(sdrSel) {
+    const sdrs = [...new Set(allCps.map(c=>c.sdr_owner||'').filter(Boolean))].sort();
+    const cur  = sdrSel.value;
+    sdrSel.innerHTML = '<option value="">All SDRs</option>' +
+      sdrs.map(s=>`<option value="${s.toLowerCase()}"${s.toLowerCase()===cur?'selected':''}>${s}</option>`).join('');
+  }
+
+  const cps = sdrF ? allCps.filter(c=>(c.sdr_owner||'').toLowerCase()===sdrF) : allCps;
   q('manageCampCount').textContent = `${cps.length} campaign${cps.length!==1?'s':''}`;
   q('manageList').innerHTML = cps.length ? cps.map(c=>`
     <div class="manage-item">
@@ -2375,6 +2761,372 @@ function renderSdrDetailTab() {
 function closeSdrDetailModal(e) {
   if(e && e.target !== q('sdrDetailOverlay')) return;
   q('sdrDetailOverlay').classList.remove('open');
+}
+
+// ── SDR REPORTING 2026 (MQL / SQL / S1) ──────────────────────────────────────
+
+const RPT = {
+  mql:  { period:'30d', data:null, filtered:null, sortKey:'date', sortDir:-1, customStart:'', customEnd:'' },
+  sql:  { period:'30d', data:null, filtered:null, sortKey:'date', sortDir:-1, customStart:'', customEnd:'' },
+  s1r:  { period:'30d', data:null, filtered:null, sortKey:'date', sortDir:-1 },
+};
+
+function rptDateLabel(period, section) {
+  const today = new Date();
+  const fmt = d => d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'});
+  if(period==='7d') {
+    const s=new Date(today); s.setDate(s.getDate()-7);
+    return `${fmt(s)} – ${fmt(today)}`;
+  } else if(period==='30d') {
+    const s=new Date(today); s.setDate(s.getDate()-30);
+    return `${fmt(s)} – ${fmt(today)}`;
+  } else if(period==='qtd') {
+    const m=today.getMonth(); const qm=Math.floor(m/3)*3;
+    const s=new Date(today.getFullYear(),qm,1);
+    return `${fmt(s)} – ${fmt(today)}`;
+  } else if(period==='custom' && section) {
+    const cs = RPT[section]?.customStart;
+    const ce = RPT[section]?.customEnd;
+    if(cs && ce) return `${cs} – ${ce}`;
+    return 'Select dates';
+  }
+  return '';
+}
+
+function setRptPeriod(section, period) {
+  RPT[section].period = period;
+  // Update chip active states
+  ['7d','30d','qtd','custom'].forEach(p => {
+    const el = document.getElementById(`${section}-${p}`);
+    if(el) el.classList.toggle('active', p===period);
+  });
+  // Show/hide custom date picker
+  const picker = document.getElementById(`${section}CustomPicker`);
+  if(picker) picker.style.display = period==='custom' ? 'flex' : 'none';
+  // Update date range label
+  const lblEl = document.getElementById(`${section}DateRange`);
+  if(lblEl) lblEl.textContent = rptDateLabel(period, section);
+  // Only fetch if not custom (custom fetches when dates are selected)
+  if(period !== 'custom') fetchRptSection(section);
+}
+
+function applyRptCustomDate(section) {
+  const start = document.getElementById(`${section}CustomStart`)?.value;
+  const end   = document.getElementById(`${section}CustomEnd`)?.value;
+  if(!start || !end) return;
+  if(start > end) {
+    alert('Start date must be before end date.');
+    return;
+  }
+  RPT[section].customStart = start;
+  RPT[section].customEnd   = end;
+  const lblEl = document.getElementById(`${section}DateRange`);
+  if(lblEl) lblEl.textContent = `${start} – ${end}`;
+  fetchRptSection(section);
+}
+
+function renderReportingTab() {
+  // Initialize date labels
+  ['mql','sql','s1r'].forEach(sec => {
+    const el = document.getElementById(`${sec}DateRange`);
+    if(el) el.textContent = rptDateLabel(RPT[sec].period, sec);
+  });
+  if(!RPT.mql.data) fetchRptSection('mql');
+  if(!RPT.sql.data) fetchRptSection('sql');
+  if(!RPT.s1r.data) fetchRptSection('s1r');
+}
+
+function fetchRptSection(section) {
+  const period = RPT[section].period;
+  showRptState(section, 'loading');
+
+  let url = '';
+  if(section==='mql') {
+    if(period==='custom' && RPT.mql.customStart && RPT.mql.customEnd)
+      url = `/api/mql-leads?start=${RPT.mql.customStart}&end=${RPT.mql.customEnd}`;
+    else
+      url = `/api/mql-leads?period=${period}`;
+  } else if(section==='sql') {
+    if(period==='custom' && RPT.sql.customStart && RPT.sql.customEnd)
+      url = `/api/sql-leads?start=${RPT.sql.customStart}&end=${RPT.sql.customEnd}`;
+    else
+      url = `/api/sql-leads?period=${period}`;
+  } else if(section==='s1r') {
+    url = `/api/reporting-s1?period=${period}`;
+  }
+
+  fetch(url)
+    .then(r=>r.json())
+    .then(d=>{
+      if(section==='mql') { RPT.mql.data = d.leads||[]; renderMql(); }
+      else if(section==='sql') { RPT.sql.data = d.leads||[]; renderSql(); }
+      else if(section==='s1r') { RPT.s1r.data = d.opportunities||[]; renderS1r(); }
+      updateFunnel();
+    })
+    .catch(()=>{ showRptState(section,'empty'); });
+}
+
+function showRptState(section, state) {
+  // state: 'loading' | 'table' | 'empty'
+  const prefix = section;
+  const loading = document.getElementById(`${prefix}Loading`);
+  const wrap    = document.getElementById(`${prefix}TableWrap`);
+  const empty   = document.getElementById(`${prefix}Empty`);
+  if(loading) loading.style.display = state==='loading' ? 'block' : 'none';
+  if(wrap)    wrap.style.display    = state==='table'   ? 'block' : 'none';
+  if(empty)   empty.style.display   = state==='empty'   ? 'block' : 'none';
+}
+
+function fmtAmt(v) {
+  if(!v) return '$0';
+  if(v>=1000000) return '$'+(v/1000000).toFixed(1)+'M';
+  if(v>=1000)    return '$'+(v/1000).toFixed(0)+'K';
+  return '$'+Math.round(v).toLocaleString();
+}
+
+// ── MQL ──────────────────────────────────────────────────────────────────────
+function renderMql() {
+  const data = RPT.mql.data || [];
+  document.getElementById('mqlTotal').textContent    = data.length;
+  document.getElementById('mqlSdrs').textContent     = new Set(data.map(r=>r.generated_by).filter(x=>x&&x!=='—')).size;
+  document.getElementById('mqlChannels').textContent = new Set(data.map(r=>r.channel).filter(x=>x&&x!=='—')).size;
+
+  // Populate SDR filter dropdown
+  const sdrSel = document.getElementById('mqlSdrFilter');
+  const prevSdr = sdrSel.value;
+  const sdrs = [...new Set(data.map(r=>r.generated_by).filter(x=>x&&x!=='—'))].sort();
+  sdrSel.innerHTML = '<option value="">All SDRs</option>' + sdrs.map(s=>`<option value="${s}">${s}</option>`).join('');
+  if(sdrs.includes(prevSdr)) sdrSel.value = prevSdr;
+
+  RPT.mql.filtered = [...data];
+  applyRptSearch('mql');
+}
+
+function filterRptTable(section) { applyRptSearch(section); }
+
+function applyRptSearch(section) {
+  const q = (document.getElementById(`${section}Search`)?.value||'').toLowerCase();
+  const data = RPT[section].data || [];
+
+  let filtered;
+  if(section==='mql') {
+    const sdrF = document.getElementById('mqlSdrFilter')?.value || '';
+    filtered = data.filter(r => {
+      const matchQ = !q || `${r.name} ${r.company} ${r.generated_by} ${r.channel} ${r.seller} ${r.type} ${r.source} ${r.follow_up_owner}`.toLowerCase().includes(q);
+      const matchSdr = !sdrF || r.generated_by === sdrF;
+      return matchQ && matchSdr;
+    });
+  } else if(section==='sql') {
+    const sellerF = document.getElementById('sqlSellerFilter')?.value || '';
+    const sourceF = document.getElementById('sqlSourceFilter')?.value || '';
+    filtered = data.filter(r => {
+      const matchQ = !q || `${r.name} ${r.company} ${r.seller} ${r.source} ${r.follow_up_owner}`.toLowerCase().includes(q);
+      const matchSeller = !sellerF || r.seller === sellerF;
+      const matchSource = !sourceF || r.source === sourceF;
+      return matchQ && matchSeller && matchSource;
+    });
+  } else if(section==='s1r') {
+    const sdrF = document.getElementById('s1rSdrFilter')?.value || '';
+    filtered = data.filter(r => {
+      const matchQ = !q || `${r.name} ${r.account} ${r.sdr} ${r.stage} ${r.source}`.toLowerCase().includes(q);
+      const matchSdr = !sdrF || r.sdr === sdrF;
+      return matchQ && matchSdr;
+    });
+  } else {
+    filtered = q ? data.filter(r=>`${r.name} ${r.account} ${r.sdr} ${r.stage} ${r.source}`.toLowerCase().includes(q)) : [...data];
+  }
+
+  // Sort
+  const {sortKey, sortDir} = RPT[section];
+  filtered.sort((a,b)=>{
+    let av = a[sortKey]||'', bv = b[sortKey]||'';
+    if(sortKey==='amount') { av=Number(av); bv=Number(bv); return (av-bv)*sortDir; }
+    return String(av).localeCompare(String(bv))*sortDir;
+  });
+
+  RPT[section].filtered = filtered;
+  if(section==='mql') drawMqlTable(filtered);
+  else if(section==='sql') drawSqlTable(filtered);
+  else drawS1rTable(filtered);
+}
+
+function sortRptTable(section, key) {
+  if(RPT[section].sortKey===key) RPT[section].sortDir *= -1;
+  else { RPT[section].sortKey=key; RPT[section].sortDir=-1; }
+  applyRptSearch(section);
+}
+
+function drawMqlTable(rows) {
+  if(!rows.length) { showRptState('mql','empty'); return; }
+  showRptState('mql','table');
+  document.getElementById('mqlCount').textContent = `Showing ${rows.length} lead${rows.length!==1?'s':''}`;
+
+  const tbody = document.getElementById('mqlBody');
+  tbody.innerHTML = rows.map(r=>`
+    <tr onclick="window.open('${r.sf_url}','_blank')" title="Open in Salesforce" style="${r.sf_url?'cursor:pointer':''}">
+      <td>
+        <span style="display:inline-flex;align-items:center;gap:6px">
+          <span style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#D97706,#F59E0B);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#0a0a0a;flex-shrink:0">${(r.generated_by||'?')[0]}</span>
+          ${r.generated_by}
+        </span>
+      </td>
+      <td style="color:var(--text-muted)">${r.date||'—'}</td>
+      <td><span class="badge" style="background:rgba(59,130,246,0.12);color:#3B82F6">${r.channel}</span></td>
+      <td><span class="badge" style="background:rgba(245,158,11,0.12);color:#F59E0B">${r.type}</span></td>
+      <td style="color:var(--text-muted)">${r.seller}</td>
+      <td><span class="badge" style="background:rgba(52,211,153,0.12);color:#34D399">${r.source}</span></td>
+      <td style="color:var(--text-muted)">${r.follow_up_owner||'—'}</td>
+      <td style="font-weight:600">
+        ${r.sf_url?`<span style="color:var(--gold-light)">${r.name} <span style="font-size:10px;opacity:.6">↗</span></span>`:r.name}
+      </td>
+      <td style="color:var(--text-muted)">${r.company}</td>
+    </tr>`).join('');
+
+  document.getElementById('mqlFoot').innerHTML = `
+    <td colspan="9" style="color:var(--text-muted);font-size:11px;font-weight:600">
+      ${rows.length} MQL lead${rows.length!==1?'s':''} — click any row to open in Salesforce
+    </td>`;
+}
+
+// ── SQL ──────────────────────────────────────────────────────────────────────
+function renderSql() {
+  const data = RPT.sql.data || [];
+  document.getElementById('sqlTotal').textContent   = data.length;
+  document.getElementById('sqlSellers').textContent = new Set(data.map(r=>r.seller).filter(x=>x&&x!=='—')).size;
+  document.getElementById('sqlSources').textContent = new Set(data.map(r=>r.source).filter(x=>x&&x!=='—')).size;
+
+  // Populate Seller filter dropdown
+  const sellerSel = document.getElementById('sqlSellerFilter');
+  const prevSeller = sellerSel.value;
+  const sellers = [...new Set(data.map(r=>r.seller).filter(x=>x&&x!=='—'))].sort();
+  sellerSel.innerHTML = '<option value="">All Sellers</option>' + sellers.map(s=>`<option value="${s}">${s}</option>`).join('');
+  if(sellers.includes(prevSeller)) sellerSel.value = prevSeller;
+
+  // Populate Source filter dropdown
+  const sourceSel = document.getElementById('sqlSourceFilter');
+  const prevSource = sourceSel.value;
+  const sources = [...new Set(data.map(r=>r.source).filter(x=>x&&x!=='—'))].sort();
+  sourceSel.innerHTML = '<option value="">All Sources</option>' + sources.map(s=>`<option value="${s}">${s}</option>`).join('');
+  if(sources.includes(prevSource)) sourceSel.value = prevSource;
+
+  RPT.sql.filtered = [...data];
+  applyRptSearch('sql');
+}
+
+function drawSqlTable(rows) {
+  if(!rows.length) { showRptState('sql','empty'); return; }
+  showRptState('sql','table');
+  document.getElementById('sqlCount').textContent = `Showing ${rows.length} lead${rows.length!==1?'s':''}`;
+
+  const tbody = document.getElementById('sqlBody');
+  tbody.innerHTML = rows.map(r=>`
+    <tr onclick="window.open('${r.sf_url}','_blank')" title="Open in Salesforce" style="${r.sf_url?'cursor:pointer':''}">
+      <td>
+        <span style="display:inline-flex;align-items:center;gap:6px">
+          <span style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#7C3AED,#A78BFA);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0">${(r.seller||'?')[0]}</span>
+          ${r.seller}
+        </span>
+      </td>
+      <td style="color:var(--text-muted)">${r.date||'—'}</td>
+      <td><span class="badge" style="background:rgba(167,139,250,0.12);color:#A78BFA">${r.source}</span></td>
+      <td style="color:var(--text-muted)">${r.follow_up_owner||'—'}</td>
+      <td style="font-weight:600">
+        ${r.sf_url?`<span style="color:var(--gold-light)">${r.name} <span style="font-size:10px;opacity:.6">↗</span></span>`:r.name}
+      </td>
+      <td style="color:var(--text-muted)">${r.company}</td>
+    </tr>`).join('');
+
+  document.getElementById('sqlFoot').innerHTML = `
+    <td colspan="6" style="color:var(--text-muted);font-size:11px;font-weight:600">
+      ${rows.length} SQL lead${rows.length!==1?'s':''} — click any row to open in Salesforce
+    </td>`;
+}
+
+// ── FUNNEL ───────────────────────────────────────────────────────────────────
+function updateFunnel() {
+  const mqlCount = (RPT.mql.data||[]).length;
+  const sqlCount = (RPT.sql.data||[]).length;
+
+  document.getElementById('funnelMqlVal').textContent  = mqlCount;
+  document.getElementById('funnelSqlVal').textContent  = sqlCount;
+  document.getElementById('funnelMqlStat').textContent = mqlCount;
+  document.getElementById('funnelSqlStat').textContent = sqlCount;
+
+  const pct = mqlCount > 0 ? Math.round((sqlCount/mqlCount)*100) : 0;
+  document.getElementById('funnelConvRate').textContent = pct + '%';
+
+  const mqlBar = document.getElementById('funnelMqlBar');
+  const sqlBar = document.getElementById('funnelSqlBar');
+  if(mqlBar) { mqlBar.style.width='100%'; mqlBar.textContent='100%'; }
+  if(sqlBar) {
+    const w = mqlCount>0 ? Math.max(2, Math.round((sqlCount/mqlCount)*100)) : 0;
+    sqlBar.style.width = w+'%';
+    sqlBar.textContent = pct+'%';
+  }
+}
+
+// ── S1 REPORTING ─────────────────────────────────────────────────────────────
+function renderS1r() {
+  const data = RPT.s1r.data || [];
+  const totalAmt = data.reduce((s,r)=>s+(r.amount||0),0);
+  document.getElementById('s1rTotal').textContent  = data.length;
+  document.getElementById('s1rAmount').textContent = fmtAmt(totalAmt);
+  document.getElementById('s1rSdrs').textContent   = new Set(data.map(r=>r.sdr).filter(x=>x&&x!=='—')).size;
+  document.getElementById('s1rStages').textContent = new Set(data.map(r=>r.stage).filter(x=>x&&x!=='—')).size;
+
+  // Populate SDR Owner filter dropdown
+  const sdrSel = document.getElementById('s1rSdrFilter');
+  if(sdrSel) {
+    const prevSdr = sdrSel.value;
+    const sdrs = [...new Set(data.map(r=>r.sdr).filter(x=>x&&x!=='—'))].sort();
+    sdrSel.innerHTML = '<option value="">All SDR Owners</option>' + sdrs.map(s=>`<option value="${s}">${s}</option>`).join('');
+    if(sdrs.includes(prevSdr)) sdrSel.value = prevSdr;
+  }
+
+  RPT.s1r.filtered = [...data];
+  applyRptSearch('s1r');
+}
+
+function drawS1rTable(rows) {
+  if(!rows.length) { showRptState('s1r','empty'); return; }
+  showRptState('s1r','table');
+  document.getElementById('s1rCount').textContent = `Showing ${rows.length} opportunit${rows.length!==1?'ies':'y'}`;
+
+  const stageColor = s => {
+    const sl = (s||'').toLowerCase();
+    if(sl.includes('closed won'))   return {bg:'rgba(34,197,94,0.12)',  c:'#22C55E'};
+    if(sl.includes('closed'))       return {bg:'rgba(239,68,68,0.12)',   c:'#EF4444'};
+    if(sl.includes('proposal'))     return {bg:'rgba(59,130,246,0.12)', c:'#3B82F6'};
+    if(sl.includes('qualify'))      return {bg:'rgba(245,158,11,0.12)', c:'#F59E0B'};
+    return {bg:'rgba(107,114,128,0.12)', c:'#9CA3AF'};
+  };
+
+  const tbody = document.getElementById('s1rBody');
+  tbody.innerHTML = rows.map(r=>{
+    const sc = stageColor(r.stage);
+    return `
+    <tr onclick="window.open('${r.sf_url}','_blank')" title="Open in Salesforce" style="${r.sf_url?'cursor:pointer':''}">
+      <td>
+        <span style="display:inline-flex;align-items:center;gap:6px">
+          <span style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#A88A24,#D4AF37);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#0a0a0a;flex-shrink:0">${(r.sdr||'?')[0]}</span>
+          ${r.sdr}
+        </span>
+      </td>
+      <td><span class="badge" style="background:rgba(59,130,246,0.12);color:#3B82F6">${r.source}</span></td>
+      <td><span class="badge" style="background:${sc.bg};color:${sc.c}">${r.stage}</span></td>
+      <td style="font-weight:600">
+        ${r.sf_url?`<span style="color:var(--gold-light)">${r.name} <span style="font-size:10px;opacity:.6">↗</span></span>`:r.name}
+      </td>
+      <td style="color:var(--text-muted)">${r.account}</td>
+      <td class="td-num" style="color:var(--green);font-weight:700">${r.amount?fmtAmt(r.amount):'—'}</td>
+      <td style="color:var(--text-muted)">${r.date||'—'}</td>
+    </tr>`}).join('');
+
+  const totalAmt = rows.reduce((s,r)=>s+(r.amount||0),0);
+  document.getElementById('s1rFoot').innerHTML = `
+    <td colspan="5" style="color:var(--text-muted);font-size:11px;font-weight:600">${rows.length} opportunit${rows.length!==1?'ies':'y'}</td>
+    <td class="td-num" style="color:var(--green)">${fmtAmt(totalAmt)}</td>
+    <td></td>`;
 }
 
 // ── INIT ─────────────────────────────────────────────────────────────────────

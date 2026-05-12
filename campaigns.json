@@ -4,18 +4,18 @@
     "name": "Athena Core Personas_Akil",
     "sdr_owner": "Akil Krishna",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "Athena Core",
     "start_date": "2026-03-24",
-    "end_date": "2026-04-09",
+    "end_date": "2026-04-10",
     "manual_s1": null
   },
   {
     "id": "2",
     "name": "Athena Core Personas_Ananya",
-    "sdr_owner": "Ananya",
+    "sdr_owner": "Ananya Rao",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "Athena Core",
     "start_date": "2026-03-24",
     "end_date": "2026-04-07"
@@ -23,9 +23,9 @@
   {
     "id": "3",
     "name": "Athena Core Personas_Rithik",
-    "sdr_owner": "Rithick",
+    "sdr_owner": "Rithick S",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "Athena Core",
     "start_date": "2026-03-24",
     "end_date": "2026-04-07"
@@ -33,9 +33,9 @@
   {
     "id": "4",
     "name": "Athena Core Personas_Shahana",
-    "sdr_owner": "Shahana",
+    "sdr_owner": "Shahana Abbasi",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "Athena Core",
     "start_date": "2026-03-24",
     "end_date": "2026-04-07"
@@ -45,7 +45,7 @@
     "name": "New Data 23 March_Hreeman",
     "sdr_owner": "Hreeman Saha",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "General Outbound",
     "start_date": "2026-03-23",
     "end_date": "2026-04-06"
@@ -55,7 +55,7 @@
     "name": "New Data 23 March_Anushka",
     "sdr_owner": "Anushka HB",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "General Outbound",
     "start_date": "2026-03-23",
     "end_date": "2026-04-06"
@@ -65,7 +65,7 @@
     "name": "New Data 23 March_Issac",
     "sdr_owner": "Isaac Bartels",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "General Outbound",
     "start_date": "2026-03-23",
     "end_date": "2026-04-06"
@@ -73,9 +73,9 @@
   {
     "id": "8",
     "name": "New Data 23 March_Felix",
-    "sdr_owner": "Felix",
+    "sdr_owner": "Felix Sam",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "General Outbound",
     "start_date": "2026-03-23",
     "end_date": "2026-04-06"
@@ -83,9 +83,9 @@
   {
     "id": "9",
     "name": "New Data 23 March_Anurup",
-    "sdr_owner": "Anurup",
+    "sdr_owner": "Anurup Bhattacharjee",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "General Outbound",
     "start_date": "2026-03-23",
     "end_date": "2026-04-06"
@@ -95,7 +95,7 @@
     "name": "New Data 23 March_Samridhi",
     "sdr_owner": "Samridhi Dutta",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "General Outbound",
     "start_date": "2026-03-23",
     "end_date": "2026-04-06"
@@ -103,9 +103,9 @@
   {
     "id": "11",
     "name": "New Data 23 March_Sukhneet",
-    "sdr_owner": "Sukhneet",
+    "sdr_owner": "Sukhneet Sukhneet",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "General Outbound",
     "start_date": "2026-03-23",
     "end_date": "2026-04-06"
@@ -115,7 +115,7 @@
     "name": "New Data 23 March_Michelle",
     "sdr_owner": "Michelle B",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "General Outbound",
     "start_date": "2026-03-23",
     "end_date": "2026-04-06"
@@ -123,9 +123,9 @@
   {
     "id": "13",
     "name": "New Data 23 March_Deborah",
-    "sdr_owner": "Deborah",
+    "sdr_owner": "Deborah Deborah",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "General Outbound",
     "start_date": "2026-03-23",
     "end_date": "2026-04-06"
@@ -135,7 +135,7 @@
     "name": "Comp Engagement_Akil",
     "sdr_owner": "Akil Krishna",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "Competitor Engagement",
     "start_date": "2026-03-26",
     "end_date": "2026-04-09"
@@ -143,9 +143,9 @@
   {
     "id": "15",
     "name": "Comp Engagement_Ananya",
-    "sdr_owner": "Ananya",
+    "sdr_owner": "Ananya Rao",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "Competitor Engagement",
     "start_date": "2026-03-26",
     "end_date": "2026-04-09"
@@ -153,9 +153,9 @@
   {
     "id": "16",
     "name": "Comp Engagement_Rithik",
-    "sdr_owner": "Rithick",
+    "sdr_owner": "Rithick S",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "Competitor Engagement",
     "start_date": "2026-03-26",
     "end_date": "2026-04-09"
@@ -163,9 +163,9 @@
   {
     "id": "17",
     "name": "Comp Engagement_Shahana",
-    "sdr_owner": "Shahana",
+    "sdr_owner": "Shahana Abbasi",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "Competitor Engagement",
     "start_date": "2026-03-26",
     "end_date": "2026-04-09"
@@ -175,70 +175,972 @@
     "name": "Infusion Center Data_Hursh_23 March",
     "sdr_owner": "Hursh",
     "email_owner": "Vinayak",
-    "status": "Active",
+    "status": "Completed",
     "segment": "Infusion Center Data",
     "start_date": "2026-03-23",
-    "end_date": ""
+    "end_date": "2026-04-06"
   },
   {
     "id": "1775041403179",
     "name": "Skilled Nursing Facility_Ananya_31 March",
-    "sdr_owner": "Ananya",
+    "sdr_owner": "Ananya Rao",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "SNF",
     "start_date": "2026-03-31",
-    "end_date": ""
+    "end_date": "2026-04-14"
   },
   {
     "id": "1775041634829",
     "name": "Rehabilitation_Rithick_31 March",
-    "sdr_owner": "Rithick",
+    "sdr_owner": "Rithick S",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "Rehab",
     "start_date": "2026-03-31",
-    "end_date": ""
+    "end_date": "2026-04-14"
   },
   {
     "id": "1775112658917",
     "name": "2026 LUGPA Conf_Akil",
     "sdr_owner": "Akil Krishna",
     "email_owner": "Vinayak",
-    "status": "Active",
+    "status": "Completed",
     "segment": "LUGPA Conference",
     "start_date": "2026-04-02",
-    "end_date": "",
+    "end_date": "2026-04-16",
     "manual_s1": null
   },
   {
     "id": "1775112741411",
     "name": "2026 LUGPA Conf_Shahana",
-    "sdr_owner": "Shahana",
+    "sdr_owner": "Shahana Abbasi",
     "email_owner": "Vinayak",
-    "status": "Active",
+    "status": "Completed",
     "segment": "LUGPA Conference",
     "start_date": "2026-04-02",
-    "end_date": ""
+    "end_date": "2026-04-16"
   },
   {
     "id": "1775114932259",
     "name": "Athena Data for Ananya",
-    "sdr_owner": "Ananya",
+    "sdr_owner": "Ananya Rao",
     "email_owner": "",
-    "status": "Active",
+    "status": "Completed",
     "segment": "",
     "start_date": "2026-02-17",
-    "end_date": ""
+    "end_date": "2026-03-03"
   },
   {
     "id": "1775115862879",
     "name": "2026 HFMA Leader Conf_Ananya_1st April",
-    "sdr_owner": "Ananya",
+    "sdr_owner": "Ananya Rao",
     "email_owner": "Vinayak",
-    "status": "Active",
+    "status": "Completed",
     "segment": "Conference",
     "start_date": "2026-04-01",
-    "end_date": ""
+    "end_date": "2026-04-15"
+  },
+  {
+    "id": "1775544915592",
+    "name": "High Buying Intent_Sukhneet_6April",
+    "sdr_owner": "Sukhneet Sukhneet",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-06",
+    "end_date": "2026-04-20"
+  },
+  {
+    "id": "1775558241214",
+    "name": "P1 Data_7April_Ananya",
+    "sdr_owner": "Ananya Rao",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-07",
+    "end_date": "2026-04-21"
+  },
+  {
+    "id": "1775558321082",
+    "name": "P1 Data_7April_Akil",
+    "sdr_owner": "Akil Krishna",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-07",
+    "end_date": "2026-05-01",
+    "manual_s1": null
+  },
+  {
+    "id": "1775558499601",
+    "name": "P1 Data_7April_Anurup",
+    "sdr_owner": "Anurup Bhattacharjee",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-07",
+    "end_date": "2026-04-21"
+  },
+  {
+    "id": "1775558689393",
+    "name": "P1 Data_7April_Isaac",
+    "sdr_owner": "Isaac Bartels",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-07",
+    "end_date": "2026-04-21"
+  },
+  {
+    "id": "1775558802555",
+    "name": "P1 Data_7April_Michelle",
+    "sdr_owner": "Michelle B",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-07",
+    "end_date": "2026-04-21"
+  },
+  {
+    "id": "1775558855043",
+    "name": "P1 Data_7April_Anushka",
+    "sdr_owner": "Anushka HB",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-07",
+    "end_date": "2026-04-21"
+  },
+  {
+    "id": "1775558950107",
+    "name": "P1 Data_7April_Rithik",
+    "sdr_owner": "Rithick S",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-07",
+    "end_date": "2026-04-21"
+  },
+  {
+    "id": "1775559067789",
+    "name": "P1 Data_7April_Samridhi",
+    "sdr_owner": "Samridhi Dutta",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-07",
+    "end_date": "2026-04-21"
+  },
+  {
+    "id": "1775559225506",
+    "name": "P1 Data_7April_Shahana",
+    "sdr_owner": "Shahana Abbasi",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-07",
+    "end_date": "2026-04-29",
+    "manual_s1": null
+  },
+  {
+    "id": "1775559287710",
+    "name": "P1 Data_7April_Felix",
+    "sdr_owner": "Felix Sam",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-07",
+    "end_date": "2026-04-21"
+  },
+  {
+    "id": "1775740508396",
+    "name": "High Buying Intent_9 April_Akil",
+    "sdr_owner": "Akil Krishna",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-09",
+    "end_date": "2026-04-23",
+    "manual_s1": null
+  },
+  {
+    "id": "1775740538712",
+    "name": "High Buying Intent_9 April_Sukhneet",
+    "sdr_owner": "Sukhneet Sukhneet",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-09",
+    "end_date": "2026-04-23",
+    "manual_s1": null
+  },
+  {
+    "id": "1775740622706",
+    "name": "High Buying Intent_9 April_Ananya",
+    "sdr_owner": "Ananya Rao",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-09",
+    "end_date": "2026-04-23",
+    "manual_s1": null
+  },
+  {
+    "id": "1775740694715",
+    "name": "Hiring Data_9 April_Akhilesh",
+    "sdr_owner": "Akhilesh Stan",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-09",
+    "end_date": "2026-04-23"
+  },
+  {
+    "id": "1775740777889",
+    "name": "Pain Point_9 April_Anurup",
+    "sdr_owner": "Anurup Bhattacharjee",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-09",
+    "end_date": "2026-04-23"
+  },
+  {
+    "id": "1775799058703",
+    "name": "Navina_Anurup13 April",
+    "sdr_owner": "Anurup Bhattacharjee",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775799141659",
+    "name": "NexHealth_Anurup13 April",
+    "sdr_owner": "Anurup Bhattacharjee",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775799217149",
+    "name": "Fathom_Anurup13 April",
+    "sdr_owner": "Anurup Bhattacharjee",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775799317141",
+    "name": "Akasa_Shahana13 April",
+    "sdr_owner": "Shahana Abbasi",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775799403500",
+    "name": "Notable Health_Saka13 April",
+    "sdr_owner": "Saka Thapa",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775799494655",
+    "name": "Clarium Health_Shahana13 April",
+    "sdr_owner": "Shahana Abbasi",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775799577398",
+    "name": "Xsolis_Saka13 April",
+    "sdr_owner": "Saka Thapa",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775799664309",
+    "name": "Hyro_Anurup13 April",
+    "sdr_owner": "Anurup Bhattacharjee",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775799757605",
+    "name": "GeBBS_Anurup13 April",
+    "sdr_owner": "Anurup Bhattacharjee",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775799843819",
+    "name": "Humata Health_Anurup13 April",
+    "sdr_owner": "Anurup Bhattacharjee",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775799938863",
+    "name": "Tennr_Saka13 April",
+    "sdr_owner": "Saka Thapa",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775800034110",
+    "name": "Thoughtful AI_Saka13 April",
+    "sdr_owner": "Saka Thapa",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775800143930",
+    "name": "Brellium_Shahana13 April",
+    "sdr_owner": "Shahana Abbasi",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775800254141",
+    "name": "Arbital Health_Shahana13 April",
+    "sdr_owner": "Shahana Abbasi",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775800463897",
+    "name": "Nym_Saka13 April",
+    "sdr_owner": "Saka Thapa",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775800488597",
+    "name": "Candid Health_Shahana13 April",
+    "sdr_owner": "Shahana Abbasi",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775800642180",
+    "name": "CodaMetrix_Shahana13 April",
+    "sdr_owner": "Shahana Abbasi",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775800877887",
+    "name": "Collectly_Anurup13 April",
+    "sdr_owner": "Anurup Bhattacharjee",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775800977688",
+    "name": "Fabric_Anurup13 April",
+    "sdr_owner": "Anurup Bhattacharjee",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1775801120953",
+    "name": "Fourier Health_Anurup13 April",
+    "sdr_owner": "Anurup Bhattacharjee",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Competitor Data",
+    "start_date": "2026-04-13",
+    "end_date": "2026-04-27"
+  },
+  {
+    "id": "1776238039043",
+    "name": "2026 ACDIS Conference_Shahana",
+    "sdr_owner": "Shahana Abbasi",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Conference",
+    "start_date": "2026-04-15",
+    "end_date": "2026-04-29"
+  },
+  {
+    "id": "1776262421586",
+    "name": "High Intent_Akhilesh_15 April",
+    "sdr_owner": "Akhilesh Stan",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "High Intent",
+    "start_date": "2026-04-15",
+    "end_date": "2026-04-29"
+  },
+  {
+    "id": "1776263379367",
+    "name": "High Intent_Saka_15 April",
+    "sdr_owner": "Saka Thapa",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "High Intent",
+    "start_date": "2026-04-15",
+    "end_date": "2026-04-29"
+  },
+  {
+    "id": "1776696117634",
+    "name": "TruBridge Leads_Akil_20 April",
+    "sdr_owner": "Akil Krishna",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "TruBridge Leads",
+    "start_date": "2026-04-20",
+    "end_date": "2026-05-04"
+  },
+  {
+    "id": "1776856208398",
+    "name": "CAH_22 April_Ananya",
+    "sdr_owner": "Ananya Rao",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "Critical Access Hospitals",
+    "start_date": "2026-04-22",
+    "end_date": "2026-05-11",
+    "manual_s1": null
+  },
+  {
+    "id": "1776856461655",
+    "name": "CAH_22 April_Akil",
+    "sdr_owner": "Akil Krishna",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "Critical Access Hospitals",
+    "start_date": "2026-04-22",
+    "end_date": "2026-05-11",
+    "manual_s1": null
+  },
+  {
+    "id": "1776856597619",
+    "name": "CAH_22 April_Sukhneet",
+    "sdr_owner": "Sukhneet Sukhneet",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "Critical Access Hospitals",
+    "start_date": "2026-04-22",
+    "end_date": "2026-05-11",
+    "manual_s1": null
+  },
+  {
+    "id": "1776856731386",
+    "name": "CAH_22 April_Samridhi",
+    "sdr_owner": "Samridhi Dutta",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "Critical Access Hospitals",
+    "start_date": "2026-04-22",
+    "end_date": "2026-05-11",
+    "manual_s1": null
+  },
+  {
+    "id": "1776856858384",
+    "name": "CAH_22 April_Saka",
+    "sdr_owner": "Saka Thapa",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "Critical Access Hospitals",
+    "start_date": "2026-04-22",
+    "end_date": "2026-05-11",
+    "manual_s1": null
+  },
+  {
+    "id": "1776857442490",
+    "name": "CAH_22 April_Anurup",
+    "sdr_owner": "Anurup Bhattacharjee",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "Critical Access Hospitals",
+    "start_date": "2026-04-22",
+    "end_date": "2026-05-11",
+    "manual_s1": null
+  },
+  {
+    "id": "1776857595191",
+    "name": "CAH_22 April_Issac",
+    "sdr_owner": "Isaac Bartels",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "Critical Access Hospitals",
+    "start_date": "2026-04-22",
+    "end_date": "2026-05-11",
+    "manual_s1": null
+  },
+  {
+    "id": "1776857734097",
+    "name": "CAH_22 April_Felix",
+    "sdr_owner": "Felix Sam",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "Critical Access Hospitals",
+    "start_date": "2026-04-22",
+    "end_date": "2026-05-11",
+    "manual_s1": null
+  },
+  {
+    "id": "1776858170329",
+    "name": "CAH_22 April_Akhilesh",
+    "sdr_owner": "Akhilesh Stan",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "Critical Access Hospitals",
+    "start_date": "2026-04-22",
+    "end_date": "2026-05-11",
+    "manual_s1": null
+  },
+  {
+    "id": "1776858536347",
+    "name": "CAH_22 April_Michelle",
+    "sdr_owner": "Michelle B",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "Critical Access Hospitals",
+    "start_date": "2026-04-22",
+    "end_date": "2026-05-11",
+    "manual_s1": null
+  },
+  {
+    "id": "1776864149984",
+    "name": "New Data_22 April_Sukhneet",
+    "sdr_owner": "Sukhneet Sukhneet",
+    "email_owner": "",
+    "status": "Completed",
+    "segment": "",
+    "start_date": "2026-04-22",
+    "end_date": "2026-05-06"
+  },
+  {
+    "id": "1776932408115",
+    "name": "High Intent_23 April_Saka",
+    "sdr_owner": "Saka Thapa",
+    "email_owner": "Prahalad",
+    "status": "Completed",
+    "segment": "High Intent",
+    "start_date": "2026-04-23",
+    "end_date": "2026-05-07"
+  },
+  {
+    "id": "1776932616071",
+    "name": "Hiring Signal_23 April_Ananya",
+    "sdr_owner": "Ananya Rao",
+    "email_owner": "Prahalad",
+    "status": "Completed",
+    "segment": "Hiring Signal",
+    "start_date": "2026-04-23",
+    "end_date": "2026-05-07"
+  },
+  {
+    "id": "1777032619740",
+    "name": "Factors Engagement_24 April_Ananya",
+    "sdr_owner": "Ananya Rao",
+    "email_owner": "Vinayak",
+    "status": "Completed",
+    "segment": "Factors Engagement",
+    "start_date": "2026-04-24",
+    "end_date": "2026-05-08"
+  },
+  {
+    "id": "1777300035446",
+    "name": "Director Level Data_27 April_Akhilesh",
+    "sdr_owner": "Akhilesh Stan",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-04-27",
+    "end_date": "2026-05-11"
+  },
+  {
+    "id": "1777439300592",
+    "name": "P1 Personas_Saka_29 April",
+    "sdr_owner": "Saka Thapa",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-04-29",
+    "end_date": "2026-05-13"
+  },
+  {
+    "id": "1777452966968",
+    "name": "High Intent Signal_Akil_29 April",
+    "sdr_owner": "Akil Krishna",
+    "email_owner": "Prahalad",
+    "status": "Active",
+    "segment": "High Intent",
+    "start_date": "2026-04-29",
+    "end_date": "2026-05-13"
+  },
+  {
+    "id": "1777453163597",
+    "name": "High Intent Signal_Saka_29 April",
+    "sdr_owner": "Saka Thapa",
+    "email_owner": "Prahalad",
+    "status": "Active",
+    "segment": "High Intent",
+    "start_date": "2026-04-29",
+    "end_date": "2026-05-13"
+  },
+  {
+    "id": "1777468210816",
+    "name": "New Data_29 April_Michelle",
+    "sdr_owner": "Michelle B",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-04-29",
+    "end_date": "2026-05-13"
+  },
+  {
+    "id": "1777468558018",
+    "name": "New Data_29 April_Felix",
+    "sdr_owner": "Felix Sam",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-04-29",
+    "end_date": "2026-05-13"
+  },
+  {
+    "id": "1777476333283",
+    "name": "New Data_29 April_Isaac",
+    "sdr_owner": "Isaac Bartels",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-04-29",
+    "end_date": "2026-05-13"
+  },
+  {
+    "id": "1777547576440",
+    "name": "New Data_30 April_Rithick",
+    "sdr_owner": "Rithick S",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-04-30",
+    "end_date": "2026-05-14"
+  },
+  {
+    "id": "1777558004750",
+    "name": "Hiring Data_29 April_Sukhneet",
+    "sdr_owner": "Sukhneet Sukhneet",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-04-30",
+    "end_date": "2026-05-14"
+  },
+  {
+    "id": "1777873598901",
+    "name": "Factors Engagement_4 May_Akil",
+    "sdr_owner": "Akil Krishna",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "Factors Engagement",
+    "start_date": "2026-05-04",
+    "end_date": "2026-05-18"
+  },
+  {
+    "id": "1777958977997",
+    "name": "HFMA Annual_Ananya",
+    "sdr_owner": "Ananya Rao",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-04",
+    "end_date": "2026-05-18"
+  },
+  {
+    "id": "1777959151358",
+    "name": "HFMA Annual_Akhilesh",
+    "sdr_owner": "Akhilesh Stan",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-04",
+    "end_date": "2026-05-18"
+  },
+  {
+    "id": "1777959312448",
+    "name": "HFMA Annual_Akil",
+    "sdr_owner": "Akil Krishna",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-04",
+    "end_date": "2026-05-18"
+  },
+  {
+    "id": "1777959473129",
+    "name": "HFMA Annual_Sukhneet",
+    "sdr_owner": "Sukhneet Sukhneet",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-04",
+    "end_date": "2026-05-18"
+  },
+  {
+    "id": "1777985853331",
+    "name": "2026 ACDIS_Post Conference_Akil",
+    "sdr_owner": "Akil Krishna",
+    "email_owner": "Vinayak",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-05",
+    "end_date": "2026-05-19"
+  },
+  {
+    "id": "1777987343968",
+    "name": "New Data_Anushka_5 May",
+    "sdr_owner": "Anushka HB",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-05",
+    "end_date": "2026-05-19"
+  },
+  {
+    "id": "1777993043515",
+    "name": "New Data_Samridhi_5 May",
+    "sdr_owner": "Samridhi Dutta",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-05",
+    "end_date": "2026-05-19"
+  },
+  {
+    "id": "1778047836328",
+    "name": "New Data_Saka_6May",
+    "sdr_owner": "Saka Thapa",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-06",
+    "end_date": "2026-05-20"
+  },
+  {
+    "id": "1778058724704",
+    "name": "Hiring Signal_6May_Akhilesh",
+    "sdr_owner": "Akhilesh Stan",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-06",
+    "end_date": "2026-05-20"
+  },
+  {
+    "id": "1778058917171",
+    "name": "High Buying Intent_6May_Ananya",
+    "sdr_owner": "Ananya Rao",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-06",
+    "end_date": "2026-05-20"
+  },
+  {
+    "id": "1778059121174",
+    "name": "High Buying Intent_6May_Akhilesh",
+    "sdr_owner": "Akhilesh Stan",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-06",
+    "end_date": "2026-05-20"
+  },
+  {
+    "id": "1778160942833",
+    "name": "New Data_7May_Sukhneet",
+    "sdr_owner": "Sukhneet Sukhneet",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-07",
+    "end_date": "2026-05-21"
+  },
+  {
+    "id": "1778505306091",
+    "name": "Saka_POD_11may",
+    "sdr_owner": "Saka Thapa",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-11",
+    "end_date": "2026-06-15",
+    "manual_s1": null
+  },
+  {
+    "id": "1778508875298",
+    "name": "Samridhi_POD_11May",
+    "sdr_owner": "Samridhi Dutta",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-11",
+    "end_date": "2026-06-15",
+    "manual_s1": null
+  },
+  {
+    "id": "1778509706989",
+    "name": "Felix_POD_11May",
+    "sdr_owner": "Felix Sam",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-11",
+    "end_date": "2026-06-15",
+    "manual_s1": null
+  },
+  {
+    "id": "1778509891357",
+    "name": "Sukhneet_POD_11May",
+    "sdr_owner": "Sukhneet Sukhneet",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-11",
+    "end_date": "2026-06-15",
+    "manual_s1": null
+  },
+  {
+    "id": "1778510105352",
+    "name": "Akhilesh_POD_11May",
+    "sdr_owner": "Akhilesh Stan",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-11",
+    "end_date": "2026-06-15",
+    "manual_s1": null
+  },
+  {
+    "id": "1778510808299",
+    "name": "Rithick_POD_11May",
+    "sdr_owner": "Rithick S",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-11",
+    "end_date": "2026-06-15",
+    "manual_s1": null
+  },
+  {
+    "id": "1778511021705",
+    "name": "Anushka_POD_11May",
+    "sdr_owner": "Anushka HB",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-11",
+    "end_date": "2026-06-15",
+    "manual_s1": null
+  },
+  {
+    "id": "1778511219042",
+    "name": "Ananya_POD_11May",
+    "sdr_owner": "Ananya Rao",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-11",
+    "end_date": "2026-06-15"
+  },
+  {
+    "id": "1778511459958",
+    "name": "Ananya_POD_11May_Csuite",
+    "sdr_owner": "Ananya Rao",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-11",
+    "end_date": "2026-06-15"
+  },
+  {
+    "id": "1778512779475",
+    "name": "Jess_Ncaccounts_11May",
+    "sdr_owner": "Shahana Abbasi",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-11",
+    "end_date": "2026-06-01"
+  },
+  {
+    "id": "1778516677639",
+    "name": "Jess_Single_site_CH_11may",
+    "sdr_owner": "Shahana Abbasi",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-11",
+    "end_date": "2026-06-15"
+  },
+  {
+    "id": "1778516894814",
+    "name": "Jess_Small_RH_11May",
+    "sdr_owner": "Shahana Abbasi",
+    "email_owner": "",
+    "status": "Active",
+    "segment": "",
+    "start_date": "2026-05-11",
+    "end_date": "2026-06-15"
   }
 ]
