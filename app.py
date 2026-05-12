@@ -1090,7 +1090,7 @@ def api_reporting_s1():
 
 # ── Slack Weekly Report ───────────────────────────────────────────────────────
 
-SLACK_WEBHOOK     = 'SLACK_WEBHOOK_REMOVED'
+SLACK_WEBHOOK     = os.environ.get('SLACK_WEBHOOK', '')
 _last_slack_sent  = None   # tracks the Monday date we last sent so we never double-send
 
 
