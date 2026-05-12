@@ -3085,13 +3085,16 @@ function updateFunnel() {
 }
 
 // ── S1 REPORTING ─────────────────────────────────────────────────────────────
+function updateS1rKpis(rows) {
+  const totalAmt = rows.reduce((s,r)=>s+(r.amount||0),0);
+  document.getElementById('s1rTotal').textContent  = rows.length;
+  document.getElementById('s1rAmount').textContent = fmtAmt(totalAmt);
+  document.getElementById('s1rSdrs').textContent   = new Set(rows.map(r=>r.sdr).filter(x=>x&&x!=='—')).size;
+  document.getElementById('s1rStages').textContent = new Set(rows.map(r=>r.stage).filter(x=>x&&x!=='—')).size;
+}
+
 function renderS1r() {
   const data = RPT.s1r.data || [];
-  const totalAmt = data.reduce((s,r)=>s+(r.amount||0),0);
-  document.getElementById('s1rTotal').textContent  = data.length;
-  document.getElementById('s1rAmount').textContent = fmtAmt(totalAmt);
-  document.getElementById('s1rSdrs').textContent   = new Set(data.map(r=>r.sdr).filter(x=>x&&x!=='—')).size;
-  document.getElementById('s1rStages').textContent = new Set(data.map(r=>r.stage).filter(x=>x&&x!=='—')).size;
 
   // Populate SDR Owner filter dropdown
   const sdrSel = document.getElementById('s1rSdrFilter');
@@ -3107,9 +3110,11 @@ function renderS1r() {
 }
 
 function drawS1rTable(rows) {
+  updateS1rKpis(rows);
   if(!rows.length) { showRptState('s1r','empty'); return; }
   showRptState('s1r','table');
   document.getElementById('s1rCount').textContent = `Showing ${rows.length} opportunit${rows.length!==1?'ies':'y'}`;
+  updateS1rKpis(rows);
 
   const stageColor = s => {
     const sl = (s||'').toLowerCase();
