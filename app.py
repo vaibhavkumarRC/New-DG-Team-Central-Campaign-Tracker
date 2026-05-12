@@ -490,9 +490,16 @@ def sync():
         print(f'[cache] save error: {e}')
 
 def bg_loop():
+    """Auto-sync once daily at 05:00 IST (23:30 UTC)."""
     while True:
+        now_utc = datetime.utcnow()
+        # 05:00 IST = 23:30 UTC previous day
+        target = now_utc.replace(hour=23, minute=30, second=0, microsecond=0)
+        if now_utc >= target:
+            target = target.replace(day=target.day + 1)
+        seconds_until = (target - now_utc).total_seconds()
+        time.sleep(seconds_until)
         sync()
-        time.sleep(1800)   # 30-minute refresh
 
 # ── Campaign config CRUD ──────────────────────────────────────────────────────
 
@@ -1417,7 +1424,7 @@ if __name__ == '__main__':
     print('\n' + '='*55)
     print('  🚀  Campaign Command Center')
     print('  →   http://localhost:5001')
-    print('  ↺   Auto-syncs every 30 minutes from Salesforce')
+    print('  ↺   Auto-syncs daily at 05:00 IST from Salesforce')
     print('='*55 + '\n')
     port = int(os.environ.get('PORT', 5001))
     app.run(debug=False, host='0.0.0.0', port=port, use_reloader=False)
