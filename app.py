@@ -308,11 +308,17 @@ def campaign_metrics(c, start_override=None, end_override=None):
                 status_sdr_bk[sdr_name] = {'meeting_done': 0, 'meeting_noshow': 0, 'sql_gen': 0}
             status_sdr_bk[sdr_name]['sql_gen'] += count
 
+    total_leads = cnt(results.get('leads'))
+    # If no leads found, calls/emails subquery would match ALL tasks (Salesforce IN-empty bug)
+    # so zero them out to avoid inflated global counts
+    total_calls  = cnt(results.get('calls'))  if total_leads > 0 else 0
+    total_emails = cnt(results.get('emails')) if total_leads > 0 else 0
+
     return {
         **c,
-        'total_leads':        cnt(results.get('leads')),
-        'total_calls':        cnt(results.get('calls')),
-        'total_emails':       cnt(results.get('emails')),
+        'total_leads':        total_leads,
+        'total_calls':        total_calls,
+        'total_emails':       total_emails,
         'meetings':           cnt(results.get('meetings')),
         's1_created':         int(manual_s1) if has_manual_s1 else cnt(results.get('s1')),
         's1_is_manual':       has_manual_s1,
