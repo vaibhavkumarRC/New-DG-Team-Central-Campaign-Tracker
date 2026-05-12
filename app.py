@@ -4,6 +4,7 @@ from datetime import datetime, date, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import wraps
 import urllib.request as _urllib_req
+import urllib.parse
 
 app = Flask(__name__)
 
@@ -44,24 +45,61 @@ period_cache = {}        # key: period → {'data': {...}, 'fetched_at': datetim
 
 # ── Salesforce helpers ────────────────────────────────────────────────────────
 
-def soql(query, retries=2, timeout=120):
-    """Run a SOQL query via sf CLI and return the result dict, or None on error."""
-    env = os.environ.copy()
-    env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env.get('PATH', '')
+# ── Salesforce REST API token cache ──────────────────────────────────────────
+_sf_token_cache = {'token': None, 'instance_url': None, 'fetched_at': None}
+_sf_token_lock  = threading.Lock()
+
+def _refresh_sf_token():
+    """Call sf org display once to get access token + instance URL."""
+    try:
+        env = os.environ.copy()
+        env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env.get('PATH', '')
+        r = subprocess.run(
+            ['sf', 'org', 'display', '--target-org', SF_ORG, '--json'],
+            capture_output=True, text=True, timeout=30, env=env
+        )
+        d = json.loads(r.stdout)
+        if d.get('status') == 0:
+            res = d.get('result', {})
+            return res.get('accessToken'), res.get('instanceUrl', SF_BASE_URL)
+        print(f'[SF-auth] error: {d.get("message")}')
+    except Exception as e:
+        print(f'[SF-auth] exception: {e}')
+    return None, SF_BASE_URL
+
+def _get_sf_token():
+    """Return cached (token, instance_url), refreshing every 90 minutes."""
+    with _sf_token_lock:
+        now = datetime.now()
+        age = (now - _sf_token_cache['fetched_at']).total_seconds() if _sf_token_cache['fetched_at'] else 99999
+        if not _sf_token_cache['token'] or age > 5400:
+            token, instance_url = _refresh_sf_token()
+            if token:
+                _sf_token_cache['token']        = token
+                _sf_token_cache['instance_url'] = instance_url
+                _sf_token_cache['fetched_at']   = now
+                print('[SF-auth] Token refreshed')
+        return _sf_token_cache['token'], _sf_token_cache['instance_url']
+
+def soql(query, retries=2):
+    """Run a SOQL query via Salesforce REST API — fast, no sf CLI subprocess."""
     for attempt in range(retries):
+        token, instance_url = _get_sf_token()
+        if not token:
+            print('[SOQL] No access token available')
+            return None
         try:
-            r = subprocess.run(
-                ['sf', 'data', 'query', '--query', query, '--json', '--target-org', SF_ORG],
-                capture_output=True, text=True, timeout=timeout, env=env
-            )
-            d = json.loads(r.stdout)
-            if d.get('status') == 0:
-                return d.get('result')
-            print(f'[SOQL] error (attempt {attempt+1}): {d.get("message","unknown")}')
+            url = f"{instance_url}/services/data/v59.0/query?q={urllib.parse.quote(query)}"
+            req = _urllib_req.Request(url, headers={'Authorization': f'Bearer {token}'})
+            with _urllib_req.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode())
+                return {'records': data.get('records', []), 'totalSize': data.get('totalSize', 0)}
         except Exception as e:
-            print(f'[SOQL] exception (attempt {attempt+1}): {e}')
-        if attempt < retries - 1:
-            time.sleep(3)
+            print(f'[SOQL] error (attempt {attempt+1}): {e}')
+            with _sf_token_lock:
+                _sf_token_cache['token'] = None  # force token refresh on retry
+            if attempt < retries - 1:
+                time.sleep(2)
     return None
 
 
@@ -276,8 +314,8 @@ def campaign_metrics(c, start_override=None, end_override=None):
                              f"WHERE Id IN (SELECT ConvertedOpportunityId FROM Lead "
                              f"WHERE Campaign__c = '{n}' AND IsConverted = true)")
 
-        # Run remaining queries 3 at a time to limit concurrent sf CLI processes
-        with ThreadPoolExecutor(max_workers=3) as ex:
+        # Run remaining queries in parallel — REST API calls are lightweight
+        with ThreadPoolExecutor(max_workers=10) as ex:
             futs = {ex.submit(soql, q): k for k, q in queries.items()}
             for f in as_completed(futs):
                 results[futs[f]] = f.result()
@@ -461,8 +499,8 @@ def sync():
     total      = len(camps)
     done_n     = [0]
 
-    # Process campaigns 1 at a time on Railway to avoid memory pressure
-    with ThreadPoolExecutor(max_workers=1) as ex:
+    # Process 3 campaigns at a time — REST API is lightweight
+    with ThreadPoolExecutor(max_workers=3) as ex:
         futs = {ex.submit(campaign_metrics, c): c for c in camps}
         for f in as_completed(futs):
             try:
