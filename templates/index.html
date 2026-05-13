@@ -574,6 +574,15 @@ tfoot td {
             <option value="All">👥 All SDRs</option>
           </select>
         </div>
+        <!-- Segment Filter -->
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.5px;white-space:nowrap;text-transform:uppercase">Segment</span>
+          <select id="dashSegmentSelect" class="form-select"
+            style="min-width:170px;padding:6px 12px;font-size:12.5px;background:var(--surface2)"
+            onchange="setDashSegmentFilter(this.value)">
+            <option value="All">🗂 All Segments</option>
+          </select>
+        </div>
         <div id="lastSyncLabel" style="font-size:11px;color:var(--text-dim)"></div>
       </div>
     </div>
@@ -660,6 +669,9 @@ tfoot td {
       <input class="search-box" id="searchBox" type="search" placeholder="🔍  Search campaigns…" oninput="renderCampaigns()">
       <select class="form-select" id="campSdrFilter" style="height:32px;padding:0 8px;font-size:12.5px;min-width:130px" onchange="renderCampaigns()">
         <option value="">All SDRs</option>
+      </select>
+      <select class="form-select" id="campSegmentFilter" style="height:32px;padding:0 8px;font-size:12.5px;min-width:150px" onchange="renderCampaigns()">
+        <option value="">All Segments</option>
       </select>
       <div class="filter-chips" id="statusChips"></div>
       <div style="margin-left:auto; display:flex; gap:8px;">
@@ -1066,7 +1078,17 @@ tfoot td {
             </div>
             <div class="form-group">
               <label class="form-label">Segment</label>
-              <input class="form-input" name="segment" placeholder="e.g. SNF, Enterprise">
+              <select class="form-select" id="addSegmentSelect" onchange="handleAddSegmentChange(this.value)">
+                <option value="">— Select segment —</option>
+              </select>
+              <input class="form-input" id="addSegmentOther" name="segment" placeholder="Type segment name…"
+                style="display:none;margin-top:6px">
+              <div id="addNewSegmentRow" style="display:none;margin-top:6px;display:none">
+                <div style="display:flex;gap:6px">
+                  <input class="form-input" id="addNewSegmentInput" placeholder="New segment name…" style="margin:0;flex:1">
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="saveNewSegment()">Save</button>
+                </div>
+              </div>
             </div>
           </div>
           <div class="form-grid-2">
@@ -1248,7 +1270,17 @@ tfoot td {
         </div>
         <div class="form-group">
           <label class="form-label">Segment</label>
-          <input class="form-input" id="editSegment" placeholder="e.g. SNF, Enterprise">
+          <select class="form-select" id="editSegmentSelect" onchange="handleEditSegmentChange(this.value)">
+            <option value="">— Select segment —</option>
+          </select>
+          <input class="form-input" id="editSegmentOther" placeholder="Type segment name…"
+            style="display:none;margin-top:6px">
+          <div id="editNewSegmentRow" style="display:none;margin-top:6px">
+            <div style="display:flex;gap:6px">
+              <input class="form-input" id="editNewSegmentInput" placeholder="New segment name…" style="margin:0;flex:1">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="saveNewSegmentEdit()">Save</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="form-grid-2">
@@ -1297,21 +1329,24 @@ const SDR_TARGETS = {
 
 // ── STATE ────────────────────────────────────────────────────────────────────
 const S = {
-  data:         { campaigns:[], sdr_stats:[], last_sync:null, is_syncing:false, sync_progress:0 },
-  activeTab:      'dashboard',
-  filterStatus:   'All',
-  dashSdrFilter:  'All',
-  campPerfFilter: 'All',
-  sortCol:      'meetings',
-  sortDir:      -1,
-  charts:       {},
-  countdown:    1800,
-  isAdmin:      false,
-  adminToken:   '',
-  cTimer:       null,
-  timePeriod:   'all',
-  periodData:   null,
-  lbMetric:     'meetings',
+  data:              { campaigns:[], sdr_stats:[], last_sync:null, is_syncing:false, sync_progress:0 },
+  activeTab:         'dashboard',
+  filterStatus:      'All',
+  dashSdrFilter:     'All',
+  dashSegmentFilter: 'All',
+  campSegmentFilter: '',
+  campPerfFilter:    'All',
+  sortCol:           'meetings',
+  sortDir:           -1,
+  charts:            {},
+  countdown:         1800,
+  isAdmin:           false,
+  adminToken:        '',
+  cTimer:            null,
+  timePeriod:        'all',
+  periodData:        null,
+  lbMetric:          'meetings',
+  segments:          [],
 };
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
@@ -1419,10 +1454,18 @@ async function addCampaign(e) {
   e.preventDefault();
   const fd = new FormData(e.target);
   const body = Object.fromEntries(fd.entries());
+  body.segment = getAddSegmentValue();
   const r = await fetch('/api/campaigns',{method:'POST',headers:authHeaders(),body:JSON.stringify(body)});
   if(r.ok){
     showToast('✅ Campaign added! Syncing data…');
     e.target.reset();
+    // Reset segment UI
+    const addSeg = q('addSegmentSelect');
+    if(addSeg) addSeg.value = '';
+    const addOther = q('addSegmentOther');
+    if(addOther) { addOther.style.display='none'; addOther.name=''; addOther.value=''; }
+    const addNew = q('addNewSegmentRow');
+    if(addNew) addNew.style.display='none';
     await fetchData();
     triggerSync();
   } else {
@@ -1512,6 +1555,167 @@ function setDashSdrFilter(val) {
   renderDashboard();
 }
 
+function setDashSegmentFilter(val) {
+  S.dashSegmentFilter = val;
+  renderDashboard();
+}
+
+// ── SEGMENTS ─────────────────────────────────────────────────────────────────
+async function loadSegments() {
+  try {
+    const r = await fetch('/api/segments');
+    const d = await r.json();
+    S.segments = d.segments || [];
+  } catch(e) {
+    S.segments = ['EPIC Campaign','TruBridge Campaign','Factors Data','Hiring Data','High Intent Data'];
+  }
+  populateSegmentDropdowns();
+}
+
+function segmentOptions(current) {
+  const opts = S.segments.map(s =>
+    `<option value="${esc(s)}" ${current===s?'selected':''}>${esc(s)}</option>`
+  ).join('');
+  return opts +
+    `<option value="__other__" ${current==='__other__'?'selected':''}>Other…</option>` +
+    `<option value="__new__">+ Add new segment</option>`;
+}
+
+function populateSegmentDropdowns() {
+  // Dashboard filter
+  const dashSeg = q('dashSegmentSelect');
+  if(dashSeg) {
+    const cur = dashSeg.value;
+    dashSeg.innerHTML = '<option value="All">🗂 All Segments</option>' +
+      S.segments.map(s=>`<option value="${esc(s)}" ${(S.dashSegmentFilter===s)?'selected':''}>${esc(s)}</option>`).join('');
+    if(S.dashSegmentFilter !== 'All' && S.segments.includes(S.dashSegmentFilter)) dashSeg.value = S.dashSegmentFilter;
+  }
+  // Campaigns tab filter
+  const campSeg = q('campSegmentFilter');
+  if(campSeg) {
+    const cur = campSeg.value;
+    campSeg.innerHTML = '<option value="">All Segments</option>' +
+      S.segments.map(s=>`<option value="${esc(s)}" ${(S.campSegmentFilter===s)?'selected':''}>${esc(s)}</option>`).join('');
+    if(S.campSegmentFilter && S.segments.includes(S.campSegmentFilter)) campSeg.value = S.campSegmentFilter;
+  }
+  // Add Campaign form select
+  const addSeg = q('addSegmentSelect');
+  if(addSeg) {
+    const cur = addSeg.value;
+    addSeg.innerHTML = '<option value="">— Select segment —</option>' + segmentOptions(cur);
+  }
+  // Edit Campaign modal select
+  const editSeg = q('editSegmentSelect');
+  if(editSeg) {
+    const cur = editSeg.dataset.value || '';
+    editSeg.innerHTML = '<option value="">— Select segment —</option>' + segmentOptions(cur);
+    if(cur) editSeg.value = cur;
+  }
+}
+
+function handleAddSegmentChange(val) {
+  const other = q('addSegmentOther');
+  const newRow = q('addNewSegmentRow');
+  if(val === '__other__') {
+    other.style.display = 'block';
+    other.name = 'segment';
+    other.value = '';
+    other.focus();
+    newRow.style.display = 'none';
+  } else if(val === '__new__') {
+    newRow.style.display = 'block';
+    other.style.display = 'none';
+    other.name = '';
+    q('addNewSegmentInput').focus();
+    // reset select to blank so form doesn't submit __new__
+    q('addSegmentSelect').value = '';
+  } else {
+    other.style.display = 'none';
+    other.name = '';
+    newRow.style.display = 'none';
+  }
+}
+
+function handleEditSegmentChange(val) {
+  const other = q('editSegmentOther');
+  const newRow = q('editNewSegmentRow');
+  if(val === '__other__') {
+    other.style.display = 'block';
+    other.value = '';
+    other.focus();
+    newRow.style.display = 'none';
+  } else if(val === '__new__') {
+    newRow.style.display = 'block';
+    other.style.display = 'none';
+    q('editNewSegmentInput').focus();
+    q('editSegmentSelect').value = '';
+  } else {
+    other.style.display = 'none';
+    newRow.style.display = 'none';
+  }
+}
+
+async function saveNewSegment() {
+  const name = (q('addNewSegmentInput')?.value||'').trim();
+  if(!name) return;
+  try {
+    const r = await fetch('/api/segments', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-Admin-Token':S.adminToken},
+      body: JSON.stringify({name})
+    });
+    const d = await r.json();
+    if(d.segments) {
+      S.segments = d.segments;
+      populateSegmentDropdowns();
+      // Auto-select the new segment in the add form
+      const addSeg = q('addSegmentSelect');
+      if(addSeg) { addSeg.value = name; handleAddSegmentChange(name); }
+      q('addNewSegmentRow').style.display = 'none';
+      q('addNewSegmentInput').value = '';
+    }
+  } catch(e) { alert('Failed to save segment: ' + e.message); }
+}
+
+async function saveNewSegmentEdit() {
+  const name = (q('editNewSegmentInput')?.value||'').trim();
+  if(!name) return;
+  try {
+    const r = await fetch('/api/segments', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-Admin-Token':S.adminToken},
+      body: JSON.stringify({name})
+    });
+    const d = await r.json();
+    if(d.segments) {
+      S.segments = d.segments;
+      populateSegmentDropdowns();
+      const editSeg = q('editSegmentSelect');
+      if(editSeg) { editSeg.value = name; handleEditSegmentChange(name); }
+      q('editNewSegmentRow').style.display = 'none';
+      q('editNewSegmentInput').value = '';
+    }
+  } catch(e) { alert('Failed to save segment: ' + e.message); }
+}
+
+function getAddSegmentValue() {
+  const sel = q('addSegmentSelect');
+  if(!sel) return '';
+  if(sel.value === '__other__' || sel.value === '') {
+    return (q('addSegmentOther')?.value||'').trim();
+  }
+  return sel.value;
+}
+
+function getEditSegmentValue() {
+  const sel = q('editSegmentSelect');
+  if(!sel) return '';
+  if(sel.value === '__other__' || sel.value === '') {
+    return (q('editSegmentOther')?.value||'').trim();
+  }
+  return sel.value;
+}
+
 function setCampPerfFilter(val) {
   S.campPerfFilter = val;
   // Update chip active states
@@ -1596,10 +1800,12 @@ function renderDashboard() {
     if(S.dashSdrFilter !== 'All' && sdrNames.includes(S.dashSdrFilter)) sel.value = S.dashSdrFilter;
   }
 
-  // ── Filter campaigns by selected SDR ────────────────────────────────────
-  const cps = S.dashSdrFilter === 'All'
-    ? allCps
-    : allCps.filter(c => (c.sdr_owner||'').trim() === S.dashSdrFilter);
+  // ── Filter campaigns by selected SDR + Segment ──────────────────────────
+  const cps = allCps.filter(c => {
+    if(S.dashSdrFilter !== 'All' && (c.sdr_owner||'').trim() !== S.dashSdrFilter) return false;
+    if(S.dashSegmentFilter !== 'All' && (c.segment||'').trim() !== S.dashSegmentFilter) return false;
+    return true;
+  });
 
   // Update the tag label on the table card
   const tag = q('campTableSdrTag');
@@ -1802,6 +2008,7 @@ function renderCampaigns() {
   const search   = (q('searchBox')?.value||'').toLowerCase();
   const statusF  = S.filterStatus;
   const sdrF     = (q('campSdrFilter')?.value||'').toLowerCase();
+  const segF     = q('campSegmentFilter')?.value || '';
   const src = (S.timePeriod !== 'all' && S.periodData) ? S.periodData : S.data;
   const allCps   = src.campaigns||[];
 
@@ -1814,9 +2021,19 @@ function renderCampaigns() {
       sdrs.map(s=>`<option value="${s.toLowerCase()}"${s.toLowerCase()===cur?'selected':''}>${s}</option>`).join('');
   }
 
+  // Populate Segment dropdown (keep current selection)
+  const segSel = q('campSegmentFilter');
+  if(segSel) {
+    const cur = segSel.value;
+    segSel.innerHTML = '<option value="">All Segments</option>' +
+      S.segments.map(s=>`<option value="${esc(s)}"${s===cur?'selected':''}>${esc(s)}</option>`).join('');
+    if(cur && S.segments.includes(cur)) segSel.value = cur;
+  }
+
   let cps = allCps.filter(c=>{
     if(statusF!=='All' && c.status!==statusF) return false;
     if(sdrF && (c.sdr_owner||'').toLowerCase() !== sdrF) return false;
+    if(segF && (c.segment||'').trim() !== segF) return false;
     if(search && !c.name.toLowerCase().includes(search) &&
        !(c.sdr_owner||'').toLowerCase().includes(search)) return false;
     return true;
@@ -2561,11 +2778,27 @@ function openEditModal(id) {
   q('editSdr').value          = c.sdr_owner   || '';
   q('editEmail').value        = c.email_owner || '';
   q('editStatus').value       = c.status      || 'Active';
-  q('editSegment').value      = c.segment     || '';
   q('editStartDate').value    = c.start_date  || '';
   q('editEndDate').value      = c.end_date    || '';
   q('editManualS1').value     = c.manual_s1 != null ? c.manual_s1 : '';
   q('editModalSub').textContent = c.name;
+
+  // Populate segment select
+  const seg = c.segment || '';
+  const editSeg = q('editSegmentSelect');
+  if(editSeg) {
+    editSeg.dataset.value = seg;
+    editSeg.innerHTML = '<option value="">— Select segment —</option>' + segmentOptions(seg);
+    if(seg && S.segments.includes(seg)) {
+      editSeg.value = seg;
+    } else if(seg) {
+      // unknown segment — show as "Other"
+      editSeg.value = '__other__';
+      const other = q('editSegmentOther');
+      if(other) { other.style.display='block'; other.value=seg; }
+    }
+    handleEditSegmentChange(editSeg.value);
+  }
 
   q('editOverlay').classList.add('open');
 }
@@ -2579,7 +2812,7 @@ async function saveEditCampaign() {
     sdr_owner:   q('editSdr').value.trim(),
     email_owner: q('editEmail').value.trim(),
     status:      q('editStatus').value,
-    segment:     q('editSegment').value.trim(),
+    segment:     getEditSegmentValue(),
     start_date:  q('editStartDate').value,
     end_date:    q('editEndDate').value,
     manual_s1:   s1Raw === '' ? null : parseInt(s1Raw, 10),
@@ -3165,6 +3398,7 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeModal(); cl
 
 initAdminMode();
 fetchData();
+loadSegments();
 startCountdown();
 setInterval(fetchData, 10000);   // Poll Flask every 10s to pick up sync progress updates
 </script>

@@ -11,8 +11,24 @@ app = Flask(__name__)
 BASE       = os.path.dirname(os.path.abspath(__file__))
 # On Railway a persistent volume is mounted at /data — use it if available
 DATA_DIR   = '/data' if os.path.isdir('/data') else BASE
-CAMPS_FILE = os.path.join(DATA_DIR, 'campaigns.json')
-CACHE_FILE = os.path.join(DATA_DIR, 'data_cache.json')
+CAMPS_FILE    = os.path.join(DATA_DIR, 'campaigns.json')
+CACHE_FILE    = os.path.join(DATA_DIR, 'data_cache.json')
+SEGMENTS_FILE = os.path.join(DATA_DIR, 'segments.json')
+
+DEFAULT_SEGMENTS = ['EPIC Campaign', 'TruBridge Campaign', 'Factors Data', 'Hiring Data', 'High Intent Data']
+
+def load_segments():
+    if os.path.exists(SEGMENTS_FILE):
+        try:
+            with open(SEGMENTS_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+def save_segments(segs):
+    with open(SEGMENTS_FILE, 'w') as f:
+        json.dump(segs, f)
 SF_ORG      = os.environ.get('SF_ORG',      'vaibhavkumar@rapidclaims.ai')
 SF_BASE_URL = os.environ.get('SF_BASE_URL', 'https://data-page-6243.my.salesforce.com')
 NPV_START_DATE = '2026-04-01T00:00:00Z'   # Opportunities created after 31 March 2026
@@ -1021,6 +1037,28 @@ def api_camps_delete(cid):
     save_campaigns([c for c in load_campaigns() if c['id'] != cid])
     cache['campaigns'] = [c for c in cache['campaigns'] if c.get('id') != cid]
     return jsonify({'ok': True})
+
+# ── Segments ──────────────────────────────────────────────────────────────────
+
+@app.route('/api/segments', methods=['GET'])
+def api_segments_get():
+    custom = load_segments()
+    all_segs = DEFAULT_SEGMENTS + [s for s in custom if s not in DEFAULT_SEGMENTS]
+    return jsonify({'segments': all_segs, 'defaults': DEFAULT_SEGMENTS})
+
+@app.route('/api/segments', methods=['POST'])
+@require_admin
+def api_segments_add():
+    d = request.json or {}
+    name = (d.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Segment name required'}), 400
+    custom = load_segments()
+    if name not in DEFAULT_SEGMENTS and name not in custom:
+        custom.append(name)
+        save_segments(custom)
+    all_segs = DEFAULT_SEGMENTS + [s for s in custom if s not in DEFAULT_SEGMENTS]
+    return jsonify({'segments': all_segs, 'defaults': DEFAULT_SEGMENTS})
 
 # ── SDR Reporting 2026 – MQL / SQL ───────────────────────────────────────────
 
