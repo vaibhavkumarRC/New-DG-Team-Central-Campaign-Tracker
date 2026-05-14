@@ -300,8 +300,10 @@ def campaign_metrics(c, start_override=None, end_override=None):
 
     if total_leads_check > 0:
         queries = {
-            'calls':    f"SELECT COUNT(Id) FROM Task WHERE (Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%') AND WhoId IN ({lead}){dt_task}",
-            'emails':   f"SELECT COUNT(Id) FROM Task WHERE (Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%') AND WhoId IN ({lead}){dt_task}",
+            'calls':          f"SELECT COUNT(Id) FROM Task WHERE (Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%') AND WhoId IN ({lead}){dt_task}",
+            'emails':         f"SELECT COUNT(Id) FROM Task WHERE (Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%') AND WhoId IN ({lead}){dt_task}",
+            'unique_called':  f"SELECT COUNT_DISTINCT(WhoId) FROM Task WHERE (Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%') AND WhoId IN ({lead}){dt_task}",
+            'unique_emailed': f"SELECT COUNT_DISTINCT(WhoId) FROM Task WHERE (Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%') AND WhoId IN ({lead}){dt_task}",
             'meetings': f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' AND Meeting_Generated_on__c != null{dt_mtg}",
             'sdr':      (f"SELECT Meeting_Generated_by__c, COUNT(Id) FROM Lead "
                          f"WHERE Campaign__c = '{n}' AND Meeting_Generated_on__c != null{dt_mtg} "
@@ -367,15 +369,24 @@ def campaign_metrics(c, start_override=None, end_override=None):
                 status_sdr_bk[sdr_name] = {'meeting_done': 0, 'meeting_noshow': 0, 'sql_gen': 0}
             status_sdr_bk[sdr_name]['sql_gen'] += count
 
-    total_leads  = cnt(results.get('leads'))
-    total_calls  = cnt(results.get('calls'))
-    total_emails = cnt(results.get('emails'))
+    total_leads         = cnt(results.get('leads'))
+    total_calls         = cnt(results.get('calls'))
+    total_emails        = cnt(results.get('emails'))
+    unique_leads_called  = cnt(results.get('unique_called'))
+    unique_leads_emailed = cnt(results.get('unique_emailed'))
+
+    calls_per_called_lead  = round(total_calls  / unique_leads_called,  1) if unique_leads_called  > 0 else 0
+    emails_per_emailed_lead= round(total_emails / unique_leads_emailed, 1) if unique_leads_emailed > 0 else 0
 
     return {
         **c,
-        'total_leads':        total_leads,
-        'total_calls':        total_calls,
-        'total_emails':       total_emails,
+        'total_leads':              total_leads,
+        'total_calls':              total_calls,
+        'total_emails':             total_emails,
+        'unique_leads_called':      unique_leads_called,
+        'unique_leads_emailed':     unique_leads_emailed,
+        'calls_per_called_lead':    calls_per_called_lead,
+        'emails_per_emailed_lead':  emails_per_emailed_lead,
         'meetings':           cnt(results.get('meetings')),
         's1_created':         int(manual_s1) if has_manual_s1 else cnt(results.get('s1')),
         's1_is_manual':       has_manual_s1,
@@ -528,7 +539,9 @@ def sync():
                                 'total_emails': 0, 'meetings': 0,
                                 's1_created': 0, 'sdr_breakdown': [],
                                 'meeting_done': 0, 'meeting_noshow': 0,
-                                'sql_gen': 0, 'status_sdr_breakdown': []})
+                                'sql_gen': 0, 'status_sdr_breakdown': [],
+                                'unique_leads_called': 0, 'unique_leads_emailed': 0,
+                                'calls_per_called_lead': 0, 'emails_per_emailed_lead': 0})
             done_n[0] += 1
             cache['sync_progress'] = int(done_n[0] / total * 100)
 
@@ -947,7 +960,9 @@ def api_time_data():
                                 'total_emails': 0, 'meetings': 0,
                                 's1_created': 0, 'sdr_breakdown': [],
                                 'meeting_done': 0, 'meeting_noshow': 0,
-                                'sql_gen': 0, 'status_sdr_breakdown': []})
+                                'sql_gen': 0, 'status_sdr_breakdown': [],
+                                'unique_leads_called': 0, 'unique_leads_emailed': 0,
+                                'calls_per_called_lead': 0, 'emails_per_emailed_lead': 0})
 
     # Restore original campaign order
     order = {c['id']: i for i, c in enumerate(camps)}

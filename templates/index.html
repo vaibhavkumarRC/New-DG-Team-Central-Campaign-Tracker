@@ -1911,9 +1911,13 @@ function renderDashboard() {
           <th style="width:32px">#</th>
           <th>Campaign</th>
           <th style="text-align:center">SDR</th>
-          <th style="text-align:right">Leads</th>
-          <th style="text-align:right;color:var(--purple)">Calls</th>
-          <th style="text-align:right;color:var(--amber)">Emails</th>
+          <th style="text-align:right" title="Total leads in campaign">Leads</th>
+          <th style="text-align:right;color:var(--purple)" title="Total call attempts (Orum + Nooks)">Calls</th>
+          <th style="text-align:right;color:var(--purple)" title="Unique leads that received at least 1 call">Called</th>
+          <th style="text-align:right" title="Avg call attempts per called lead">∅ Calls</th>
+          <th style="text-align:right;color:var(--amber)" title="Total email attempts (Smartlead + Outreach)">Emails</th>
+          <th style="text-align:right;color:var(--amber)" title="Unique leads that received at least 1 email">Emailed</th>
+          <th style="text-align:right" title="Avg email attempts per emailed lead">∅ Emails</th>
           <th style="text-align:right;color:var(--green)">Mtg Gen</th>
           <th style="text-align:right;color:#34D399">Mtg Done</th>
           <th style="text-align:right;color:var(--red)">No Show</th>
@@ -1922,13 +1926,23 @@ function renderDashboard() {
         </tr></thead>
         <tbody>
           ${sorted.map((c,i)=>{
+            const uC  = c.unique_leads_called  || 0;
+            const uE  = c.unique_leads_emailed || 0;
+            const nC  = (c.total_leads||0) - uC;
+            const nE  = (c.total_leads||0) - uE;
+            const aC  = c.calls_per_called_lead   || 0;
+            const aE  = c.emails_per_emailed_lead || 0;
             return `<tr onclick="openModal('${c.id}')" style="cursor:pointer">
               <td class="td-center" style="color:var(--text-dim)">${i+1}</td>
-              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;font-weight:600" title="${esc(c.name)}">${esc(c.name)}</td>
+              <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;font-weight:600" title="${esc(c.name)}">${esc(c.name)}</td>
               <td style="text-align:center;color:var(--text-muted);font-size:11px;white-space:nowrap">${esc(c.sdr_owner||'—')}</td>
               <td class="td-num" style="color:var(--blue)">${fmt(c.total_leads)}</td>
               <td class="td-num" style="color:var(--purple);font-weight:700">${fmt(c.total_calls||0)}</td>
+              <td class="td-num" style="color:var(--purple)" title="${uC} unique leads called · ${nC} not yet called">${fmt(uC)}</td>
+              <td class="td-num" title="Avg call attempts per called lead">${aC > 0 ? aC.toFixed(1) : '—'}</td>
               <td class="td-num" style="color:var(--amber);font-weight:700">${fmt(c.total_emails||0)}</td>
+              <td class="td-num" style="color:var(--amber)" title="${uE} unique leads emailed · ${nE} not yet emailed">${fmt(uE)}</td>
+              <td class="td-num" title="Avg email attempts per emailed lead">${aE > 0 ? aE.toFixed(1) : '—'}</td>
               <td class="td-num" style="color:var(--green);font-weight:800">${fmt(c.meetings)}</td>
               <td class="td-num" style="color:#34D399;font-weight:700">${fmt(c.meeting_done||0)}</td>
               <td class="td-num" style="color:var(--red);font-weight:700">${fmt(c.meeting_noshow||0)}</td>
@@ -1941,7 +1955,11 @@ function renderDashboard() {
           <td colspan="3" style="font-size:11px">TOTAL — ${sorted.length} campaigns</td>
           <td class="td-num">${fmt(totalLeads)}</td>
           <td class="td-num" style="color:var(--purple)">${fmt(totalCalls)}</td>
+          <td class="td-num" style="color:var(--purple)">${fmt(sum(cps,'unique_leads_called'))}</td>
+          <td class="td-num">${sum(cps,'unique_leads_called')>0?(sum(cps,'total_calls')/sum(cps,'unique_leads_called')).toFixed(1):'—'}</td>
           <td class="td-num" style="color:var(--amber)">${fmt(totalEmails)}</td>
+          <td class="td-num" style="color:var(--amber)">${fmt(sum(cps,'unique_leads_emailed'))}</td>
+          <td class="td-num">${sum(cps,'unique_leads_emailed')>0?(sum(cps,'total_emails')/sum(cps,'unique_leads_emailed')).toFixed(1):'—'}</td>
           <td class="td-num" style="color:var(--green)">${fmt(totalMeetings)}</td>
           <td class="td-num" style="color:#34D399">${fmt(totalMtgDone)}</td>
           <td class="td-num" style="color:var(--red)">${fmt(totalNoShow)}</td>
@@ -2057,28 +2075,33 @@ function renderCampaigns() {
   });
 
   const cols = [
-    {k:'#',              label:'#',          w:'40px'},
-    {k:'name',           label:'Campaign'},
-    {k:'sdr_owner',      label:'SDR Owner'},
-    {k:'email_owner',    label:'Email Owner'},
-    {k:'status',         label:'Status'},
-    {k:'total_leads',    label:'Leads',       num:true},
-    {k:'total_calls',    label:'Calls',       num:true},
-    {k:'total_emails',   label:'Emails',      num:true},
-    {k:'meetings',       label:'Mtg Gen',     num:true},
-    {k:'meeting_done',   label:'Mtg Done',    num:true},
-    {k:'meeting_noshow', label:'No Show',     num:true},
-    {k:'sql_gen',        label:'SQL',         num:true},
-    {k:'s1_created',     label:'S1 Created',  num:true},
-    {k:'call_cov',       label:'Call Cov%',   num:true, auto:true},
-    {k:'mtg_rate',       label:'Mtg Rate%',   num:true, auto:true},
-    {k:'s1_rate',        label:'S1/Leads%',   num:true, auto:true},
+    {k:'#',                      label:'#',           w:'40px'},
+    {k:'name',                   label:'Campaign'},
+    {k:'sdr_owner',              label:'SDR Owner'},
+    {k:'email_owner',            label:'Email Owner'},
+    {k:'status',                 label:'Status'},
+    {k:'total_leads',            label:'Leads',        num:true, tip:'Total leads in this campaign on Salesforce'},
+    {k:'total_calls',            label:'Calls',        num:true, tip:'Total call attempts made to leads in this campaign (Orum + Nooks)'},
+    {k:'unique_leads_called',    label:'Called',       num:true, tip:'Unique leads that received at least 1 call — hover each cell to see uncalled count'},
+    {k:'calls_per_called_lead',  label:'∅ Calls',      num:true, tip:'Average number of call attempts per called lead'},
+    {k:'total_emails',           label:'Emails',       num:true, tip:'Total email attempts sent to leads in this campaign (Smartlead + Outreach)'},
+    {k:'unique_leads_emailed',   label:'Emailed',      num:true, tip:'Unique leads that received at least 1 email — hover each cell to see unemailed count'},
+    {k:'emails_per_emailed_lead',label:'∅ Emails',     num:true, tip:'Average number of email attempts per emailed lead'},
+    {k:'meetings',               label:'Mtg Gen',      num:true},
+    {k:'meeting_done',           label:'Mtg Done',     num:true},
+    {k:'meeting_noshow',         label:'No Show',      num:true},
+    {k:'sql_gen',                label:'SQL',          num:true},
+    {k:'s1_created',             label:'S1 Created',   num:true},
+    {k:'call_cov',               label:'Call Cov%',    num:true, auto:true, tip:'Total calls ÷ total leads'},
+    {k:'mtg_rate',               label:'Mtg Rate%',    num:true, auto:true},
+    {k:'s1_rate',                label:'S1/Leads%',    num:true, auto:true},
   ];
 
   q('campThead').innerHTML = cols.map(c=>`
     <th style="${c.w?'width:'+c.w:''}"
         class="${S.sortCol===c.k?'sorted':''}"
         onclick="${c.k!=='#'?`sortBy('${c.k}')`:''}"
+        title="${c.tip||''}"
     >${c.label}${S.sortCol===c.k?(S.sortDir===1?' ↑':' ↓'):''}</th>`).join('');
 
   if(!cps.length) {
@@ -2090,18 +2113,28 @@ function renderCampaigns() {
   q('campEmpty').style.display='none';
 
   q('campTbody').innerHTML = cps.map((c,i)=>{
-    const callCov = pct(c.total_calls, c.total_leads);
-    const mtgRate = pct(c.meetings, c.total_calls);
-    const s1Rate  = pct(c.s1_created, c.total_leads);
+    const callCov      = pct(c.total_calls, c.total_leads);
+    const mtgRate      = pct(c.meetings, c.total_calls);
+    const s1Rate       = pct(c.s1_created, c.total_leads);
+    const uCalled      = c.unique_leads_called  || 0;
+    const uEmailed     = c.unique_leads_emailed || 0;
+    const notCalled    = (c.total_leads||0) - uCalled;
+    const notEmailed   = (c.total_leads||0) - uEmailed;
+    const avgCalls     = c.calls_per_called_lead   || 0;
+    const avgEmails    = c.emails_per_emailed_lead || 0;
     return `<tr onclick="openModal('${c.id}')">
       <td class="td-center" style="color:var(--text-dim)">${i+1}</td>
       <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;font-weight:600" title="${esc(c.name)}">${esc(c.name)}</td>
       <td>${esc(c.sdr_owner||'—')}</td>
       <td>${esc(c.email_owner||'—')}</td>
       <td>${statusBadge(c.status||'Active')}</td>
-      <td class="td-num">${fmt(c.total_leads)}</td>
-      <td class="td-num">${fmt(c.total_calls)}</td>
-      <td class="td-num">${fmt(c.total_emails)}</td>
+      <td class="td-num" title="Total leads in this campaign">${fmt(c.total_leads)}</td>
+      <td class="td-num" title="Total call attempts (Orum + Nooks)">${fmt(c.total_calls)}</td>
+      <td class="td-num" title="${uCalled} unique leads called · ${notCalled} not yet called" style="color:var(--purple)">${fmt(uCalled)}</td>
+      <td class="td-num" title="Avg call attempts per called lead">${avgCalls > 0 ? avgCalls.toFixed(1) : '—'}</td>
+      <td class="td-num" title="Total email attempts (Smartlead + Outreach)">${fmt(c.total_emails)}</td>
+      <td class="td-num" title="${uEmailed} unique leads emailed · ${notEmailed} not yet emailed" style="color:var(--amber)">${fmt(uEmailed)}</td>
+      <td class="td-num" title="Avg email attempts per emailed lead">${avgEmails > 0 ? avgEmails.toFixed(1) : '—'}</td>
       <td class="td-num" style="color:var(--green);font-weight:700">${fmt(c.meetings)}</td>
       <td class="td-num" style="color:#34D399;font-weight:700">${fmt(c.meeting_done||0)}</td>
       <td class="td-num" style="color:var(--red);font-weight:700">${fmt(c.meeting_noshow||0)}</td>
@@ -2116,12 +2149,19 @@ function renderCampaigns() {
   // Footer totals
   const tL=sum(cps,'total_leads'), tC=sum(cps,'total_calls'),
         tE=sum(cps,'total_emails'), tM=sum(cps,'meetings'), tS=sum(cps,'s1_created'),
-        tMD=sum(cps,'meeting_done'), tNS=sum(cps,'meeting_noshow'), tSQL=sum(cps,'sql_gen');
+        tMD=sum(cps,'meeting_done'), tNS=sum(cps,'meeting_noshow'), tSQL=sum(cps,'sql_gen'),
+        tUC=sum(cps,'unique_leads_called'), tUE=sum(cps,'unique_leads_emailed');
+  const tAvgC = tUC > 0 ? (tC / tUC).toFixed(1) : '—';
+  const tAvgE = tUE > 0 ? (tE / tUE).toFixed(1) : '—';
   q('campTfoot').innerHTML = `<tr>
     <td colspan="5">TOTAL (${cps.length} campaigns)</td>
     <td class="td-num">${fmt(tL)}</td>
     <td class="td-num">${fmt(tC)}</td>
+    <td class="td-num" style="color:var(--purple)">${fmt(tUC)}</td>
+    <td class="td-num">${tAvgC}</td>
     <td class="td-num">${fmt(tE)}</td>
+    <td class="td-num" style="color:var(--amber)">${fmt(tUE)}</td>
+    <td class="td-num">${tAvgE}</td>
     <td class="td-num">${fmt(tM)}</td>
     <td class="td-num" style="color:#34D399">${fmt(tMD)}</td>
     <td class="td-num" style="color:var(--red)">${fmt(tNS)}</td>
