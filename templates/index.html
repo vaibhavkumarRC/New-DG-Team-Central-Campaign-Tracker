@@ -1002,6 +1002,12 @@ tfoot td {
           <select id="s1rSdrFilter" onchange="filterRptTable('s1r')" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
             <option value="">All SDR Owners</option>
           </select>
+          <select id="s1rSourceFilter" onchange="filterRptTable('s1r')" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
+            <option value="">All Sources</option>
+          </select>
+          <select id="s1rStageFilter" onchange="filterRptTable('s1r')" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
+            <option value="">All Stages</option>
+          </select>
           <span id="s1rCount" style="font-size:11.5px;color:var(--text-muted);margin-left:4px"></span>
         </div>
         <div class="table-wrap">
@@ -3178,11 +3184,15 @@ function applyRptSearch(section) {
   } else if(section==='s1r') {
     const sdrF      = document.getElementById('s1rSdrFilter')?.value || '';
     const dealTypeF = document.getElementById('s1rDealTypeFilter')?.value || '';
+    const sourceF   = document.getElementById('s1rSourceFilter')?.value || '';
+    const stageF    = document.getElementById('s1rStageFilter')?.value || '';
     filtered = data.filter(r => {
       const matchQ        = !q || `${r.name} ${r.account} ${r.sdr} ${r.stage} ${r.source} ${r.deal_type}`.toLowerCase().includes(q);
       const matchSdr      = !sdrF || r.sdr === sdrF;
       const matchDealType = !dealTypeF || r.deal_type === dealTypeF;
-      return matchQ && matchSdr && matchDealType;
+      const matchSource   = !sourceF || r.source === sourceF;
+      const matchStage    = !stageF || r.stage === stageF;
+      return matchQ && matchSdr && matchDealType && matchSource && matchStage;
     });
   } else {
     filtered = q ? data.filter(r=>`${r.name} ${r.account} ${r.sdr} ${r.stage} ${r.source}`.toLowerCase().includes(q)) : [...data];
@@ -3332,10 +3342,28 @@ function renderS1r() {
   // Populate SDR Owner filter dropdown
   const sdrSel = document.getElementById('s1rSdrFilter');
   if(sdrSel) {
-    const prevSdr = sdrSel.value;
+    const prev = sdrSel.value;
     const sdrs = [...new Set(data.map(r=>r.sdr).filter(x=>x&&x!=='—'))].sort();
     sdrSel.innerHTML = '<option value="">All SDR Owners</option>' + sdrs.map(s=>`<option value="${s}">${s}</option>`).join('');
-    if(sdrs.includes(prevSdr)) sdrSel.value = prevSdr;
+    if(sdrs.includes(prev)) sdrSel.value = prev;
+  }
+
+  // Populate Source filter dropdown
+  const sourceSel = document.getElementById('s1rSourceFilter');
+  if(sourceSel) {
+    const prev = sourceSel.value;
+    const sources = [...new Set(data.map(r=>r.source).filter(x=>x&&x!=='—'))].sort();
+    sourceSel.innerHTML = '<option value="">All Sources</option>' + sources.map(s=>`<option value="${s}">${s}</option>`).join('');
+    if(sources.includes(prev)) sourceSel.value = prev;
+  }
+
+  // Populate Stage filter dropdown
+  const stageSel = document.getElementById('s1rStageFilter');
+  if(stageSel) {
+    const prev = stageSel.value;
+    const stages = [...new Set(data.map(r=>r.stage).filter(x=>x&&x!=='—'))].sort();
+    stageSel.innerHTML = '<option value="">All Stages</option>' + stages.map(s=>`<option value="${s}">${s}</option>`).join('');
+    if(stages.includes(prev)) stageSel.value = prev;
   }
 
   RPT.s1r.filtered = [...data];
