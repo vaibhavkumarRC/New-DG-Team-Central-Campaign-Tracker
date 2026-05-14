@@ -2566,7 +2566,6 @@ async function openNooksModal(campaignName) {
     if(d.error) throw new Error(d.error);
 
     const connPct  = d.total_calls > 0 ? (d.calls_connected / d.total_calls * 100).toFixed(1) : '0.0';
-    const convPct  = d.total_calls > 0 ? (d.conversations   / d.total_calls * 100).toFixed(1) : '0.0';
     const mtgPct   = d.calls_connected > 0 ? (d.meetings_generated / d.calls_connected * 100).toFixed(1) : '0.0';
 
     const meetingRows = (d.meeting_leads||[]).map(l=>`
@@ -2580,7 +2579,7 @@ async function openNooksModal(campaignName) {
 
     body.innerHTML = `
       <!-- KPI row -->
-      <div class="modal-kpi-row" style="grid-template-columns:repeat(4,1fr)">
+      <div class="modal-kpi-row" style="grid-template-columns:repeat(3,1fr)">
         <div class="modal-kpi" title="Total call attempts logged by Nooks in Salesforce">
           <div class="modal-kpi-val" style="color:var(--purple)">${fmt(d.total_calls)}</div>
           <div class="modal-kpi-lbl">Total Call Attempts</div>
@@ -2589,11 +2588,6 @@ async function openNooksModal(campaignName) {
           <div class="modal-kpi-val" style="color:#22C55E">${fmt(d.calls_connected)}</div>
           <div class="modal-kpi-lbl">Calls Connected</div>
           <div style="font-size:10px;color:var(--text-dim);margin-top:3px">${connPct}% of calls</div>
-        </div>
-        <div class="modal-kpi" title="Unique leads who had an actual conversation (Nooks AI summary present in task comments). ${convPct}% of total calls.">
-          <div class="modal-kpi-val" style="color:#60A5FA">${fmt(d.conversations)}</div>
-          <div class="modal-kpi-lbl">Conversations</div>
-          <div style="font-size:10px;color:var(--text-dim);margin-top:3px">${convPct}% of calls</div>
         </div>
         <div class="modal-kpi" title="Meetings booked via Nooks calls. ${mtgPct}% of connected calls.">
           <div class="modal-kpi-val" style="color:var(--green)">${fmt(d.meetings_generated)}</div>

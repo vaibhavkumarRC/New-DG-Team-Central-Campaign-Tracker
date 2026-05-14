@@ -1063,12 +1063,6 @@ def api_nooks_call_detail():
         'mtg_tasks': (f"SELECT WhoId, CallDisposition FROM Task "
                       f"WHERE Subject LIKE '[Nooks Call]%' AND CallDisposition IN ({meeting_str}) "
                       f"AND WhoId IN ({lead_sub}) LIMIT 500"),
-        # Fetch connected tasks with Description to find conversations in Python.
-        # Conversations = connected calls where Nooks generated an AI summary
-        # (guarantees conversations ≤ connected always)
-        'conv_tasks': (f"SELECT WhoId, Description FROM Task "
-                       f"WHERE Subject LIKE '[Nooks Call]%' AND CallDisposition IN ({connected_str}) "
-                       f"AND WhoId IN ({lead_sub}) LIMIT 3000"),
     }
 
     results = {}
@@ -1079,18 +1073,6 @@ def api_nooks_call_detail():
 
     total_calls     = cnt(results.get('total'))
     calls_connected = cnt(results.get('connected'))
-
-    # Conversations — unique leads whose task Description contains the Nooks AI summary marker
-    conv_who_ids = set()
-    conv_res = results.get('conv_tasks')
-    if conv_res and conv_res.get('records'):
-        for r in conv_res['records']:
-            desc = r.get('Description') or ''
-            if '[Nooks]' in desc and 'Nooks AI summary' in desc:
-                who_id = r.get('WhoId')
-                if who_id:
-                    conv_who_ids.add(who_id)
-    total_conversations = len(conv_who_ids)
 
     # Meeting leads — collect unique WhoIds then get lead names from Salesforce
     mtg_who_result = {}   # who_id → call_disposition
@@ -1122,7 +1104,6 @@ def api_nooks_call_detail():
     return jsonify({
         'total_calls':       total_calls,
         'calls_connected':   calls_connected,
-        'conversations':     total_conversations,
         'meetings_generated':len(meeting_leads),
         'meeting_leads':     meeting_leads,
     })
