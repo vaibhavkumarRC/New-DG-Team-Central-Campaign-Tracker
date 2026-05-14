@@ -1032,13 +1032,23 @@ def api_s1_opportunities():
 
 @app.route('/api/nooks-call-detail')
 def api_nooks_call_detail():
-    """Drill-down: Nooks call stats for a campaign — connected, meetings, conversations."""
+    """Drill-down: Nooks call stats for a campaign — connected and meetings.
+    Uses SFDC Tasks filtered by campaign lead IDs (most reliable source of truth)."""
     campaign = request.args.get('campaign', '').strip()
     if not campaign:
         return jsonify({'error': 'campaign param required'}), 400
 
     n        = esc(campaign)
     lead_sub = f"SELECT Id FROM Lead WHERE Campaign__c = '{n}'"
+
+    # Apply campaign date range so we only count calls made during the campaign period
+    camps     = load_campaigns()
+    camp_cfg  = next((c for c in camps if c.get('name') == campaign), {})
+    start_date = (camp_cfg.get('start_date') or '').strip()
+    end_date   = (camp_cfg.get('end_date')   or '').strip()
+    dt_task    = ''
+    if start_date: dt_task += f" AND ActivityDate >= {start_date}"
+    if end_date:   dt_task += f" AND ActivityDate <= {end_date}"
 
     MEETING_RESULTS = [
         'Answered - Booked Meeting', 'Meeting',
@@ -1058,11 +1068,11 @@ def api_nooks_call_detail():
     meeting_str   = ','.join(f"'{v}'" for v in MEETING_RESULTS)
 
     queries = {
-        'total':     f"SELECT COUNT(Id) FROM Task WHERE Subject LIKE '[Nooks Call]%' AND WhoId IN ({lead_sub})",
-        'connected': f"SELECT COUNT(Id) FROM Task WHERE Subject LIKE '[Nooks Call]%' AND CallDisposition IN ({connected_str}) AND WhoId IN ({lead_sub})",
+        'total':     f"SELECT COUNT(Id) FROM Task WHERE Subject LIKE '[Nooks Call]%' AND WhoId IN ({lead_sub}){dt_task}",
+        'connected': f"SELECT COUNT(Id) FROM Task WHERE Subject LIKE '[Nooks Call]%' AND CallDisposition IN ({connected_str}) AND WhoId IN ({lead_sub}){dt_task}",
         'mtg_tasks': (f"SELECT WhoId, CallDisposition FROM Task "
                       f"WHERE Subject LIKE '[Nooks Call]%' AND CallDisposition IN ({meeting_str}) "
-                      f"AND WhoId IN ({lead_sub}) LIMIT 500"),
+                      f"AND WhoId IN ({lead_sub}){dt_task} LIMIT 500"),
     }
 
     results = {}
