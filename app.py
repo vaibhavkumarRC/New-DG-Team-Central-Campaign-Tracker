@@ -1040,31 +1040,35 @@ def api_nooks_call_detail():
     n        = esc(campaign)
     lead_sub = f"SELECT Id FROM Lead WHERE Campaign__c = '{n}'"
 
-    CONNECTED_RESULTS = [
-        'Answered - Follow Up Required', 'Answered - No Longer with Company',
-        'Answered - Wrong Person, No Referral', 'Busy - Call Later', 'Connected',
-        'DNC', 'Not Interested', 'Objection: Already Have Solution',
-        'Objection: Asked to Send Info', 'Objection: Not A Priority',
-        'Prospect Disconnected', 'Retired', 'Strong Follow up', 'Wrong Number',
-    ]
     MEETING_RESULTS = [
         'Answered - Booked Meeting', 'Meeting',
         'Meeting Generated- Cold', 'Meeting Generated- Conference',
     ]
+    # Connected = any disposition where someone actually picked up the phone
+    # Includes meeting dispositions (booked meeting = definitely connected)
+    CONNECTED_RESULTS = [
+        'Answered - Follow Up Required', 'Answered - No Longer with Company',
+        'Answered - Wrong Person, No Referral', 'Busy - Call Later', 'Connected',
+        'DNC', 'Gatekeeper', 'Not Interested', 'Objection: Already Have Solution',
+        'Objection: Asked to Send Info', 'Objection: Not A Priority',
+        'Prospect Disconnected', 'Retired', 'Strong Follow up', 'Wrong Number',
+    ] + MEETING_RESULTS   # meeting dispositions also mean the call connected
+
     connected_str = ','.join(f"'{v}'" for v in CONNECTED_RESULTS)
     meeting_str   = ','.join(f"'{v}'" for v in MEETING_RESULTS)
 
     queries = {
-        'total':      f"SELECT COUNT(Id) FROM Task WHERE Subject LIKE '[Nooks Call]%' AND WhoId IN ({lead_sub})",
-        # CallDisposition is the standard SFDC field Nooks writes to (not Call_Result__c)
-        'connected':  f"SELECT COUNT(Id) FROM Task WHERE Subject LIKE '[Nooks Call]%' AND CallDisposition IN ({connected_str}) AND WhoId IN ({lead_sub})",
-        'mtg_tasks':  (f"SELECT WhoId, CallDisposition FROM Task "
-                       f"WHERE Subject LIKE '[Nooks Call]%' AND CallDisposition IN ({meeting_str}) "
-                       f"AND WhoId IN ({lead_sub}) LIMIT 500"),
-        # Description is a Long Text Area — cannot filter in SOQL WHERE clause
-        # Fetch all Nooks tasks and filter for AI summary marker in Python
+        'total':     f"SELECT COUNT(Id) FROM Task WHERE Subject LIKE '[Nooks Call]%' AND WhoId IN ({lead_sub})",
+        'connected': f"SELECT COUNT(Id) FROM Task WHERE Subject LIKE '[Nooks Call]%' AND CallDisposition IN ({connected_str}) AND WhoId IN ({lead_sub})",
+        'mtg_tasks': (f"SELECT WhoId, CallDisposition FROM Task "
+                      f"WHERE Subject LIKE '[Nooks Call]%' AND CallDisposition IN ({meeting_str}) "
+                      f"AND WhoId IN ({lead_sub}) LIMIT 500"),
+        # Fetch connected tasks with Description to find conversations in Python.
+        # Conversations = connected calls where Nooks generated an AI summary
+        # (guarantees conversations ≤ connected always)
         'conv_tasks': (f"SELECT WhoId, Description FROM Task "
-                       f"WHERE Subject LIKE '[Nooks Call]%' AND WhoId IN ({lead_sub}) LIMIT 3000"),
+                       f"WHERE Subject LIKE '[Nooks Call]%' AND CallDisposition IN ({connected_str}) "
+                       f"AND WhoId IN ({lead_sub}) LIMIT 3000"),
     }
 
     results = {}
