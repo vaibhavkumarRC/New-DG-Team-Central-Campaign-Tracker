@@ -1222,6 +1222,24 @@ tfoot td {
   </div>
 </div>
 
+<!-- ── NOOKS CALL DETAIL MODAL ── -->
+<div class="modal-overlay" id="nooksOverlay" onclick="closeNooksModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:780px">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title">📞 Nooks Call Detail</div>
+        <div class="modal-sub" id="nooksModalSub">Loading…</div>
+      </div>
+      <button class="modal-close" onclick="closeNooksModal()">×</button>
+    </div>
+    <div class="modal-body" id="nooksModalBody">
+      <div style="text-align:center;padding:40px;color:var(--text-muted)">
+        <div class="spinner" style="margin:0 auto 12px"></div>Loading…
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── EDIT CAMPAIGN MODAL ── -->
 <div class="modal-overlay" id="editOverlay" onclick="closeEditModal(event)">
   <div class="modal-box" onclick="event.stopPropagation()" style="max-width:520px">
@@ -2437,11 +2455,38 @@ function openModal(id) {
   const s1Mtg   = pct(c.s1_created, c.meetings);
   const emailCov= pct(c.total_emails, c.total_leads);
 
+  const uCalled  = c.unique_leads_called  || 0;
+  const uEmailed = c.unique_leads_emailed || 0;
+  const notCalled  = (c.total_leads||0) - uCalled;
+  const notEmailed = (c.total_leads||0) - uEmailed;
+  const campNameSafe = esc(c.name).replace(/'/g,"\\'");
+
   q('modalBody').innerHTML = `
     <div class="modal-kpi-row">
       <div class="modal-kpi"><div class="modal-kpi-val" style="color:var(--blue)">${fmt(c.total_leads)}</div><div class="modal-kpi-lbl">Total Leads</div></div>
-      <div class="modal-kpi"><div class="modal-kpi-val" style="color:var(--purple)">${fmt(c.total_calls)}</div><div class="modal-kpi-lbl">Calls Made</div></div>
-      <div class="modal-kpi"><div class="modal-kpi-val" style="color:var(--amber)">${fmt(c.total_emails)}</div><div class="modal-kpi-lbl">Emails Sent</div></div>
+      <div class="modal-kpi" style="cursor:pointer;border:1px solid rgba(139,92,246,0.3);transition:background .15s"
+           onmouseover="this.style.background='rgba(139,92,246,0.08)'" onmouseout="this.style.background=''"
+           onclick="closeModal();openNooksModal('${campNameSafe}')" title="Click to see Nooks call breakdown">
+        <div class="modal-kpi-val" style="color:var(--purple)">${fmt(c.total_calls)}</div>
+        <div class="modal-kpi-lbl">Total Call Attempts ↗</div>
+      </div>
+      <div class="modal-kpi"><div class="modal-kpi-val" style="color:var(--amber)">${fmt(c.total_emails)}</div><div class="modal-kpi-lbl">Total Email Attempts</div></div>
+    </div>
+    <div class="modal-kpi-row">
+      <div class="modal-kpi" title="${uCalled} leads called · ${notCalled} not yet called">
+        <div class="modal-kpi-val" style="color:var(--purple);font-size:18px">${fmt(uCalled)}</div>
+        <div class="modal-kpi-lbl">Unique Leads Called</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:3px">${notCalled} not yet called</div>
+      </div>
+      <div class="modal-kpi" title="${uEmailed} leads emailed · ${notEmailed} not yet emailed">
+        <div class="modal-kpi-val" style="color:var(--amber);font-size:18px">${fmt(uEmailed)}</div>
+        <div class="modal-kpi-lbl">Unique Leads Emailed</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:3px">${notEmailed} not yet emailed</div>
+      </div>
+      <div class="modal-kpi">
+        <div class="modal-kpi-val" style="font-size:16px;color:var(--text-muted)">${c.calls_per_called_lead>0?c.calls_per_called_lead.toFixed(1):'—'} / ${c.emails_per_emailed_lead>0?c.emails_per_emailed_lead.toFixed(1):'—'}</div>
+        <div class="modal-kpi-lbl">Avg Calls / Emails per Lead</div>
+      </div>
     </div>
     <div class="modal-kpi-row">
       <div class="modal-kpi" style="cursor:pointer" onclick="closeModal();openMeetingsModal('${esc(c.name).replace(/'/g,"\\'")}')" title="Click to see meeting leads">
@@ -2503,6 +2548,92 @@ function metricRow(label, val, hint) {
 function closeModal(e) {
   if(e && e.target !== q('modalOverlay')) return;
   q('modalOverlay').classList.remove('open');
+}
+
+// ── NOOKS CALL DETAIL MODAL ──────────────────────────────────────────────────
+async function openNooksModal(campaignName) {
+  const overlay = q('nooksOverlay');
+  const body    = q('nooksModalBody');
+  const sub     = q('nooksModalSub');
+  sub.textContent = campaignName;
+  body.innerHTML  = `<div style="text-align:center;padding:40px;color:var(--text-muted)">
+    <div class="spinner" style="margin:0 auto 12px"></div>Loading Nooks data from Salesforce…</div>`;
+  overlay.classList.add('open');
+
+  try {
+    const r = await fetch(`/api/nooks-call-detail?campaign=${encodeURIComponent(campaignName)}`);
+    const d = await r.json();
+    if(d.error) throw new Error(d.error);
+
+    const connPct  = d.total_calls > 0 ? (d.calls_connected / d.total_calls * 100).toFixed(1) : '0.0';
+    const convPct  = d.total_calls > 0 ? (d.conversations   / d.total_calls * 100).toFixed(1) : '0.0';
+    const mtgPct   = d.calls_connected > 0 ? (d.meetings_generated / d.calls_connected * 100).toFixed(1) : '0.0';
+
+    const meetingRows = (d.meeting_leads||[]).map(l=>`
+      <tr onclick="${l.sf_url?`window.open('${l.sf_url}','_blank')`:'void(0)'}" style="${l.sf_url?'cursor:pointer':''}">
+        <td style="font-weight:600">${l.sf_url
+          ? `<span style="color:var(--gold-light)">${esc(l.name)} <span style="font-size:10px;opacity:.6">↗</span></span>`
+          : esc(l.name)}</td>
+        <td style="color:var(--text-muted)">${esc(l.company||'—')}</td>
+        <td><span class="badge" style="background:rgba(34,197,94,0.12);color:#22C55E;font-size:10px">${esc(l.call_result)}</span></td>
+      </tr>`).join('');
+
+    body.innerHTML = `
+      <!-- KPI row -->
+      <div class="modal-kpi-row" style="grid-template-columns:repeat(4,1fr)">
+        <div class="modal-kpi" title="Total call attempts logged by Nooks in Salesforce">
+          <div class="modal-kpi-val" style="color:var(--purple)">${fmt(d.total_calls)}</div>
+          <div class="modal-kpi-lbl">Total Call Attempts</div>
+        </div>
+        <div class="modal-kpi" title="Calls where someone answered (any Answered / Connected disposition). ${connPct}% of total calls.">
+          <div class="modal-kpi-val" style="color:#22C55E">${fmt(d.calls_connected)}</div>
+          <div class="modal-kpi-lbl">Calls Connected</div>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:3px">${connPct}% of calls</div>
+        </div>
+        <div class="modal-kpi" title="Unique leads who had an actual conversation (Nooks AI summary present in task comments). ${convPct}% of total calls.">
+          <div class="modal-kpi-val" style="color:#60A5FA">${fmt(d.conversations)}</div>
+          <div class="modal-kpi-lbl">Conversations</div>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:3px">${convPct}% of calls</div>
+        </div>
+        <div class="modal-kpi" title="Meetings booked via Nooks calls. ${mtgPct}% of connected calls.">
+          <div class="modal-kpi-val" style="color:var(--green)">${fmt(d.meetings_generated)}</div>
+          <div class="modal-kpi-lbl">Meetings Generated</div>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:3px">${mtgPct}% of connected</div>
+        </div>
+      </div>
+
+      <!-- Meeting leads table -->
+      ${d.meetings_generated > 0 ? `
+      <div class="modal-section">
+        <div class="modal-section-title">📅 Meeting-Generating Leads — click to open in Salesforce</div>
+        <div class="table-wrap" style="max-height:320px;overflow-y:auto">
+          <table>
+            <thead><tr>
+              <th>Lead Name</th>
+              <th>Company</th>
+              <th>Call Result</th>
+            </tr></thead>
+            <tbody>${meetingRows}</tbody>
+          </table>
+        </div>
+      </div>` : `
+      <div class="modal-section">
+        <div style="text-align:center;padding:24px;color:var(--text-dim);font-size:13px">
+          No meetings generated from Nooks calls in this campaign yet.
+        </div>
+      </div>`}
+
+      <div style="margin-top:8px;padding:10px 14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);font-size:11px;color:var(--text-dim)">
+        📌 Connected = any Answered / Connected disposition &nbsp;·&nbsp; Conversations = tasks with Nooks AI summary in comments &nbsp;·&nbsp; Meetings = Booked Meeting / Meeting Generated dispositions
+      </div>`;
+  } catch(e) {
+    body.innerHTML = `<div style="text-align:center;padding:40px;color:var(--red)">❌ Failed to load: ${e.message}</div>`;
+  }
+}
+
+function closeNooksModal(e) {
+  if(e && e.target !== q('nooksOverlay')) return;
+  q('nooksOverlay').classList.remove('open');
 }
 
 // ── QUICK-ADD CAMPAIGN ───────────────────────────────────────────────────────
@@ -3462,7 +3593,7 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click',()=>switchTab(btn.dataset.tab));
 });
 
-document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeModal(); closeMeetingsModal(); closeEditModal(); closeSdrDetailModal(); } });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeModal(); closeMeetingsModal(); closeEditModal(); closeSdrDetailModal(); closeNooksModal(); } });
 
 initAdminMode();
 fetchData();

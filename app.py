@@ -1030,6 +1030,97 @@ def api_s1_opportunities():
     return jsonify({'opportunities': opps, 'total': len(opps)})
 
 
+@app.route('/api/nooks-call-detail')
+def api_nooks_call_detail():
+    """Drill-down: Nooks call stats for a campaign — connected, meetings, conversations."""
+    campaign = request.args.get('campaign', '').strip()
+    if not campaign:
+        return jsonify({'error': 'campaign param required'}), 400
+
+    n        = esc(campaign)
+    lead_sub = f"SELECT Id FROM Lead WHERE Campaign__c = '{n}'"
+
+    CONNECTED_RESULTS = [
+        'Answered - Follow Up Required', 'Answered - No Longer with Company',
+        'Answered - Wrong Person, No Referral', 'Busy - Call Later', 'Connected',
+        'DNC', 'Not Interested', 'Objection: Already Have Solution',
+        'Objection: Asked to Send Info', 'Objection: Not A Priority',
+        'Prospect Disconnected', 'Retired', 'Strong Follow up', 'Wrong Number',
+    ]
+    MEETING_RESULTS = [
+        'Answered - Booked Meeting', 'Meeting',
+        'Meeting Generated- Cold', 'Meeting Generated- Conference',
+    ]
+    connected_str = ','.join(f"'{v}'" for v in CONNECTED_RESULTS)
+    meeting_str   = ','.join(f"'{v}'" for v in MEETING_RESULTS)
+
+    queries = {
+        'total':      f"SELECT COUNT(Id) FROM Task WHERE Subject LIKE '[Nooks Call]%' AND WhoId IN ({lead_sub})",
+        'connected':  f"SELECT COUNT(Id) FROM Task WHERE Subject LIKE '[Nooks Call]%' AND Call_Result__c IN ({connected_str}) AND WhoId IN ({lead_sub})",
+        'mtg_tasks':  (f"SELECT WhoId, Call_Result__c FROM Task "
+                       f"WHERE Subject LIKE '[Nooks Call]%' AND Call_Result__c IN ({meeting_str}) "
+                       f"AND WhoId IN ({lead_sub}) LIMIT 500"),
+        # Fetch tasks with Description to filter conversations in Python
+        # (Description is a Long Text Area — not filterable via SOQL LIKE)
+        'conv_tasks': (f"SELECT WhoId, Description FROM Task "
+                       f"WHERE Subject LIKE '[Nooks Call]%' AND WhoId IN ({lead_sub}) "
+                       f"AND Description != null LIMIT 3000"),
+    }
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futs = {ex.submit(soql, q): k for k, q in queries.items()}
+        for fut in as_completed(futs):
+            results[futs[fut]] = fut.result()
+
+    total_calls     = cnt(results.get('total'))
+    calls_connected = cnt(results.get('connected'))
+
+    # Conversations — unique leads whose task Description contains the Nooks AI summary marker
+    conv_who_ids = set()
+    conv_res = results.get('conv_tasks')
+    if conv_res and conv_res.get('records'):
+        for r in conv_res['records']:
+            desc = r.get('Description') or ''
+            if '[Nooks]' in desc and 'Nooks AI summary' in desc:
+                who_id = r.get('WhoId')
+                if who_id:
+                    conv_who_ids.add(who_id)
+    total_conversations = len(conv_who_ids)
+
+    # Meeting leads — collect unique WhoIds then get lead names from Salesforce
+    mtg_who_result = {}   # who_id → call_result
+    mtg_res = results.get('mtg_tasks')
+    if mtg_res and mtg_res.get('records'):
+        for r in mtg_res['records']:
+            who_id = r.get('WhoId')
+            if who_id and who_id not in mtg_who_result:
+                mtg_who_result[who_id] = r.get('Call_Result__c', '')
+
+    meeting_leads = []
+    if mtg_who_result:
+        ids_str  = ','.join(f"'{i}'" for i in list(mtg_who_result.keys())[:200])
+        lead_res = soql(f"SELECT Id, Name, Company FROM Lead WHERE Id IN ({ids_str})")
+        _, instance_url = _get_sf_token()
+        if lead_res and lead_res.get('records'):
+            for r in lead_res['records']:
+                lid = r.get('Id', '')
+                meeting_leads.append({
+                    'name':        r.get('Name', '—'),
+                    'company':     r.get('Company', '—'),
+                    'call_result': mtg_who_result.get(lid, ''),
+                    'sf_url':      f"{instance_url}/lightning/r/Lead/{lid}/view" if lid else '',
+                })
+
+    return jsonify({
+        'total_calls':       total_calls,
+        'calls_connected':   calls_connected,
+        'conversations':     total_conversations,
+        'meetings_generated':len(meeting_leads),
+        'meeting_leads':     meeting_leads,
+    })
+
+
 @app.route('/api/campaigns/<cid>', methods=['PUT'])
 @require_admin
 def api_camps_update(cid):
