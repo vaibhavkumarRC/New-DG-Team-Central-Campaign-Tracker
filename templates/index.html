@@ -1911,15 +1911,15 @@ function renderDashboard() {
           <th style="width:32px">#</th>
           <th>Campaign</th>
           <th style="text-align:center">SDR</th>
-          <th style="text-align:right" title="Total leads in campaign">Leads</th>
-          <th style="text-align:right;color:var(--purple)" title="Total call attempts (Orum + Nooks)">Calls</th>
-          <th style="text-align:right;color:var(--purple)" title="Unique leads that received at least 1 call">Called</th>
-          <th style="text-align:right" title="Avg call attempts per called lead">∅ Calls</th>
-          <th style="text-align:right;color:var(--amber)" title="Total email attempts (Smartlead + Outreach)">Emails</th>
-          <th style="text-align:right;color:var(--amber)" title="Unique leads that received at least 1 email">Emailed</th>
-          <th style="text-align:right" title="Avg email attempts per emailed lead">∅ Emails</th>
-          <th style="text-align:right;color:var(--green)">Mtg Gen</th>
-          <th style="text-align:right;color:#34D399">Mtg Done</th>
+          <th style="text-align:right" title="Total leads in this campaign">Total Leads</th>
+          <th style="text-align:right;color:var(--purple)" title="Total call attempts made (Orum + Nooks)">Total Call Attempts</th>
+          <th style="text-align:right;color:var(--purple)" title="No. of unique leads that received at least 1 call — hover each cell to see uncalled count">Unique Leads Called</th>
+          <th style="text-align:right" title="Average call attempts made per called lead">Avg Calls per Lead</th>
+          <th style="text-align:right;color:var(--amber)" title="Total email attempts sent (Smartlead + Outreach)">Total Email Attempts</th>
+          <th style="text-align:right;color:var(--amber)" title="No. of unique leads that received at least 1 email — hover each cell to see unemailed count">Unique Leads Emailed</th>
+          <th style="text-align:right" title="Average email attempts made per emailed lead">Avg Emails per Lead</th>
+          <th style="text-align:right;color:var(--green)">Meetings Generated</th>
+          <th style="text-align:right;color:#34D399">Meetings Done</th>
           <th style="text-align:right;color:var(--red)">No Show</th>
           <th style="text-align:right;color:#A78BFA">SQL</th>
           <th style="text-align:right;color:#F472B6">S1</th>
@@ -2080,21 +2080,21 @@ function renderCampaigns() {
     {k:'sdr_owner',              label:'SDR Owner'},
     {k:'email_owner',            label:'Email Owner'},
     {k:'status',                 label:'Status'},
-    {k:'total_leads',            label:'Leads',        num:true, tip:'Total leads in this campaign on Salesforce'},
-    {k:'total_calls',            label:'Calls',        num:true, tip:'Total call attempts made to leads in this campaign (Orum + Nooks)'},
-    {k:'unique_leads_called',    label:'Called',       num:true, tip:'Unique leads that received at least 1 call — hover each cell to see uncalled count'},
-    {k:'calls_per_called_lead',  label:'∅ Calls',      num:true, tip:'Average number of call attempts per called lead'},
-    {k:'total_emails',           label:'Emails',       num:true, tip:'Total email attempts sent to leads in this campaign (Smartlead + Outreach)'},
-    {k:'unique_leads_emailed',   label:'Emailed',      num:true, tip:'Unique leads that received at least 1 email — hover each cell to see unemailed count'},
-    {k:'emails_per_emailed_lead',label:'∅ Emails',     num:true, tip:'Average number of email attempts per emailed lead'},
-    {k:'meetings',               label:'Mtg Gen',      num:true},
-    {k:'meeting_done',           label:'Mtg Done',     num:true},
-    {k:'meeting_noshow',         label:'No Show',      num:true},
-    {k:'sql_gen',                label:'SQL',          num:true},
-    {k:'s1_created',             label:'S1 Created',   num:true},
-    {k:'call_cov',               label:'Call Cov%',    num:true, auto:true, tip:'Total calls ÷ total leads'},
-    {k:'mtg_rate',               label:'Mtg Rate%',    num:true, auto:true},
-    {k:'s1_rate',                label:'S1/Leads%',    num:true, auto:true},
+    {k:'total_leads',            label:'Total Leads',             num:true, tip:'Total leads in this campaign on Salesforce'},
+    {k:'total_calls',            label:'Total Call Attempts',      num:true, tip:'Total call attempts made to leads in this campaign (Orum + Nooks)'},
+    {k:'unique_leads_called',    label:'Unique Leads Called',      num:true, tip:'No. of unique leads that received at least 1 call — hover each cell to see how many are not yet called'},
+    {k:'calls_per_called_lead',  label:'Avg Calls per Lead',       num:true, tip:'Average number of call attempts made per called lead'},
+    {k:'total_emails',           label:'Total Email Attempts',     num:true, tip:'Total email attempts sent to leads in this campaign (Smartlead + Outreach)'},
+    {k:'unique_leads_emailed',   label:'Unique Leads Emailed',     num:true, tip:'No. of unique leads that received at least 1 email — hover each cell to see how many are not yet emailed'},
+    {k:'emails_per_emailed_lead',label:'Avg Emails per Lead',      num:true, tip:'Average number of email attempts made per emailed lead'},
+    {k:'meetings',               label:'Meetings Generated',       num:true},
+    {k:'meeting_done',           label:'Meetings Done',            num:true},
+    {k:'meeting_noshow',         label:'No Show',                  num:true},
+    {k:'sql_gen',                label:'SQL',                      num:true},
+    {k:'s1_created',             label:'S1 Created',               num:true},
+    {k:'call_cov',               label:'Call Coverage %',          num:true, auto:true, tip:'Total call attempts ÷ total leads'},
+    {k:'mtg_rate',               label:'Meeting Rate %',           num:true, auto:true, tip:'Meetings generated ÷ total call attempts'},
+    {k:'s1_rate',                label:'S1 Rate %',                num:true, auto:true, tip:'S1 created ÷ total leads'},
   ];
 
   q('campThead').innerHTML = cols.map(c=>`
