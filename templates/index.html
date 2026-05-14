@@ -1851,12 +1851,13 @@ function renderDashboard() {
   const totalSqlGen   = sum(cps,'sql_gen');
   const activeCamps   = cps.filter(c=>c.status==='Active').length;
 
-  // S1 count comes from sdr_stats (opportunity query) to match what the modal shows
-  const allSdrStats     = src.sdr_stats || [];
-  const filteredSdrStats = S.dashSdrFilter === 'All'
-    ? allSdrStats
-    : allSdrStats.filter(s => s.name === S.dashSdrFilter);
-  const totalS1 = sum(filteredSdrStats, 's1_count');
+  // S1 count always uses the full (unfiltered by period) sdr_stats so it matches
+  // the modal which fetches all opps since NPV_START_DATE regardless of period.
+  const allSdrStatsMain     = S.data.sdr_stats || [];
+  const filteredSdrStatsMain = S.dashSdrFilter === 'All'
+    ? allSdrStatsMain
+    : allSdrStatsMain.filter(s => s.name === S.dashSdrFilter);
+  const totalS1 = sum(filteredSdrStatsMain, 's1_count');
 
   // ── KPI cards ────────────────────────────────────────────────────────────
   const _sdr = S.dashSdrFilter === 'All' ? '' : S.dashSdrFilter.replace(/'/g,"\\'");
