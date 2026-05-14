@@ -1056,15 +1056,15 @@ def api_nooks_call_detail():
 
     queries = {
         'total':      f"SELECT COUNT(Id) FROM Task WHERE Subject LIKE '[Nooks Call]%' AND WhoId IN ({lead_sub})",
-        'connected':  f"SELECT COUNT(Id) FROM Task WHERE Subject LIKE '[Nooks Call]%' AND Call_Result__c IN ({connected_str}) AND WhoId IN ({lead_sub})",
-        'mtg_tasks':  (f"SELECT WhoId, Call_Result__c FROM Task "
-                       f"WHERE Subject LIKE '[Nooks Call]%' AND Call_Result__c IN ({meeting_str}) "
+        # CallDisposition is the standard SFDC field Nooks writes to (not Call_Result__c)
+        'connected':  f"SELECT COUNT(Id) FROM Task WHERE Subject LIKE '[Nooks Call]%' AND CallDisposition IN ({connected_str}) AND WhoId IN ({lead_sub})",
+        'mtg_tasks':  (f"SELECT WhoId, CallDisposition FROM Task "
+                       f"WHERE Subject LIKE '[Nooks Call]%' AND CallDisposition IN ({meeting_str}) "
                        f"AND WhoId IN ({lead_sub}) LIMIT 500"),
-        # Fetch tasks with Description to filter conversations in Python
-        # (Description is a Long Text Area — not filterable via SOQL LIKE)
+        # Description is a Long Text Area — cannot filter in SOQL WHERE clause
+        # Fetch all Nooks tasks and filter for AI summary marker in Python
         'conv_tasks': (f"SELECT WhoId, Description FROM Task "
-                       f"WHERE Subject LIKE '[Nooks Call]%' AND WhoId IN ({lead_sub}) "
-                       f"AND Description != null LIMIT 3000"),
+                       f"WHERE Subject LIKE '[Nooks Call]%' AND WhoId IN ({lead_sub}) LIMIT 3000"),
     }
 
     results = {}
@@ -1089,26 +1089,29 @@ def api_nooks_call_detail():
     total_conversations = len(conv_who_ids)
 
     # Meeting leads — collect unique WhoIds then get lead names from Salesforce
-    mtg_who_result = {}   # who_id → call_result
+    mtg_who_result = {}   # who_id → call_disposition
     mtg_res = results.get('mtg_tasks')
     if mtg_res and mtg_res.get('records'):
         for r in mtg_res['records']:
             who_id = r.get('WhoId')
             if who_id and who_id not in mtg_who_result:
-                mtg_who_result[who_id] = r.get('Call_Result__c', '')
+                mtg_who_result[who_id] = r.get('CallDisposition', '')
 
     meeting_leads = []
     if mtg_who_result:
         ids_str  = ','.join(f"'{i}'" for i in list(mtg_who_result.keys())[:200])
         lead_res = soql(f"SELECT Id, Name, Company FROM Lead WHERE Id IN ({ids_str})")
         _, instance_url = _get_sf_token()
+        # Normalize keys to lowercase for 15-vs-18 char ID matching
+        mtg_lookup = {k.lower(): v for k, v in mtg_who_result.items()}
         if lead_res and lead_res.get('records'):
             for r in lead_res['records']:
                 lid = r.get('Id', '')
+                disposition = mtg_lookup.get(lid.lower(), '') or mtg_lookup.get(lid[:15].lower(), '')
                 meeting_leads.append({
                     'name':        r.get('Name', '—'),
                     'company':     r.get('Company', '—'),
-                    'call_result': mtg_who_result.get(lid, ''),
+                    'call_result': disposition,
                     'sf_url':      f"{instance_url}/lightning/r/Lead/{lid}/view" if lid else '',
                 })
 
