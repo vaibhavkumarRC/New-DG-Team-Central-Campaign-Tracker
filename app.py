@@ -700,9 +700,10 @@ def api_camps_import():
 
 @app.route('/api/meetings-leads')
 def api_meetings_leads():
-    """Return leads where Meeting_Generated_on__c is not null. Optional ?campaign= filter.
+    """Return leads where Meeting_Generated_on__c is not null. Optional ?campaign= or ?segment= filter.
     When filtering by campaign, also applies that campaign's start/end date range."""
-    camp = request.args.get('campaign', '').strip()
+    camp    = request.args.get('campaign', '').strip()
+    segment = request.args.get('segment',  '').strip()
     if camp:
         # Look up the campaign's date range from campaigns.json
         camps_cfg = load_campaigns()
@@ -719,9 +720,11 @@ def api_meetings_leads():
              f"AND Meeting_Generated_on__c != null{dt} "
              f"ORDER BY Meeting_Generated_on__c DESC NULLS LAST LIMIT 500")
     else:
-        # "All SDRs" view — fetch per campaign so each date range is respected,
-        # then merge. This ensures the modal count matches the KPI card exactly.
+        # All campaigns view — fetch per campaign so each date range is respected,
+        # then merge. Filter by segment if provided.
         camps_cfg = load_campaigns()
+        if segment:
+            camps_cfg = [c for c in camps_cfg if (c.get('segment') or '').strip() == segment]
         all_records = []
         for camp_cfg in camps_cfg:
             cname = camp_cfg.get('name', '').strip()
@@ -782,9 +785,10 @@ def api_meetings_leads():
 
 @app.route('/api/status-leads')
 def api_status_leads():
-    """Return leads filtered by Meeting_Status__c. ?status=done|noshow|sql [&sdr=DisplayName]"""
-    status = request.args.get('status', '').strip()
-    sdr    = request.args.get('sdr',    '').strip()
+    """Return leads filtered by Meeting_Status__c. ?status=done|noshow|sql [&sdr=] [&segment=]"""
+    status  = request.args.get('status',  '').strip()
+    sdr     = request.args.get('sdr',     '').strip()
+    segment = request.args.get('segment', '').strip()
 
     STATUS_FILTERS = {
         'done':   "Meeting_Status__c IN ('Meeting Done-Nurture', 'Meeting Done- Not Interested', 'Meeting Done-Unqualified')",
@@ -801,6 +805,8 @@ def api_status_leads():
         sdr_clause = f" AND Meeting_Generated_by__c = '{esc(sfdc_name)}'"
 
     camps_cfg   = load_campaigns()
+    if segment:
+        camps_cfg = [c for c in camps_cfg if (c.get('segment') or '').strip() == segment]
     all_records = []
     for camp_cfg in camps_cfg:
         cname = camp_cfg.get('name', '').strip()
@@ -997,20 +1003,42 @@ def api_time_data():
 
 @app.route('/api/s1-opportunities')
 def api_s1_opportunities():
-    """Return Opportunities created after NPV_START_DATE where SDR_Owner__c is not null.
-    Optional ?sdr=DisplayName to filter to a single SDR."""
-    sdr_display = request.args.get('sdr', '').strip()
-    sdr_clause  = ''
-    if sdr_display:
-        sfdc_name  = SFDC_NAME_MAP_REVERSE.get(sdr_display, sdr_display)
-        sdr_clause = f" AND SDR_Owner__c = '{esc(sfdc_name)}'"
+    """Return Opportunities. Optional ?sdr=DisplayName and/or ?segment=SegmentName.
+    When segment is provided, returns opps from converted leads in that segment's campaigns
+    (consistent with how s1_created is calculated per campaign).
+    Without segment, returns all opps with SDR_Owner__c since NPV_START_DATE."""
+    sdr_display = request.args.get('sdr',     '').strip()
+    segment     = request.args.get('segment', '').strip()
 
-    q_str = (f"SELECT Id, Name, Amount, StageName, Account.Name, SDR_Owner__c, CreatedDate "
-             f"FROM Opportunity "
-             f"WHERE CreatedDate >= {NPV_START_DATE} "
-             f"AND SDR_Owner__c != null"
-             f"{sdr_clause} "
-             f"ORDER BY CreatedDate DESC NULLS LAST LIMIT 500")
+    if segment:
+        # Filter to opps from converted leads in this segment's campaigns
+        camps_cfg  = load_campaigns()
+        seg_camps  = [c['name'] for c in camps_cfg if (c.get('segment') or '').strip() == segment]
+        if not seg_camps:
+            return jsonify({'opportunities': [], 'total': 0})
+        camp_names = ','.join(f"'{esc(n)}'" for n in seg_camps)
+        sdr_clause = ''
+        if sdr_display:
+            sfdc_name  = SFDC_NAME_MAP_REVERSE.get(sdr_display, sdr_display)
+            sdr_clause = f" AND SDR_Owner__c = '{esc(sfdc_name)}'"
+        q_str = (f"SELECT Id, Name, Amount, StageName, Account.Name, SDR_Owner__c, CreatedDate "
+                 f"FROM Opportunity "
+                 f"WHERE Id IN ("
+                 f"  SELECT ConvertedOpportunityId FROM Lead "
+                 f"  WHERE Campaign__c IN ({camp_names}) AND IsConverted = true"
+                 f"){sdr_clause} "
+                 f"ORDER BY CreatedDate DESC NULLS LAST LIMIT 500")
+    else:
+        sdr_clause = ''
+        if sdr_display:
+            sfdc_name  = SFDC_NAME_MAP_REVERSE.get(sdr_display, sdr_display)
+            sdr_clause = f" AND SDR_Owner__c = '{esc(sfdc_name)}'"
+        q_str = (f"SELECT Id, Name, Amount, StageName, Account.Name, SDR_Owner__c, CreatedDate "
+                 f"FROM Opportunity "
+                 f"WHERE CreatedDate >= {NPV_START_DATE} "
+                 f"AND SDR_Owner__c != null"
+                 f"{sdr_clause} "
+                 f"ORDER BY CreatedDate DESC NULLS LAST LIMIT 500")
 
     result  = soql(q_str)
     records = result.get('records', []) if result else []

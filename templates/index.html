@@ -1851,21 +1851,17 @@ function renderDashboard() {
   const totalSqlGen   = sum(cps,'sql_gen');
   const activeCamps   = cps.filter(c=>c.status==='Active').length;
 
-  // S1 count always uses the full (unfiltered by period) sdr_stats so it matches
-  // the modal which fetches all opps since NPV_START_DATE regardless of period.
-  const allSdrStatsMain     = S.data.sdr_stats || [];
-  const filteredSdrStatsMain = S.dashSdrFilter === 'All'
-    ? allSdrStatsMain
-    : allSdrStatsMain.filter(s => s.name === S.dashSdrFilter);
-  const totalS1 = sum(filteredSdrStatsMain, 's1_count');
+  // S1: sum from campaign-level data (already segment+SDR filtered via cps)
+  const totalS1 = sum(cps, 's1_created');
 
   // ── KPI cards ────────────────────────────────────────────────────────────
   const _sdr = S.dashSdrFilter === 'All' ? '' : S.dashSdrFilter.replace(/'/g,"\\'");
-  const meetingsOnClick  = _sdr ? `openMeetingsModal('${_sdr}')` : 'openMeetingsModal()';
-  const mtgDoneOnClick   = _sdr ? `openStatusLeadsModal('done','${_sdr}')` : "openStatusLeadsModal('done')";
-  const noShowOnClick    = _sdr ? `openStatusLeadsModal('noshow','${_sdr}')` : "openStatusLeadsModal('noshow')";
-  const sqlOnClick       = _sdr ? `openStatusLeadsModal('sql','${_sdr}')` : "openStatusLeadsModal('sql')";
-  const s1OnClick        = _sdr ? `openS1Modal('${_sdr}')` : 'openS1Modal()';
+  const _seg = S.dashSegmentFilter !== 'All' ? S.dashSegmentFilter.replace(/'/g,"\\'") : '';
+  const meetingsOnClick  = `openMeetingsModal('','${_sdr}','${_seg}')`;
+  const mtgDoneOnClick   = `openStatusLeadsModal('done','${_sdr}','${_seg}')`;
+  const noShowOnClick    = `openStatusLeadsModal('noshow','${_sdr}','${_seg}')`;
+  const sqlOnClick       = `openStatusLeadsModal('sql','${_sdr}','${_seg}')`;
+  const s1OnClick        = `openS1Modal('${_sdr}','${_seg}')`;
 
   const kpis = [
     {label:'Campaigns',      value:cps.length,           sub:`${activeCamps} active`,                              icon:'🎯', color:'var(--gold)'},
@@ -2686,10 +2682,12 @@ async function quickAddCampaign() {
 // ── MEETINGS LEADS MODAL ─────────────────────────────────────────────────────
 let _meetingsAllLeads = [];
 
-async function openMeetingsModal(campaignName) {
+async function openMeetingsModal(campaignName, sdrFilter, segmentFilter) {
   q('meetingsOverlay').classList.add('open');
   q('meetingsSearch').value = '';
-  q('meetingsModalSub').textContent = campaignName ? `Campaign: ${campaignName}` : 'All campaigns · loading…';
+  const subLabel = campaignName ? `Campaign: ${campaignName}`
+    : (segmentFilter ? `Segment: ${segmentFilter}` : 'All campaigns') + ' · loading…';
+  q('meetingsModalSub').textContent = subLabel;
   q('meetingsTableWrap').innerHTML = `
     <div style="padding:40px;text-align:center;color:var(--text-dim)">
       <div class="spinner" style="width:24px;height:24px;margin:0 auto 12px"></div>
@@ -2697,15 +2695,20 @@ async function openMeetingsModal(campaignName) {
     </div>`;
 
   try {
-    const url = campaignName
-      ? `/api/meetings-leads?campaign=${encodeURIComponent(campaignName)}`
-      : '/api/meetings-leads';
+    let url;
+    if (campaignName) {
+      url = `/api/meetings-leads?campaign=${encodeURIComponent(campaignName)}`;
+    } else {
+      url = '/api/meetings-leads';
+      if (sdrFilter)     url += `?sdr=${encodeURIComponent(sdrFilter)}`;
+      if (segmentFilter) url += `${url.includes('?')?'&':'?'}segment=${encodeURIComponent(segmentFilter)}`;
+    }
     const r   = await fetch(url);
     const d   = await r.json();
     _meetingsAllLeads = d.leads || [];
-    q('meetingsModalSub').textContent = campaignName
-      ? `Campaign: ${campaignName} · ${_meetingsAllLeads.length} meetings`
-      : `All campaigns · ${_meetingsAllLeads.length} total meetings`;
+    const ctx = campaignName ? `Campaign: ${campaignName}`
+      : (segmentFilter ? `Segment: ${segmentFilter}` : 'All campaigns');
+    q('meetingsModalSub').textContent = `${ctx} · ${_meetingsAllLeads.length} meetings`;
     renderMeetingsTable(_meetingsAllLeads);
   } catch(e) {
     q('meetingsTableWrap').innerHTML = `<div style="padding:30px;color:var(--red);text-align:center">Failed to load: ${e.message}</div>`;
@@ -2773,10 +2776,11 @@ function closeMeetingsModal(e) {
 // ── S1 OPPORTUNITIES MODAL ────────────────────────────────────────────────────
 let _s1AllOpps = [];
 
-async function openS1Modal(sdrFilter) {
+async function openS1Modal(sdrFilter, segmentFilter) {
   q('s1Overlay').classList.add('open');
   q('s1Search').value = '';
-  q('s1ModalSub').textContent = sdrFilter ? `SDR: ${sdrFilter} · loading…` : 'All SDRs · loading…';
+  const ctxLabel = (segmentFilter ? `Segment: ${segmentFilter}` : 'All SDRs') + (sdrFilter ? ` · ${sdrFilter}` : '') + ' · loading…';
+  q('s1ModalSub').textContent = ctxLabel;
   q('s1TableWrap').innerHTML = `
     <div style="padding:40px;text-align:center;color:var(--text-dim)">
       <div class="spinner" style="width:24px;height:24px;margin:0 auto 12px"></div>
@@ -2784,15 +2788,16 @@ async function openS1Modal(sdrFilter) {
     </div>`;
 
   try {
-    const url = sdrFilter
-      ? `/api/s1-opportunities?sdr=${encodeURIComponent(sdrFilter)}`
-      : '/api/s1-opportunities';
+    let url = '/api/s1-opportunities';
+    const params = [];
+    if(sdrFilter)     params.push(`sdr=${encodeURIComponent(sdrFilter)}`);
+    if(segmentFilter) params.push(`segment=${encodeURIComponent(segmentFilter)}`);
+    if(params.length) url += '?' + params.join('&');
     const r = await fetch(url);
     const d = await r.json();
     _s1AllOpps = d.opportunities || [];
-    q('s1ModalSub').textContent = sdrFilter
-      ? `SDR: ${sdrFilter} · ${_s1AllOpps.length} opportunities`
-      : `All SDRs · ${_s1AllOpps.length} total opportunities`;
+    const ctx = (segmentFilter ? `Segment: ${segmentFilter}` : 'All SDRs') + (sdrFilter ? ` · ${sdrFilter}` : '');
+    q('s1ModalSub').textContent = `${ctx} · ${_s1AllOpps.length} opportunities`;
     renderS1Table(_s1AllOpps);
   } catch(e) {
     q('s1TableWrap').innerHTML = `<div style="padding:30px;color:var(--red);text-align:center">Failed to load: ${e.message}</div>`;
@@ -2865,11 +2870,12 @@ const STATUS_LABELS = {
 };
 let _statusAllLeads = [];
 
-async function openStatusLeadsModal(status, sdrFilter) {
+async function openStatusLeadsModal(status, sdrFilter, segmentFilter) {
   const meta = STATUS_LABELS[status] || { title:'Lead Details', sub:'' };
   q('meetingsOverlay').classList.add('open');
   q('meetingsSearch').value = '';
-  q('meetingsModalSub').textContent = meta.sub + (sdrFilter ? ` · SDR: ${sdrFilter}` : '') + ' · loading…';
+  const ctxLabel = (sdrFilter ? ` · SDR: ${sdrFilter}` : '') + (segmentFilter ? ` · Segment: ${segmentFilter}` : '');
+  q('meetingsModalSub').textContent = meta.sub + ctxLabel + ' · loading…';
   q('meetingsTableWrap').innerHTML = `
     <div style="padding:40px;text-align:center;color:var(--text-dim)">
       <div class="spinner" style="width:24px;height:24px;margin:0 auto 12px"></div>
@@ -2882,11 +2888,12 @@ async function openStatusLeadsModal(status, sdrFilter) {
 
   try {
     let url = `/api/status-leads?status=${status}`;
-    if(sdrFilter) url += `&sdr=${encodeURIComponent(sdrFilter)}`;
+    if(sdrFilter)     url += `&sdr=${encodeURIComponent(sdrFilter)}`;
+    if(segmentFilter) url += `&segment=${encodeURIComponent(segmentFilter)}`;
     const r = await fetch(url);
     const d = await r.json();
     _statusAllLeads = d.leads || [];
-    q('meetingsModalSub').textContent = meta.sub + (sdrFilter ? ` · ${sdrFilter}` : '') + ` · ${_statusAllLeads.length} leads`;
+    q('meetingsModalSub').textContent = meta.sub + ctxLabel + ` · ${_statusAllLeads.length} leads`;
     renderStatusLeadsTable(_statusAllLeads);
   } catch(e) {
     q('meetingsTableWrap').innerHTML = `<div style="padding:30px;color:var(--red);text-align:center">Failed to load: ${e.message}</div>`;
