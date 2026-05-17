@@ -682,6 +682,7 @@ def api_camps_add():
         'email_owner': (d.get('email_owner') or '').strip(),
         'status':      d.get('status', 'Active'),
         'segment':     (d.get('segment') or '').strip(),
+        'pod_team':    (d.get('pod_team') or '').strip(),
         'start_date':  d.get('start_date', ''),
         'end_date':    d.get('end_date', ''),
     }
@@ -702,8 +703,9 @@ def api_camps_import():
 def api_meetings_leads():
     """Return leads where Meeting_Generated_on__c is not null. Optional ?campaign= or ?segment= filter.
     When filtering by campaign, also applies that campaign's start/end date range."""
-    camp    = request.args.get('campaign', '').strip()
-    segment = request.args.get('segment',  '').strip()
+    camp     = request.args.get('campaign', '').strip()
+    segment  = request.args.get('segment',  '').strip()
+    pod_team = request.args.get('pod_team', '').strip()
     if camp:
         # Look up the campaign's date range from campaigns.json
         camps_cfg = load_campaigns()
@@ -725,6 +727,8 @@ def api_meetings_leads():
         camps_cfg = load_campaigns()
         if segment:
             camps_cfg = [c for c in camps_cfg if (c.get('segment') or '').strip() == segment]
+        if pod_team:
+            camps_cfg = [c for c in camps_cfg if (c.get('pod_team') or '').strip() == pod_team]
         all_records = []
         for camp_cfg in camps_cfg:
             cname = camp_cfg.get('name', '').strip()
@@ -786,9 +790,10 @@ def api_meetings_leads():
 @app.route('/api/status-leads')
 def api_status_leads():
     """Return leads filtered by Meeting_Status__c. ?status=done|noshow|sql [&sdr=] [&segment=]"""
-    status  = request.args.get('status',  '').strip()
-    sdr     = request.args.get('sdr',     '').strip()
-    segment = request.args.get('segment', '').strip()
+    status   = request.args.get('status',   '').strip()
+    sdr      = request.args.get('sdr',      '').strip()
+    segment  = request.args.get('segment',  '').strip()
+    pod_team = request.args.get('pod_team', '').strip()
 
     STATUS_FILTERS = {
         'done':   "Meeting_Status__c IN ('Meeting Done-Nurture', 'Meeting Done- Not Interested', 'Meeting Done-Unqualified')",
@@ -807,6 +812,8 @@ def api_status_leads():
     camps_cfg   = load_campaigns()
     if segment:
         camps_cfg = [c for c in camps_cfg if (c.get('segment') or '').strip() == segment]
+    if pod_team:
+        camps_cfg = [c for c in camps_cfg if (c.get('pod_team') or '').strip() == pod_team]
     all_records = []
     for camp_cfg in camps_cfg:
         cname = camp_cfg.get('name', '').strip()
@@ -1007,16 +1014,21 @@ def api_s1_opportunities():
     When segment is provided, returns opps from converted leads in that segment's campaigns
     (consistent with how s1_created is calculated per campaign).
     Without segment, returns all opps with SDR_Owner__c since NPV_START_DATE."""
-    sdr_display = request.args.get('sdr',     '').strip()
-    segment     = request.args.get('segment', '').strip()
+    sdr_display = request.args.get('sdr',      '').strip()
+    segment     = request.args.get('segment',  '').strip()
+    pod_team    = request.args.get('pod_team', '').strip()
 
-    if segment:
-        # Filter to opps from converted leads in this segment's campaigns
-        camps_cfg  = load_campaigns()
-        seg_camps  = [c['name'] for c in camps_cfg if (c.get('segment') or '').strip() == segment]
-        if not seg_camps:
+    if segment or pod_team:
+        camps_cfg = load_campaigns()
+        filtered  = camps_cfg
+        if segment:
+            filtered = [c for c in filtered if (c.get('segment') or '').strip() == segment]
+        if pod_team:
+            filtered = [c for c in filtered if (c.get('pod_team') or '').strip() == pod_team]
+        camp_names_list = [c['name'] for c in filtered]
+        if not camp_names_list:
             return jsonify({'opportunities': [], 'total': 0})
-        camp_names = ','.join(f"'{esc(n)}'" for n in seg_camps)
+        camp_names = ','.join(f"'{esc(n)}'" for n in camp_names_list)
         sdr_clause = ''
         if sdr_display:
             sfdc_name  = SFDC_NAME_MAP_REVERSE.get(sdr_display, sdr_display)

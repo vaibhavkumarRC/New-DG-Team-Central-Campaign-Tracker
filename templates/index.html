@@ -583,6 +583,15 @@ tfoot td {
             <option value="All">🗂 All Segments</option>
           </select>
         </div>
+        <!-- POD Team Filter -->
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.5px;white-space:nowrap;text-transform:uppercase">POD Team</span>
+          <select id="dashPodSelect" class="form-select"
+            style="min-width:200px;padding:6px 12px;font-size:12.5px;background:var(--surface2)"
+            onchange="setDashPodFilter(this.value)">
+            <option value="All">🏢 All PODs</option>
+          </select>
+        </div>
         <div id="lastSyncLabel" style="font-size:11px;color:var(--text-dim)"></div>
       </div>
     </div>
@@ -672,6 +681,9 @@ tfoot td {
       </select>
       <select class="form-select" id="campSegmentFilter" style="height:32px;padding:0 8px;font-size:12.5px;min-width:150px" onchange="renderCampaigns()">
         <option value="">All Segments</option>
+      </select>
+      <select class="form-select" id="campPodFilter" style="height:32px;padding:0 8px;font-size:12.5px;min-width:180px" onchange="renderCampaigns()">
+        <option value="">All PODs</option>
       </select>
       <div class="filter-chips" id="statusChips"></div>
       <div style="margin-left:auto; display:flex; gap:8px;">
@@ -1097,6 +1109,13 @@ tfoot td {
               </div>
             </div>
           </div>
+          <div class="form-group">
+            <label class="form-label">POD Team</label>
+            <select class="form-select" id="addPodTeamSelect">
+              <option value="">— Select POD —</option>
+              <!-- populated by JS -->
+            </select>
+          </div>
           <div class="form-grid-2">
             <div class="form-group">
               <label class="form-label">Start Date</label>
@@ -1307,6 +1326,13 @@ tfoot td {
           </div>
         </div>
       </div>
+      <div class="form-group">
+        <label class="form-label">POD Team</label>
+        <select class="form-select" id="editPodTeamSelect">
+          <option value="">— Select POD —</option>
+          <!-- populated by JS -->
+        </select>
+      </div>
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label">Start Date <span style="font-size:10px;color:var(--text-dim)">(filters calls/emails/meetings)</span></label>
@@ -1351,6 +1377,15 @@ const SDR_TARGETS = {
   'Saka':     { meeting_done: 16, s1: 5, npv: 1080000 },
 };
 
+const POD_TEAMS = [
+  'Lisa - Ananya; Anurup',
+  'Matt - Isaac; Saka; Akil',
+  'Bianca - Akhilesh; Anushka',
+  'Abhishek - Sukhneet; Felix',
+  'Jessica - Shahana; Michelle',
+  'Hursh - Samridhi; Rithick',
+];
+
 // ── STATE ────────────────────────────────────────────────────────────────────
 const S = {
   data:              { campaigns:[], sdr_stats:[], last_sync:null, is_syncing:false, sync_progress:0 },
@@ -1358,7 +1393,9 @@ const S = {
   filterStatus:      'All',
   dashSdrFilter:     'All',
   dashSegmentFilter: 'All',
+  dashPodFilter:     'All',
   campSegmentFilter: '',
+  campPodFilter:     '',
   campPerfFilter:    'All',
   sortCol:           'meetings',
   sortDir:           -1,
@@ -1479,6 +1516,7 @@ async function addCampaign(e) {
   const fd = new FormData(e.target);
   const body = Object.fromEntries(fd.entries());
   body.segment = getAddSegmentValue();
+  body.pod_team = q('addPodTeamSelect')?.value || '';
   const r = await fetch('/api/campaigns',{method:'POST',headers:authHeaders(),body:JSON.stringify(body)});
   if(r.ok){
     showToast('✅ Campaign added! Syncing data…');
@@ -1582,6 +1620,41 @@ function setDashSdrFilter(val) {
 function setDashSegmentFilter(val) {
   S.dashSegmentFilter = val;
   renderDashboard();
+}
+
+function setDashPodFilter(val) {
+  S.dashPodFilter = val;
+  renderDashboard();
+}
+
+function populatePodDropdowns() {
+  const opts = POD_TEAMS.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+
+  // Dashboard filter
+  const dashPod = q('dashPodSelect');
+  if(dashPod) {
+    dashPod.innerHTML = '<option value="All">🏢 All PODs</option>' + opts;
+    if(S.dashPodFilter !== 'All') dashPod.value = S.dashPodFilter;
+  }
+
+  // Campaigns tab filter
+  const campPod = q('campPodFilter');
+  if(campPod) {
+    campPod.innerHTML = '<option value="">All PODs</option>' + opts;
+    if(S.campPodFilter) campPod.value = S.campPodFilter;
+  }
+
+  // Add form
+  const addPod = q('addPodTeamSelect');
+  if(addPod) {
+    addPod.innerHTML = '<option value="">— Select POD —</option>' + opts;
+  }
+
+  // Edit form
+  const editPod = q('editPodTeamSelect');
+  if(editPod) {
+    editPod.innerHTML = '<option value="">— Select POD —</option>' + opts;
+  }
 }
 
 // ── SEGMENTS ─────────────────────────────────────────────────────────────────
@@ -1824,10 +1897,11 @@ function renderDashboard() {
     if(S.dashSdrFilter !== 'All' && sdrNames.includes(S.dashSdrFilter)) sel.value = S.dashSdrFilter;
   }
 
-  // ── Filter campaigns by selected SDR + Segment ──────────────────────────
+  // ── Filter campaigns by selected SDR + Segment + POD ──────────────────────────
   const cps = allCps.filter(c => {
     if(S.dashSdrFilter !== 'All' && (c.sdr_owner||'').trim() !== S.dashSdrFilter) return false;
     if(S.dashSegmentFilter !== 'All' && (c.segment||'').trim() !== S.dashSegmentFilter) return false;
+    if(S.dashPodFilter !== 'All' && (c.pod_team||'').trim() !== S.dashPodFilter) return false;
     return true;
   });
 
@@ -1857,11 +1931,12 @@ function renderDashboard() {
   // ── KPI cards ────────────────────────────────────────────────────────────
   const _sdr = S.dashSdrFilter === 'All' ? '' : S.dashSdrFilter.replace(/'/g,"\\'");
   const _seg = S.dashSegmentFilter !== 'All' ? S.dashSegmentFilter.replace(/'/g,"\\'") : '';
-  const meetingsOnClick  = `openMeetingsModal('','${_sdr}','${_seg}')`;
-  const mtgDoneOnClick   = `openStatusLeadsModal('done','${_sdr}','${_seg}')`;
-  const noShowOnClick    = `openStatusLeadsModal('noshow','${_sdr}','${_seg}')`;
-  const sqlOnClick       = `openStatusLeadsModal('sql','${_sdr}','${_seg}')`;
-  const s1OnClick        = `openS1Modal('${_sdr}','${_seg}')`;
+  const _pod = S.dashPodFilter !== 'All' ? S.dashPodFilter.replace(/'/g,"\\'") : '';
+  const meetingsOnClick  = `openMeetingsModal('','${_sdr}','${_seg}','${_pod}')`;
+  const mtgDoneOnClick   = `openStatusLeadsModal('done','${_sdr}','${_seg}','${_pod}')`;
+  const noShowOnClick    = `openStatusLeadsModal('noshow','${_sdr}','${_seg}','${_pod}')`;
+  const sqlOnClick       = `openStatusLeadsModal('sql','${_sdr}','${_seg}','${_pod}')`;
+  const s1OnClick        = `openS1Modal('${_sdr}','${_seg}','${_pod}')`;
 
   const kpis = [
     {label:'Campaigns',      value:cps.length,           sub:`${activeCamps} active`,                              icon:'🎯', color:'var(--gold)'},
@@ -2048,6 +2123,7 @@ function renderCampaigns() {
   const statusF  = S.filterStatus;
   const sdrF     = (q('campSdrFilter')?.value||'').toLowerCase();
   const segF     = q('campSegmentFilter')?.value || '';
+  const podF     = q('campPodFilter')?.value || '';
   const src = (S.timePeriod !== 'all' && S.periodData) ? S.periodData : S.data;
   const allCps   = src.campaigns||[];
 
@@ -2073,6 +2149,7 @@ function renderCampaigns() {
     if(statusF!=='All' && c.status!==statusF) return false;
     if(sdrF && (c.sdr_owner||'').toLowerCase() !== sdrF) return false;
     if(segF && (c.segment||'').trim() !== segF) return false;
+    if(podF && (c.pod_team||'') !== podF) return false;
     if(search && !c.name.toLowerCase().includes(search) &&
        !(c.sdr_owner||'').toLowerCase().includes(search)) return false;
     return true;
@@ -2682,11 +2759,11 @@ async function quickAddCampaign() {
 // ── MEETINGS LEADS MODAL ─────────────────────────────────────────────────────
 let _meetingsAllLeads = [];
 
-async function openMeetingsModal(campaignName, sdrFilter, segmentFilter) {
+async function openMeetingsModal(campaignName, sdrFilter, segmentFilter, podFilter) {
   q('meetingsOverlay').classList.add('open');
   q('meetingsSearch').value = '';
   const subLabel = campaignName ? `Campaign: ${campaignName}`
-    : (segmentFilter ? `Segment: ${segmentFilter}` : 'All campaigns') + ' · loading…';
+    : (segmentFilter ? `Segment: ${segmentFilter}` : (podFilter ? `POD: ${podFilter}` : 'All campaigns')) + ' · loading…';
   q('meetingsModalSub').textContent = subLabel;
   q('meetingsTableWrap').innerHTML = `
     <div style="padding:40px;text-align:center;color:var(--text-dim)">
@@ -2702,12 +2779,13 @@ async function openMeetingsModal(campaignName, sdrFilter, segmentFilter) {
       url = '/api/meetings-leads';
       if (sdrFilter)     url += `?sdr=${encodeURIComponent(sdrFilter)}`;
       if (segmentFilter) url += `${url.includes('?')?'&':'?'}segment=${encodeURIComponent(segmentFilter)}`;
+      if (podFilter)     url += `${url.includes('?')?'&':'?'}pod_team=${encodeURIComponent(podFilter)}`;
     }
     const r   = await fetch(url);
     const d   = await r.json();
     _meetingsAllLeads = d.leads || [];
     const ctx = campaignName ? `Campaign: ${campaignName}`
-      : (segmentFilter ? `Segment: ${segmentFilter}` : 'All campaigns');
+      : (segmentFilter ? `Segment: ${segmentFilter}` : (podFilter ? `POD: ${podFilter}` : 'All campaigns'));
     q('meetingsModalSub').textContent = `${ctx} · ${_meetingsAllLeads.length} meetings`;
     renderMeetingsTable(_meetingsAllLeads);
   } catch(e) {
@@ -2776,10 +2854,10 @@ function closeMeetingsModal(e) {
 // ── S1 OPPORTUNITIES MODAL ────────────────────────────────────────────────────
 let _s1AllOpps = [];
 
-async function openS1Modal(sdrFilter, segmentFilter) {
+async function openS1Modal(sdrFilter, segmentFilter, podFilter) {
   q('s1Overlay').classList.add('open');
   q('s1Search').value = '';
-  const ctxLabel = (segmentFilter ? `Segment: ${segmentFilter}` : 'All SDRs') + (sdrFilter ? ` · ${sdrFilter}` : '') + ' · loading…';
+  const ctxLabel = (segmentFilter ? `Segment: ${segmentFilter}` : (podFilter ? `POD: ${podFilter}` : 'All SDRs')) + (sdrFilter ? ` · ${sdrFilter}` : '') + ' · loading…';
   q('s1ModalSub').textContent = ctxLabel;
   q('s1TableWrap').innerHTML = `
     <div style="padding:40px;text-align:center;color:var(--text-dim)">
@@ -2792,11 +2870,12 @@ async function openS1Modal(sdrFilter, segmentFilter) {
     const params = [];
     if(sdrFilter)     params.push(`sdr=${encodeURIComponent(sdrFilter)}`);
     if(segmentFilter) params.push(`segment=${encodeURIComponent(segmentFilter)}`);
+    if(podFilter)     params.push(`pod_team=${encodeURIComponent(podFilter)}`);
     if(params.length) url += '?' + params.join('&');
     const r = await fetch(url);
     const d = await r.json();
     _s1AllOpps = d.opportunities || [];
-    const ctx = (segmentFilter ? `Segment: ${segmentFilter}` : 'All SDRs') + (sdrFilter ? ` · ${sdrFilter}` : '');
+    const ctx = (segmentFilter ? `Segment: ${segmentFilter}` : (podFilter ? `POD: ${podFilter}` : 'All SDRs')) + (sdrFilter ? ` · ${sdrFilter}` : '');
     q('s1ModalSub').textContent = `${ctx} · ${_s1AllOpps.length} opportunities`;
     renderS1Table(_s1AllOpps);
   } catch(e) {
@@ -2870,11 +2949,11 @@ const STATUS_LABELS = {
 };
 let _statusAllLeads = [];
 
-async function openStatusLeadsModal(status, sdrFilter, segmentFilter) {
+async function openStatusLeadsModal(status, sdrFilter, segmentFilter, podFilter) {
   const meta = STATUS_LABELS[status] || { title:'Lead Details', sub:'' };
   q('meetingsOverlay').classList.add('open');
   q('meetingsSearch').value = '';
-  const ctxLabel = (sdrFilter ? ` · SDR: ${sdrFilter}` : '') + (segmentFilter ? ` · Segment: ${segmentFilter}` : '');
+  const ctxLabel = (sdrFilter ? ` · SDR: ${sdrFilter}` : '') + (segmentFilter ? ` · Segment: ${segmentFilter}` : '') + (podFilter ? ` · POD: ${podFilter}` : '');
   q('meetingsModalSub').textContent = meta.sub + ctxLabel + ' · loading…';
   q('meetingsTableWrap').innerHTML = `
     <div style="padding:40px;text-align:center;color:var(--text-dim)">
@@ -2890,6 +2969,7 @@ async function openStatusLeadsModal(status, sdrFilter, segmentFilter) {
     let url = `/api/status-leads?status=${status}`;
     if(sdrFilter)     url += `&sdr=${encodeURIComponent(sdrFilter)}`;
     if(segmentFilter) url += `&segment=${encodeURIComponent(segmentFilter)}`;
+    if(podFilter)     url += `&pod_team=${encodeURIComponent(podFilter)}`;
     const r = await fetch(url);
     const d = await r.json();
     _statusAllLeads = d.leads || [];
@@ -2979,6 +3059,14 @@ function openEditModal(id) {
     handleEditSegmentChange(editSeg.value);
   }
 
+  // Populate pod_team select
+  const podTeam = c.pod_team || '';
+  const editPodEl = q('editPodTeamSelect');
+  if(editPodEl) {
+    editPodEl.innerHTML = '<option value="">— Select POD —</option>' +
+      POD_TEAMS.map(p => `<option value="${esc(p)}" ${p===podTeam?'selected':''}>${esc(p)}</option>`).join('');
+  }
+
   q('editOverlay').classList.add('open');
 }
 
@@ -2992,6 +3080,7 @@ async function saveEditCampaign() {
     email_owner: q('editEmail').value.trim(),
     status:      q('editStatus').value,
     segment:     getEditSegmentValue(),
+    pod_team:    q('editPodTeamSelect')?.value || '',
     start_date:  q('editStartDate').value,
     end_date:    q('editEndDate').value,
     manual_s1:   s1Raw === '' ? null : parseInt(s1Raw, 10),
@@ -3600,6 +3689,7 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeModal(); cl
 initAdminMode();
 fetchData();
 loadSegments();
+populatePodDropdowns();
 startCountdown();
 setInterval(fetchData, 10000);   // Poll Flask every 10s to pick up sync progress updates
 </script>
