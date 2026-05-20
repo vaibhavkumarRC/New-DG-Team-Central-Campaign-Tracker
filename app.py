@@ -14,6 +14,68 @@ DATA_DIR   = '/data' if os.path.isdir('/data') else BASE
 CAMPS_FILE    = os.path.join(DATA_DIR, 'campaigns.json')
 CACHE_FILE    = os.path.join(DATA_DIR, 'data_cache.json')
 SEGMENTS_FILE = os.path.join(DATA_DIR, 'segments.json')
+LEDGER_FILE   = os.path.join(DATA_DIR, 'meeting_ledger.json')
+
+# ── Meeting ledger — frozen attribution: campaign_id → {lead_id → {date, sdr}} ─
+# Once a Lead ID is attributed to a campaign it is never removed, even if
+# the lead's Campaign__c field is later changed to a different campaign.
+_ledger_lock = threading.Lock()
+
+def load_ledger():
+    if os.path.exists(LEDGER_FILE):
+        try:
+            with open(LEDGER_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_ledger(ledger):
+    with open(LEDGER_FILE, 'w') as f:
+        json.dump(ledger, f)
+
+def merge_meetings_into_ledger(campaign_id, sf_records):
+    """Add newly discovered meeting leads into the ledger. Never removes entries.
+    sf_records: list of SFDC Lead records with Id, Meeting_Generated_on__c,
+    Meeting_Generated_by__c fields.
+    Returns the updated ledger entry (dict of lead_id → {date, sdr}) for this campaign.
+    """
+    with _ledger_lock:
+        ledger = load_ledger()
+        entry  = ledger.get(campaign_id, {})
+        changed = False
+        for rec in sf_records:
+            lid = rec.get('Id')
+            if not lid or lid in entry:
+                continue  # already attributed — never overwrite
+            entry[lid] = {
+                'date': (rec.get('Meeting_Generated_on__c') or '')[:10],
+                'sdr':  norm_sdr(rec.get('Meeting_Generated_by__c') or ''),
+            }
+            changed = True
+        if changed:
+            ledger[campaign_id] = entry
+            save_ledger(ledger)
+        return entry
+
+def meetings_from_ledger(entry, start=None, end=None):
+    """Return (total_count, sdr_breakdown_list) from a ledger entry,
+    optionally filtered by date range (YYYY-MM-DD strings)."""
+    rows = list(entry.values())
+    if start:
+        rows = [r for r in rows if r['date'] >= start]
+    if end:
+        rows = [r for r in rows if r['date'] <= end]
+    total = len(rows)
+    sdr_counts = {}
+    for r in rows:
+        sdr = r['sdr'] or 'Unknown'
+        sdr_counts[sdr] = sdr_counts.get(sdr, 0) + 1
+    breakdown = sorted(
+        [{'name': k, 'meetings': v} for k, v in sdr_counts.items()],
+        key=lambda x: x['meetings'], reverse=True
+    )
+    return total, breakdown
 
 DEFAULT_SEGMENTS = ['EPIC Campaign', 'TruBridge Campaign', 'Factors Data', 'Hiring Data', 'High Intent Data']
 
@@ -304,11 +366,12 @@ def campaign_metrics(c, start_override=None, end_override=None):
             'emails':         f"SELECT COUNT(Id) FROM Task WHERE (Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%') AND WhoId IN ({lead}){dt_task}",
             'unique_called':  f"SELECT COUNT_DISTINCT(WhoId) FROM Task WHERE (Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%') AND WhoId IN ({lead}){dt_task}",
             'unique_emailed': f"SELECT COUNT_DISTINCT(WhoId) FROM Task WHERE (Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%') AND WhoId IN ({lead}){dt_task}",
-            'meetings': f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' AND Meeting_Generated_on__c != null{dt_mtg}",
-            'sdr':      (f"SELECT Meeting_Generated_by__c, COUNT(Id) FROM Lead "
-                         f"WHERE Campaign__c = '{n}' AND Meeting_Generated_on__c != null{dt_mtg} "
-                         f"AND Meeting_Generated_by__c != null "
-                         f"GROUP BY Meeting_Generated_by__c ORDER BY COUNT(Id) DESC LIMIT 20"),
+            # Fetch full Lead records for meetings — no date filter so we capture all
+            # meetings ever generated while the lead was in this campaign. Date
+            # filtering is applied in Python against the frozen ledger below.
+            'meeting_leads':  (f"SELECT Id, Meeting_Generated_on__c, Meeting_Generated_by__c "
+                               f"FROM Lead WHERE Campaign__c = '{n}' "
+                               f"AND Meeting_Generated_on__c != null LIMIT 2000"),
             'meeting_done':   (f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' "
                                f"AND Meeting_Status__c IN ('Meeting Done-Nurture', 'Meeting Done- Not Interested', 'Meeting Done-Unqualified'){dt_mtg}"),
             'meeting_noshow': (f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' "
@@ -338,13 +401,16 @@ def campaign_metrics(c, start_override=None, end_override=None):
             for f in as_completed(futs):
                 results[futs[f]] = f.result()
 
-    sdr_bk = []
-    if results.get('sdr') and results['sdr'].get('records'):
-        for rec in results['sdr']['records']:
-            sdr_bk.append({
-                'name': norm_sdr(rec.get('Meeting_Generated_by__c') or 'Unknown'),
-                'meetings': int(rec.get('expr0', 0) or 0)
-            })
+    # ── Frozen meeting ledger ─────────────────────────────────────────────────
+    # Merge any newly discovered meeting leads into the permanent ledger, then
+    # derive the meeting count and SDR breakdown from it so that leads which
+    # were later reassigned to another campaign don't steal this campaign's credit.
+    sf_meeting_records = []
+    if results.get('meeting_leads') and results['meeting_leads'].get('records'):
+        sf_meeting_records = results['meeting_leads']['records']
+
+    ledger_entry = merge_meetings_into_ledger(c['id'], sf_meeting_records)
+    total_meetings, sdr_bk = meetings_from_ledger(ledger_entry, start or None, end or None)
 
     # Parse per-SDR status breakdown
     status_sdr_bk = {}
@@ -387,7 +453,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
         'unique_leads_emailed':     unique_leads_emailed,
         'calls_per_called_lead':    calls_per_called_lead,
         'emails_per_emailed_lead':  emails_per_emailed_lead,
-        'meetings':           cnt(results.get('meetings')),
+        'meetings':           total_meetings,
         's1_created':         int(manual_s1) if has_manual_s1 else cnt(results.get('s1')),
         's1_is_manual':       has_manual_s1,
         'meeting_done':       cnt(results.get('meeting_done')),
