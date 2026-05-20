@@ -16,9 +16,30 @@ CACHE_FILE    = os.path.join(DATA_DIR, 'data_cache.json')
 SEGMENTS_FILE = os.path.join(DATA_DIR, 'segments.json')
 LEDGER_FILE   = os.path.join(DATA_DIR, 'meeting_ledger.json')
 
-# ── Meeting ledger — frozen attribution: campaign_id → {lead_id → {date, sdr}} ─
-# Once a Lead ID is attributed to a campaign it is never removed, even if
-# the lead's Campaign__c field is later changed to a different campaign.
+# ── Campaign ledger ────────────────────────────────────────────────────────────
+# Stores two frozen datasets per campaign so metrics remain correct even after
+# leads are reassigned to a different campaign:
+#
+#   ledger[campaign_id] = {
+#     "lead_ids":  ["id1", "id2", ...],          # every Lead ever in this campaign
+#     "meetings":  {                               # leads that generated a meeting
+#       "lead_id": {
+#         "date":    "2026-04-15",
+#         "sdr":     "Hursh",
+#         "name":    "John Doe",
+#         "title":   "CFO",
+#         "company": "Banner Health",
+#         "sf_url":  "https://...lightning/r/Lead/.../view"
+#       }
+#     }
+#   }
+#
+# Rules:
+#  • lead_ids  — union-only; IDs are added on each sync, never removed.
+#  • meetings  — union-only; once attributed to a campaign, never moved.
+#  • Calls/emails use lead_ids for the SOQL WhoId filter, so task counts
+#    stay accurate regardless of the lead's current Campaign__c value.
+
 _ledger_lock = threading.Lock()
 
 def load_ledger():
@@ -34,48 +55,135 @@ def save_ledger(ledger):
     with open(LEDGER_FILE, 'w') as f:
         json.dump(ledger, f)
 
+def _get_or_create_entry(ledger, campaign_id):
+    if campaign_id not in ledger:
+        ledger[campaign_id] = {'lead_ids': [], 'meetings': {}}
+    entry = ledger[campaign_id]
+    # Migrate old format (flat dict of lead_id→meeting) to new format
+    if 'meetings' not in entry:
+        entry = {'lead_ids': [], 'meetings': entry}
+        ledger[campaign_id] = entry
+    if 'lead_ids' not in entry:
+        entry['lead_ids'] = []
+    return entry
+
+def merge_leads_into_ledger(campaign_id, lead_ids):
+    """Permanently store all Lead IDs that have ever been in this campaign.
+    Returns the full frozen set of Lead IDs for this campaign."""
+    with _ledger_lock:
+        ledger  = load_ledger()
+        entry   = _get_or_create_entry(ledger, campaign_id)
+        existing = set(entry['lead_ids'])
+        new_ids  = [lid for lid in lead_ids if lid not in existing]
+        if new_ids:
+            entry['lead_ids'] = list(existing) + new_ids
+            save_ledger(ledger)
+        return entry['lead_ids']
+
 def merge_meetings_into_ledger(campaign_id, sf_records):
     """Add newly discovered meeting leads into the ledger. Never removes entries.
     sf_records: list of SFDC Lead records with Id, Meeting_Generated_on__c,
-    Meeting_Generated_by__c fields.
-    Returns the updated ledger entry (dict of lead_id → {date, sdr}) for this campaign.
+    Meeting_Generated_by__c, Name, Title, Company fields.
+    Returns the meetings dict {lead_id → {date,sdr,name,title,company,sf_url}}.
     """
     with _ledger_lock:
-        ledger = load_ledger()
-        entry  = ledger.get(campaign_id, {})
-        changed = False
+        ledger   = load_ledger()
+        entry    = _get_or_create_entry(ledger, campaign_id)
+        meetings = entry['meetings']
+        changed  = False
         for rec in sf_records:
             lid = rec.get('Id')
-            if not lid or lid in entry:
+            if not lid or lid in meetings:
                 continue  # already attributed — never overwrite
-            entry[lid] = {
-                'date': (rec.get('Meeting_Generated_on__c') or '')[:10],
-                'sdr':  norm_sdr(rec.get('Meeting_Generated_by__c') or ''),
+            meetings[lid] = {
+                'date':    (rec.get('Meeting_Generated_on__c') or '')[:10],
+                'sdr':     norm_sdr(rec.get('Meeting_Generated_by__c') or ''),
+                'name':    rec.get('Name')    or '—',
+                'title':   rec.get('Title')   or '—',
+                'company': rec.get('Company') or '—',
+                'sf_url':  f"{SF_BASE_URL}/lightning/r/Lead/{lid}/view",
             }
             changed = True
         if changed:
-            ledger[campaign_id] = entry
             save_ledger(ledger)
-        return entry
+        return meetings
 
-def meetings_from_ledger(entry, start=None, end=None):
-    """Return (total_count, sdr_breakdown_list) from a ledger entry,
+def meetings_from_ledger(meetings, start=None, end=None):
+    """Return (total_count, sdr_breakdown_list) from a meetings dict,
     optionally filtered by date range (YYYY-MM-DD strings)."""
-    rows = list(entry.values())
+    rows = list(meetings.values())
     if start:
-        rows = [r for r in rows if r['date'] >= start]
+        rows = [r for r in rows if r.get('date','') >= start]
     if end:
-        rows = [r for r in rows if r['date'] <= end]
+        rows = [r for r in rows if r.get('date','') <= end]
     total = len(rows)
     sdr_counts = {}
     for r in rows:
-        sdr = r['sdr'] or 'Unknown'
+        sdr = r.get('sdr') or 'Unknown'
         sdr_counts[sdr] = sdr_counts.get(sdr, 0) + 1
     breakdown = sorted(
         [{'name': k, 'meetings': v} for k, v in sdr_counts.items()],
         key=lambda x: x['meetings'], reverse=True
     )
     return total, breakdown
+
+def meetings_leads_from_ledger(meetings, start=None, end=None):
+    """Return list of lead dicts for the meetings modal, optionally date-filtered."""
+    rows = [(lid, data) for lid, data in meetings.items()]
+    if start:
+        rows = [(lid, d) for lid, d in rows if d.get('date','') >= start]
+    if end:
+        rows = [(lid, d) for lid, d in rows if d.get('date','') <= end]
+    rows.sort(key=lambda x: x[1].get('date',''), reverse=True)
+    return [
+        {
+            'name':    d.get('name','—'),
+            'title':   d.get('title','—'),
+            'company': d.get('company','—'),
+            'sdr':     d.get('sdr','—'),
+            'date':    d.get('date',''),
+            'sf_url':  d.get('sf_url',''),
+            'campaign': '',  # will be filled by caller
+        }
+        for _, d in rows
+    ]
+
+# SOQL IN-clause helper — batches large ID lists to stay within query limits
+_BATCH_SIZE = 500
+
+def _count_tasks_for_ids(lead_ids, subject_filter, dt_task):
+    """Count Tasks matching subject_filter for a list of lead IDs.
+    Batches into groups of _BATCH_SIZE to avoid SOQL length limits."""
+    if not lead_ids:
+        return 0
+    total = 0
+    for i in range(0, len(lead_ids), _BATCH_SIZE):
+        batch = lead_ids[i:i + _BATCH_SIZE]
+        ids_str = ','.join(f"'{lid}'" for lid in batch)
+        q = (f"SELECT COUNT(Id) FROM Task "
+             f"WHERE ({subject_filter}) AND WhoId IN ({ids_str}){dt_task}")
+        total += cnt(soql(q))
+    return total
+
+def _count_distinct_who_for_ids(lead_ids, subject_filter, dt_task):
+    """Count distinct WhoIds (unique leads contacted) for a list of lead IDs."""
+    if not lead_ids:
+        return 0
+    # Fetch all matching WhoIds across batches then deduplicate in Python
+    seen = set()
+    for i in range(0, len(lead_ids), _BATCH_SIZE):
+        batch = lead_ids[i:i + _BATCH_SIZE]
+        ids_str = ','.join(f"'{lid}'" for lid in batch)
+        q = (f"SELECT WhoId FROM Task "
+             f"WHERE ({subject_filter}) AND WhoId IN ({ids_str}){dt_task} "
+             f"LIMIT 50000")
+        res = soql(q)
+        if res and res.get('records'):
+            for rec in res['records']:
+                wid = rec.get('WhoId')
+                if wid:
+                    seen.add(wid)
+    return len(seen)
 
 DEFAULT_SEGMENTS = ['EPIC Campaign', 'TruBridge Campaign', 'Factors Data', 'Hiring Data', 'High Intent Data']
 
@@ -339,7 +447,6 @@ def campaign_metrics(c, start_override=None, end_override=None):
     n     = esc(c['name'])
     start = start_override if start_override is not None else (c.get('start_date') or '').strip()
     end   = end_override   if end_override   is not None else (c.get('end_date')   or '').strip()
-    lead  = f"SELECT Id FROM Lead WHERE Campaign__c = '{n}'"
 
     # Build optional date filters
     dt_task = ''
@@ -356,61 +463,85 @@ def campaign_metrics(c, start_override=None, end_override=None):
 
     results = {}
 
-    # Fetch leads count first — if 0, skip all other queries to save resources
-    results['leads'] = soql(f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}'")
-    total_leads_check = cnt(results['leads'])
+    # ── Step 1: fetch current Lead IDs for this campaign ─────────────────────
+    # We always query the live Campaign__c filter first to discover the current
+    # leads, then merge them into the frozen ledger.
+    lead_res = soql(f"SELECT Id FROM Lead WHERE Campaign__c = '{n}' LIMIT 10000")
+    current_lead_ids = [r['Id'] for r in (lead_res.get('records') or [])] if lead_res else []
+    total_leads_check = len(current_lead_ids)
 
-    if total_leads_check > 0:
-        queries = {
-            'calls':          f"SELECT COUNT(Id) FROM Task WHERE (Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%') AND WhoId IN ({lead}){dt_task}",
-            'emails':         f"SELECT COUNT(Id) FROM Task WHERE (Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%') AND WhoId IN ({lead}){dt_task}",
-            'unique_called':  f"SELECT COUNT_DISTINCT(WhoId) FROM Task WHERE (Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%') AND WhoId IN ({lead}){dt_task}",
-            'unique_emailed': f"SELECT COUNT_DISTINCT(WhoId) FROM Task WHERE (Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%') AND WhoId IN ({lead}){dt_task}",
-            # Fetch full Lead records for meetings — no date filter so we capture all
-            # meetings ever generated while the lead was in this campaign. Date
-            # filtering is applied in Python against the frozen ledger below.
-            'meeting_leads':  (f"SELECT Id, Meeting_Generated_on__c, Meeting_Generated_by__c "
-                               f"FROM Lead WHERE Campaign__c = '{n}' "
-                               f"AND Meeting_Generated_on__c != null LIMIT 2000"),
-            'meeting_done':   (f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' "
-                               f"AND Meeting_Status__c IN ('Meeting Done-Nurture', 'Meeting Done- Not Interested', 'Meeting Done-Unqualified'){dt_mtg}"),
-            'meeting_noshow': (f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' "
-                               f"AND Meeting_Status__c = 'Meeting No Show'{dt_mtg}"),
-            'sql_gen':        (f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c = '{n}' "
-                               f"AND Status = 'SQL'{dt_mtg}"),
-            'status_sdr':     (f"SELECT Meeting_Generated_by__c, Meeting_Status__c, COUNT(Id) FROM Lead "
-                               f"WHERE Campaign__c = '{n}' "
-                               f"AND Meeting_Status__c IN ('Meeting Done-Nurture', "
-                               f"'Meeting Done- Not Interested', 'Meeting Done-Unqualified', 'Meeting No Show'){dt_mtg} "
-                               f"AND Meeting_Generated_by__c != null "
-                               f"GROUP BY Meeting_Generated_by__c, Meeting_Status__c"),
-            'sql_sdr':        (f"SELECT Meeting_Generated_by__c, COUNT(Id) FROM Lead "
-                               f"WHERE Campaign__c = '{n}' "
-                               f"AND Status = 'SQL' "
-                               f"AND Meeting_Generated_by__c != null "
-                               f"GROUP BY Meeting_Generated_by__c"),
-        }
+    # Merge current Lead IDs into the frozen ledger so we never lose them
+    frozen_lead_ids = merge_leads_into_ledger(c['id'], current_lead_ids)
+
+    # ── Step 2: fetch meeting-lead details (name/title/company) ──────────────
+    if current_lead_ids:
+        # Only query meeting details for leads currently in this campaign
+        mtg_res = soql(
+            f"SELECT Id, Meeting_Generated_on__c, Meeting_Generated_by__c, "
+            f"Name, Title, Company FROM Lead "
+            f"WHERE Campaign__c = '{n}' AND Meeting_Generated_on__c != null LIMIT 2000"
+        )
+        sf_meeting_records = (mtg_res.get('records') or []) if mtg_res else []
+    else:
+        sf_meeting_records = []
+
+    # ── Step 3: merge meetings into ledger & compute frozen meeting totals ────
+    frozen_meetings = merge_meetings_into_ledger(c['id'], sf_meeting_records)
+    total_meetings, sdr_bk = meetings_from_ledger(frozen_meetings, start or None, end or None)
+
+    # ── Step 4: calls / emails / other queries using frozen Lead IDs ─────────
+    # Using frozen_lead_ids (not live Campaign__c filter) ensures counts are
+    # correct even after leads are reassigned to a different campaign.
+    if frozen_lead_ids:
+        call_subj  = "Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%'"
+        email_subj = "Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%'"
+
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            f_calls   = ex.submit(_count_tasks_for_ids,       frozen_lead_ids, call_subj,  dt_task)
+            f_emails  = ex.submit(_count_tasks_for_ids,       frozen_lead_ids, email_subj, dt_task)
+            f_ucalled = ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, call_subj,  dt_task)
+            f_uemailed= ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, email_subj, dt_task)
+
+            # These still use Campaign__c filter (they reflect current lead state,
+            # not historical — status/SQL can legitimately change)
+            live_lead_clause = f"Campaign__c = '{n}'"
+            f_done    = ex.submit(soql, f"SELECT COUNT(Id) FROM Lead WHERE {live_lead_clause} "
+                                        f"AND Meeting_Status__c IN ('Meeting Done-Nurture',"
+                                        f"'Meeting Done- Not Interested','Meeting Done-Unqualified'){dt_mtg}")
+            f_noshow  = ex.submit(soql, f"SELECT COUNT(Id) FROM Lead WHERE {live_lead_clause} "
+                                        f"AND Meeting_Status__c = 'Meeting No Show'{dt_mtg}")
+            f_sql     = ex.submit(soql, f"SELECT COUNT(Id) FROM Lead WHERE {live_lead_clause} "
+                                        f"AND Status = 'SQL'{dt_mtg}")
+            f_stssdr  = ex.submit(soql, f"SELECT Meeting_Generated_by__c, Meeting_Status__c, COUNT(Id) "
+                                        f"FROM Lead WHERE {live_lead_clause} "
+                                        f"AND Meeting_Status__c IN ('Meeting Done-Nurture',"
+                                        f"'Meeting Done- Not Interested','Meeting Done-Unqualified','Meeting No Show'){dt_mtg} "
+                                        f"AND Meeting_Generated_by__c != null "
+                                        f"GROUP BY Meeting_Generated_by__c, Meeting_Status__c")
+            f_sqlsdr  = ex.submit(soql, f"SELECT Meeting_Generated_by__c, COUNT(Id) FROM Lead "
+                                        f"WHERE {live_lead_clause} AND Status = 'SQL' "
+                                        f"AND Meeting_Generated_by__c != null "
+                                        f"GROUP BY Meeting_Generated_by__c")
+            if not has_manual_s1:
+                f_s1 = ex.submit(soql, f"SELECT COUNT(Id) FROM Opportunity "
+                                       f"WHERE Id IN (SELECT ConvertedOpportunityId FROM Lead "
+                                       f"WHERE Campaign__c = '{n}' AND IsConverted = true)")
+
+        total_calls          = f_calls.result()
+        total_emails         = f_emails.result()
+        unique_leads_called  = f_ucalled.result()
+        unique_leads_emailed = f_uemailed.result()
+        results['meeting_done']   = f_done.result()
+        results['meeting_noshow'] = f_noshow.result()
+        results['sql_gen']        = f_sql.result()
+        results['status_sdr']     = f_stssdr.result()
+        results['sql_sdr']        = f_sqlsdr.result()
         if not has_manual_s1:
-            queries['s1'] = (f"SELECT COUNT(Id) FROM Opportunity "
-                             f"WHERE Id IN (SELECT ConvertedOpportunityId FROM Lead "
-                             f"WHERE Campaign__c = '{n}' AND IsConverted = true)")
+            results['s1'] = f_s1.result()
+    else:
+        total_calls = total_emails = unique_leads_called = unique_leads_emailed = 0
 
-        # Run remaining queries in parallel — REST API calls are lightweight
-        with ThreadPoolExecutor(max_workers=10) as ex:
-            futs = {ex.submit(soql, q): k for k, q in queries.items()}
-            for f in as_completed(futs):
-                results[futs[f]] = f.result()
-
-    # ── Frozen meeting ledger ─────────────────────────────────────────────────
-    # Merge any newly discovered meeting leads into the permanent ledger, then
-    # derive the meeting count and SDR breakdown from it so that leads which
-    # were later reassigned to another campaign don't steal this campaign's credit.
-    sf_meeting_records = []
-    if results.get('meeting_leads') and results['meeting_leads'].get('records'):
-        sf_meeting_records = results['meeting_leads']['records']
-
-    ledger_entry = merge_meetings_into_ledger(c['id'], sf_meeting_records)
-    total_meetings, sdr_bk = meetings_from_ledger(ledger_entry, start or None, end or None)
+    total_leads = len(frozen_lead_ids)  # use frozen count so it never shrinks
 
     # Parse per-SDR status breakdown
     status_sdr_bk = {}
@@ -426,7 +557,6 @@ def campaign_metrics(c, start_override=None, end_override=None):
             elif status == 'Meeting No Show':
                 status_sdr_bk[sdr_name]['meeting_noshow'] += count
 
-    # Parse per-SDR SQL counts (Status = 'SQL')
     if results.get('sql_sdr') and results['sql_sdr'].get('records'):
         for rec in results['sql_sdr']['records']:
             sdr_name = norm_sdr(rec.get('Meeting_Generated_by__c') or 'Unknown')
@@ -435,14 +565,8 @@ def campaign_metrics(c, start_override=None, end_override=None):
                 status_sdr_bk[sdr_name] = {'meeting_done': 0, 'meeting_noshow': 0, 'sql_gen': 0}
             status_sdr_bk[sdr_name]['sql_gen'] += count
 
-    total_leads         = cnt(results.get('leads'))
-    total_calls         = cnt(results.get('calls'))
-    total_emails        = cnt(results.get('emails'))
-    unique_leads_called  = cnt(results.get('unique_called'))
-    unique_leads_emailed = cnt(results.get('unique_emailed'))
-
-    calls_per_called_lead  = round(total_calls  / unique_leads_called,  1) if unique_leads_called  > 0 else 0
-    emails_per_emailed_lead= round(total_emails / unique_leads_emailed, 1) if unique_leads_emailed > 0 else 0
+    calls_per_called_lead   = round(total_calls  / unique_leads_called,  1) if unique_leads_called  > 0 else 0
+    emails_per_emailed_lead = round(total_emails / unique_leads_emailed, 1) if unique_leads_emailed > 0 else 0
 
     return {
         **c,
@@ -768,16 +892,30 @@ def api_camps_import():
 @app.route('/api/meetings-leads')
 def api_meetings_leads():
     """Return leads where Meeting_Generated_on__c is not null. Optional ?campaign= or ?segment= filter.
-    When filtering by campaign, also applies that campaign's start/end date range."""
+    When filtering by campaign, serves from the frozen ledger so results are
+    correct even after leads have been reassigned to a different campaign."""
     camp     = request.args.get('campaign', '').strip()
     segment  = request.args.get('segment',  '').strip()
     pod_team = request.args.get('pod_team', '').strip()
     if camp:
-        # Look up the campaign's date range from campaigns.json
+        # Serve from frozen ledger — immune to lead reassignment
         camps_cfg = load_campaigns()
         camp_cfg  = next((c for c in camps_cfg if c['name'] == camp), {})
         start = (camp_cfg.get('start_date') or '').strip()
         end   = (camp_cfg.get('end_date')   or '').strip()
+        camp_id = camp_cfg.get('id', '')
+
+        if camp_id:
+            with _ledger_lock:
+                ledger = load_ledger()
+                entry  = ledger.get(camp_id, {})
+                meetings = entry.get('meetings', entry) if isinstance(entry, dict) and 'meetings' in entry else entry
+            leads = meetings_leads_from_ledger(meetings, start or None, end or None)
+            for l in leads:
+                l['campaign'] = camp
+            return jsonify({'leads': leads, 'total': len(leads)})
+
+        # Fallback to live query if campaign not in ledger yet
         dt = ''
         if start: dt += f" AND Meeting_Generated_on__c >= {start}"
         if end:   dt += f" AND Meeting_Generated_on__c <= {end}"
