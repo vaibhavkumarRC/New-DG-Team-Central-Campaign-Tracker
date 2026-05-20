@@ -1627,35 +1627,30 @@ def slack_scheduler_loop():
 
 # ── Boot ──────────────────────────────────────────────────────────────────────
 
+# ── Startup initialisation (runs under both gunicorn and direct python) ───────
+if os.path.exists(CACHE_FILE):
+    try:
+        with open(CACHE_FILE) as f:
+            saved = json.load(f)
+        cache['campaigns'] = saved.get('campaigns', [])
+        cache['sdr_stats'] = saved.get('sdr_stats', [])
+        cache['last_sync'] = saved.get('last_sync')
+        print('[cache] loaded from disk')
+    except Exception as e:
+        print(f'[cache] load error: {e}')
+
+setup_sf_auth()
+auto_complete_campaigns()
+
+threading.Thread(target=bg_loop, daemon=True).start()
+threading.Thread(target=slack_scheduler_loop, daemon=True).start()
+
+print('\n' + '='*55)
+print('  🚀  Campaign Command Center')
+print('  →   http://localhost:5001')
+print('  ↺   Auto-syncs daily at 05:00 IST from Salesforce')
+print('='*55 + '\n')
+
 if __name__ == '__main__':
-    # Restore from disk cache so the UI shows data immediately on restart
-    if os.path.exists(CACHE_FILE):
-        try:
-            with open(CACHE_FILE) as f:
-                saved = json.load(f)
-            cache['campaigns'] = saved.get('campaigns', [])
-            cache['sdr_stats'] = saved.get('sdr_stats', [])
-            cache['last_sync'] = saved.get('last_sync')
-            print('[cache] loaded from disk')
-        except Exception as e:
-            print(f'[cache] load error: {e}')
-
-    # Authenticate Salesforce CLI (JWT on Railway, skipped on local dev)
-    setup_sf_auth()
-
-    # Auto-complete any campaigns that have already passed their end date
-    auto_complete_campaigns()
-
-    # Background sync thread
-    threading.Thread(target=bg_loop, daemon=True).start()
-
-    # Slack weekly report scheduler (fires every Monday 5 PM IST)
-    threading.Thread(target=slack_scheduler_loop, daemon=True).start()
-
-    print('\n' + '='*55)
-    print('  🚀  Campaign Command Center')
-    print('  →   http://localhost:5001')
-    print('  ↺   Auto-syncs daily at 05:00 IST from Salesforce')
-    print('='*55 + '\n')
     port = int(os.environ.get('PORT', 5001))
     app.run(debug=False, host='0.0.0.0', port=port, use_reloader=False)
