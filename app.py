@@ -926,53 +926,34 @@ def api_meetings_leads():
              f"AND Meeting_Generated_on__c != null{dt} "
              f"ORDER BY Meeting_Generated_on__c DESC NULLS LAST LIMIT 500")
     else:
-        # All campaigns view — fetch per campaign so each date range is respected,
-        # then merge. Filter by segment if provided.
+        # All campaigns view — serve entirely from the frozen ledger (no SOQL).
+        # This is instant regardless of how many campaigns exist.
         camps_cfg = load_campaigns()
         if segment:
             camps_cfg = [c for c in camps_cfg if (c.get('segment') or '').strip() == segment]
         if pod_team:
             camps_cfg = [c for c in camps_cfg if (c.get('pod_team') or '').strip() == pod_team]
-        all_records = []
+
+        with _ledger_lock:
+            ledger = load_ledger()
+
+        all_leads = []
         for camp_cfg in camps_cfg:
+            cid   = camp_cfg.get('id', '')
             cname = camp_cfg.get('name', '').strip()
-            if not cname:
+            if not cid or not cname:
                 continue
-            start = (camp_cfg.get('start_date') or '').strip()
-            end   = (camp_cfg.get('end_date')   or '').strip()
-            dt = ''
-            if start: dt += f" AND Meeting_Generated_on__c >= {start}"
-            if end:   dt += f" AND Meeting_Generated_on__c <= {end}"
-            cq = (f"SELECT Id, Name, Title, Company, Campaign__c, "
-                  f"Meeting_Generated_by__c, Meeting_Generated_on__c, Meeting_Source__c "
-                  f"FROM Lead "
-                  f"WHERE Campaign__c = '{esc(cname)}' "
-                  f"AND Meeting_Generated_on__c != null{dt} "
-                  f"ORDER BY Meeting_Generated_on__c DESC NULLS LAST LIMIT 500")
-            res = soql(cq)
-            if res and res.get('records'):
-                all_records.extend(res['records'])
+            start = (camp_cfg.get('start_date') or '').strip() or None
+            end   = (camp_cfg.get('end_date')   or '').strip() or None
+            entry = ledger.get(cid, {})
+            meetings = entry.get('meetings', entry) if isinstance(entry, dict) and 'meetings' in entry else entry
+            rows = meetings_leads_from_ledger(meetings, start, end)
+            for l in rows:
+                l['campaign'] = cname
+            all_leads.extend(rows)
 
-        # Sort combined results by date descending
-        all_records.sort(
-            key=lambda r: r.get('Meeting_Generated_on__c') or '',
-            reverse=True
-        )
-
-        leads = []
-        for r in all_records:
-            lid = r.get('Id') or ''
-            leads.append({
-                'name':    r.get('Name') or '—',
-                'title':   r.get('Title') or '—',
-                'company': r.get('Company') or '—',
-                'campaign':r.get('Campaign__c') or '—',
-                'sdr':     r.get('Meeting_Generated_by__c') or '—',
-                'date':    r.get('Meeting_Generated_on__c') or '',
-                'source':  r.get('Meeting_Source__c') or '—',
-                'sf_url':  f"{SF_BASE_URL}/lightning/r/Lead/{lid}/view" if lid else '',
-            })
-        return jsonify({'leads': leads, 'total': len(leads)})
+        all_leads.sort(key=lambda l: l.get('date', ''), reverse=True)
+        return jsonify({'leads': all_leads, 'total': len(all_leads)})
 
     result = soql(q)
     records = result.get('records', []) if result else []
