@@ -338,6 +338,7 @@ SFDC_NAME_MAP = {
     'Saka':                  'Saka Thapa',
     'Samridhi Dutta':        'Samridhi Dutta',
     'Shahana Abbasi':        'Shahana Abbasi',
+    'Soham Saha':            'Soham Saha',
     'Sukhneet':              'Sukhneet Sukhneet',
     # ── Other / alumni SDRs ───────────────────────────────────────────────────
     'Felix':                 'Felix Sam',
@@ -376,6 +377,7 @@ KNOWN_SDRS = {
     'samridhi':  'Samridhi Dutta',
     'samrudhi':  'Samridhi Dutta',
     'shahana':   'Shahana Abbasi',
+    'soham':     'Soham Saha',
     'sukhneet':  'Sukhneet Sukhneet',
     # Other / alumni
     'felix':     'Felix Sam',
