@@ -504,6 +504,58 @@ tfoot td {
   .manage-layout .form-card { position:static; }
 }
 @media(max-width:600px)  { .kpi-grid { grid-template-columns:repeat(2,1fr); } .header-inner { padding:0 16px; } .main { padding:16px; } }
+
+/* ── STALE ALERT BANNER ── */
+.stale-banner {
+  display:flex; align-items:center; gap:12px;
+  background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.3);
+  border-radius:var(--radius); padding:12px 18px; margin-bottom:16px;
+  font-size:12.5px; color:var(--amber); cursor:pointer;
+}
+.stale-banner:hover { background:rgba(245,158,11,0.13); }
+.stale-dot { width:8px; height:8px; border-radius:50%; background:var(--amber); flex-shrink:0; animation:pulse-dot 1.4s ease-in-out infinite; }
+.stale-badge { display:inline-block; background:rgba(245,158,11,0.18); color:var(--amber); border:1px solid rgba(245,158,11,0.4); border-radius:6px; font-size:10px; font-weight:700; padding:1px 6px; margin-left:6px; vertical-align:middle; }
+
+/* ── POD SUMMARY TABLE ── */
+.pod-summary-section { margin-bottom:28px; }
+.pod-table { width:100%; border-collapse:collapse; font-size:12px; }
+.pod-table th { background:var(--surface2); color:var(--text-muted); font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; padding:8px 12px; text-align:right; border-bottom:1px solid var(--border); white-space:nowrap; }
+.pod-table th:first-child { text-align:left; }
+.pod-table td { padding:9px 12px; border-bottom:1px solid rgba(26,51,82,0.5); text-align:right; }
+.pod-table td:first-child { text-align:left; font-weight:600; }
+.pod-table tr:hover td { background:var(--surface2); }
+.pod-cov-bar { display:inline-flex; align-items:center; gap:6px; }
+.pod-cov-track { width:60px; height:5px; background:var(--border); border-radius:3px; overflow:hidden; }
+.pod-cov-fill  { height:100%; border-radius:3px; transition:width .3s; }
+
+/* ── BULK SELECTION ── */
+.bulk-bar { display:none; align-items:center; gap:10px; background:rgba(212,175,55,0.08); border:1px solid rgba(212,175,55,0.3); border-radius:var(--radius); padding:10px 16px; margin-bottom:12px; flex-wrap:wrap; }
+.bulk-bar.visible { display:flex; }
+.manage-item-check { width:16px; height:16px; accent-color:var(--gold); cursor:pointer; flex-shrink:0; }
+.manage-item.selected { background:rgba(212,175,55,0.06); border-color:rgba(212,175,55,0.3); }
+.btn-sync { background:rgba(59,130,246,0.12); color:#60A5FA; border:1px solid rgba(59,130,246,0.3); border-radius:8px; padding:4px 10px; font-size:11px; cursor:pointer; white-space:nowrap; transition:background .15s; }
+.btn-sync:hover { background:rgba(59,130,246,0.22); }
+.btn-sync.syncing { opacity:.6; pointer-events:none; }
+
+/* ── CUSTOM DATE RANGE PICKER ── */
+.custom-date-row { display:none; align-items:center; gap:6px; }
+.custom-date-row.visible { display:flex; }
+.custom-date-input { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:5px 8px; font-size:12px; }
+.custom-date-input:focus { outline:none; border-color:var(--gold); }
+
+/* ── EXPORT BUTTON ── */
+.btn-export { display:inline-flex; align-items:center; gap:6px; background:rgba(34,197,94,0.1); color:var(--green); border:1px solid rgba(34,197,94,0.3); border-radius:8px; padding:6px 14px; font-size:12px; font-weight:600; cursor:pointer; transition:background .15s; white-space:nowrap; }
+.btn-export:hover { background:rgba(34,197,94,0.18); }
+
+/* ── COVERAGE KPI ROW ── */
+.cov-row { display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+.cov-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 18px; flex:1; min-width:180px; }
+.cov-card-title { font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; }
+.cov-pct-row { display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
+.cov-pct-val { font-size:22px; font-weight:800; }
+.cov-pct-sub { font-size:11px; color:var(--text-dim); }
+.cov-track { height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+.cov-fill  { height:100%; border-radius:3px; transition:width .4s; }
 </style>
 </head>
 <body>
@@ -555,13 +607,19 @@ tfoot td {
       <div class="section-title">Overview</div>
       <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-left:auto">
         <!-- Period Filter -->
-        <div style="display:flex;align-items:center;gap:6px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.5px;white-space:nowrap;text-transform:uppercase">Period</span>
-          <div style="display:flex;gap:4px">
-            <button id="dash-period-all" class="chip active" onclick="setTimePeriod('all')">All</button>
-            <button id="dash-period-7d"  class="chip"        onclick="setTimePeriod('7d')">7D</button>
-            <button id="dash-period-30d" class="chip"        onclick="setTimePeriod('30d')">30D</button>
-            <button id="dash-period-qtd" class="chip"        onclick="setTimePeriod('qtd')">QTD</button>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <button id="dash-period-all"    class="chip active" onclick="setTimePeriod('all')">All</button>
+            <button id="dash-period-7d"     class="chip"        onclick="setTimePeriod('7d')">7D</button>
+            <button id="dash-period-30d"    class="chip"        onclick="setTimePeriod('30d')">30D</button>
+            <button id="dash-period-qtd"    class="chip"        onclick="setTimePeriod('qtd')">QTD</button>
+            <button id="dash-period-custom" class="chip"        onclick="setTimePeriod('custom')">📅 Custom</button>
+          </div>
+          <div id="dash-customDateRow" class="custom-date-row">
+            <input type="date" id="dash-customStart" class="custom-date-input" onchange="applyCustomPeriod()">
+            <span style="font-size:11px;color:var(--text-dim)">→</span>
+            <input type="date" id="dash-customEnd" class="custom-date-input" onchange="applyCustomPeriod()">
           </div>
           <span id="dash-periodDateRange" style="font-size:10.5px;color:var(--text-dim);white-space:nowrap"></span>
         </div>
@@ -602,7 +660,13 @@ tfoot td {
       <div class="spinner" style="width:16px;height:16px;flex-shrink:0"></div>
       <span id="periodLoadingText">Fetching data from Salesforce…</span>
     </div>
+    <!-- Stale campaign alert (rendered by JS) -->
+    <div id="staleAlert"></div>
+
     <div class="kpi-grid" id="kpiGrid"></div>
+
+    <!-- Coverage % row -->
+    <div class="cov-row" id="covRow"></div>
 
     <!-- ── Quick-Add Campaign ── -->
     <div id="quickAddBar" class="admin-only" style="
@@ -651,6 +715,14 @@ tfoot td {
         </div>
       </div>
     </div>
+
+    <!-- POD Team Performance Summary -->
+    <div class="pod-summary-section">
+      <div class="chart-card">
+        <div class="chart-title">🏢 POD Team Performance</div>
+        <div id="podSummaryTable"></div>
+      </div>
+    </div>
   </div>
 
   <!-- CAMPAIGNS -->
@@ -659,13 +731,20 @@ tfoot td {
       <div class="section-title">Campaigns</div>
       <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
         <span style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.5px;text-transform:uppercase">Period</span>
-        <div style="display:flex;gap:4px">
-          <button id="camp-period-all" class="chip active" onclick="setTimePeriod('all')">All</button>
-          <button id="camp-period-7d"  class="chip"        onclick="setTimePeriod('7d')">7D</button>
-          <button id="camp-period-30d" class="chip"        onclick="setTimePeriod('30d')">30D</button>
-          <button id="camp-period-qtd" class="chip"        onclick="setTimePeriod('qtd')">QTD</button>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button id="camp-period-all"    class="chip active" onclick="setTimePeriod('all')">All</button>
+          <button id="camp-period-7d"     class="chip"        onclick="setTimePeriod('7d')">7D</button>
+          <button id="camp-period-30d"    class="chip"        onclick="setTimePeriod('30d')">30D</button>
+          <button id="camp-period-qtd"    class="chip"        onclick="setTimePeriod('qtd')">QTD</button>
+          <button id="camp-period-custom" class="chip"        onclick="setTimePeriod('custom')">📅 Custom</button>
+        </div>
+        <div id="camp-customDateRow" class="custom-date-row">
+          <input type="date" id="camp-customStart" class="custom-date-input" onchange="applyCustomPeriod()">
+          <span style="font-size:11px;color:var(--text-dim)">→</span>
+          <input type="date" id="camp-customEnd" class="custom-date-input" onchange="applyCustomPeriod()">
         </div>
         <span id="camp-periodDateRange" style="font-size:10.5px;color:var(--text-dim);white-space:nowrap"></span>
+        <button class="btn-export" onclick="exportCSV('campaigns')" title="Export visible campaigns to CSV">⬇ Export CSV</button>
       </div>
     </div>
     <div id="campPeriodLoadingBanner" style="display:none;align-items:center;gap:12px;
@@ -714,13 +793,20 @@ tfoot td {
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
         <span style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.5px;text-transform:uppercase">Period</span>
-        <div style="display:flex;gap:4px">
-          <button id="sdr-period-all" class="chip active" onclick="setTimePeriod('all')">All</button>
-          <button id="sdr-period-7d"  class="chip"        onclick="setTimePeriod('7d')">7D</button>
-          <button id="sdr-period-30d" class="chip"        onclick="setTimePeriod('30d')">30D</button>
-          <button id="sdr-period-qtd" class="chip"        onclick="setTimePeriod('qtd')">QTD</button>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button id="sdr-period-all"    class="chip active" onclick="setTimePeriod('all')">All</button>
+          <button id="sdr-period-7d"     class="chip"        onclick="setTimePeriod('7d')">7D</button>
+          <button id="sdr-period-30d"    class="chip"        onclick="setTimePeriod('30d')">30D</button>
+          <button id="sdr-period-qtd"    class="chip"        onclick="setTimePeriod('qtd')">QTD</button>
+          <button id="sdr-period-custom" class="chip"        onclick="setTimePeriod('custom')">📅 Custom</button>
+        </div>
+        <div id="sdr-customDateRow" class="custom-date-row">
+          <input type="date" id="sdr-customStart" class="custom-date-input" onchange="applyCustomPeriod()">
+          <span style="font-size:11px;color:var(--text-dim)">→</span>
+          <input type="date" id="sdr-customEnd" class="custom-date-input" onchange="applyCustomPeriod()">
         </div>
         <span id="sdr-periodDateRange" style="font-size:10.5px;color:var(--text-dim);white-space:nowrap"></span>
+        <button class="btn-export" onclick="exportCSV('sdr')" title="Export SDR performance to CSV">⬇ Export CSV</button>
       </div>
     </div>
     <div id="sdrPeriodLoadingBanner" style="display:none;align-items:center;gap:12px;
@@ -1146,6 +1232,15 @@ tfoot td {
             <option value="">All SDRs</option>
           </select>
         </div>
+        <!-- Bulk action bar (admin only) -->
+        <div class="bulk-bar admin-only" id="bulkBar">
+          <span style="font-size:12px;color:var(--gold);font-weight:700" id="bulkCount">0 selected</span>
+          <span style="font-size:11px;color:var(--text-dim)">Set status:</span>
+          <button class="btn btn-sm" style="background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3)" onclick="applyBulkStatus('Active')">🟢 Active</button>
+          <button class="btn btn-sm" style="background:rgba(245,158,11,.15);color:var(--amber);border:1px solid rgba(245,158,11,.3)" onclick="applyBulkStatus('Paused')">🟡 Paused</button>
+          <button class="btn btn-sm" style="background:rgba(59,130,246,.15);color:var(--blue);border:1px solid rgba(59,130,246,.3)" onclick="applyBulkStatus('Completed')">🔵 Completed</button>
+          <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="clearBulkSelection()">✕ Clear</button>
+        </div>
         <div class="manage-list" id="manageList"></div>
       </div>
     </div>
@@ -1421,6 +1516,7 @@ const S = {
   periodData:        null,
   lbMetric:          'meetings',
   segments:          [],
+  bulkSelected:      new Set(),
 };
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
@@ -1845,12 +1941,15 @@ function syncPeriodUI(period) {
     ? `${fmtD(S.periodData.start_date)} – ${fmtD(S.periodData.end_date)}` : '';
 
   PERIOD_PREFIXES.forEach(pfx => {
-    ['all','7d','30d','qtd'].forEach(p => {
+    ['all','7d','30d','qtd','custom'].forEach(p => {
       const btn = q(`${pfx}period-${p}`);
       if (btn) btn.classList.toggle('active', p === period);
     });
     const lbl = q(`${pfx}periodDateRange`);
     if (lbl) lbl.textContent = dateLabel;
+    // Show/hide custom date pickers
+    const cdr = q(`${pfx}customDateRow`);
+    if (cdr) cdr.classList.toggle('visible', period === 'custom');
   });
 }
 
@@ -1864,13 +1963,19 @@ function setLoadingBanners(visible, text) {
 }
 
 async function setTimePeriod(period) {
-  if (S.timePeriod === period) return;
+  if (S.timePeriod === period && period !== 'custom') return;
   S.timePeriod = period;
   syncPeriodUI(period);
 
   if (period === 'all') {
     S.periodData = null;
     setLoadingBanners(false);
+    renderAll();
+    return;
+  }
+
+  // For custom, just show the pickers — fetch only when both dates are filled
+  if (period === 'custom') {
     renderAll();
     return;
   }
@@ -1889,6 +1994,42 @@ async function setTimePeriod(period) {
     return;
   }
 
+  setLoadingBanners(false);
+  renderAll();
+}
+
+// Sync all custom date inputs across tabs, then fetch
+async function applyCustomPeriod() {
+  // Mirror values across all three tab pickers
+  const prefixes = ['dash-','camp-','sdr-'];
+  let start = '', end = '';
+  for(const pfx of prefixes) {
+    const s = q(`${pfx}customStart`)?.value;
+    const e = q(`${pfx}customEnd`)?.value;
+    if(s) start = s;
+    if(e) end = e;
+  }
+  if(!start || !end || start > end) return;
+
+  // Sync values to all pickers
+  prefixes.forEach(pfx => {
+    const si = q(`${pfx}customStart`); if(si) si.value = start;
+    const ei = q(`${pfx}customEnd`);   if(ei) ei.value = end;
+  });
+
+  setLoadingBanners(true, `Fetching custom range data from Salesforce…`);
+  S.periodData = null;
+  renderAll();
+
+  try {
+    const r = await fetch(`/api/time-data?period=custom&start=${start}&end=${end}`);
+    const d = await r.json();
+    S.periodData = d;
+    syncPeriodUI('custom');
+  } catch(e) {
+    setLoadingBanners(true, `Failed to load: ${e.message}`);
+    return;
+  }
   setLoadingBanners(false);
   renderAll();
 }
@@ -1963,6 +2104,28 @@ function renderDashboard() {
     {label:'S1 Created',     value:fmt(totalS1),          sub:'Click to see opportunities',                         icon:'🏆', color:'#F472B6', clickable:true, onclick:s1OnClick},
   ];
 
+  // ── Stale campaign alert ─────────────────────────────────────────────────
+  const today7 = new Date(); today7.setDate(today7.getDate() - 7);
+  const tod7Str = today7.toISOString().slice(0,10);
+  const staleCamps = cps.filter(c =>
+    (c.status||'Active') === 'Active' &&
+    (c.start_date||'') <= tod7Str &&
+    (c.start_date||'') !== '' &&
+    (c.total_calls||0) + (c.total_emails||0) === 0
+  );
+  const staleEl = q('staleAlert');
+  if(staleEl) {
+    if(staleCamps.length > 0) {
+      staleEl.innerHTML = `<div class="stale-banner" onclick="switchTab('campaigns');setStatus('Active')">
+        <div class="stale-dot"></div>
+        <span>⚠️ <strong>${staleCamps.length} active campaign${staleCamps.length>1?'s':''}</strong> started over 7 days ago with <strong>zero calls &amp; emails</strong> — may need attention.</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--text-dim)">Click to view →</span>
+      </div>`;
+    } else {
+      staleEl.innerHTML = '';
+    }
+  }
+
   q('kpiGrid').innerHTML = kpis.map(k=>`
     <div class="kpi-card animate-up ${k.clickable?'kpi-clickable':''}"
          style="--kpi-color:${k.color}"
@@ -1972,6 +2135,52 @@ function renderDashboard() {
       <div class="kpi-value">${k.value}</div>
       <div class="kpi-sub">${k.sub}</div>
     </div>`).join('');
+
+  // ── Coverage % cards ─────────────────────────────────────────────────────
+  const totalUC = sum(cps,'unique_leads_called');
+  const totalUE = sum(cps,'unique_leads_emailed');
+  const callCovPct  = totalLeads > 0 ? Math.round(totalUC / totalLeads * 100) : 0;
+  const emailCovPct = totalLeads > 0 ? Math.round(totalUE / totalLeads * 100) : 0;
+  const notCalled   = totalLeads - totalUC;
+  const notEmailed  = totalLeads - totalUE;
+  const covEl = q('covRow');
+  if(covEl) covEl.innerHTML = `
+    <div class="cov-card">
+      <div class="cov-card-title">📞 Call Coverage</div>
+      <div class="cov-pct-row">
+        <div class="cov-pct-val" style="color:var(--purple)">${callCovPct}%</div>
+        <div class="cov-pct-sub">${fmt(totalUC)} of ${fmt(totalLeads)} leads called</div>
+      </div>
+      <div class="cov-track"><div class="cov-fill" style="width:${callCovPct}%;background:var(--purple)"></div></div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">${fmt(notCalled)} leads not yet called</div>
+    </div>
+    <div class="cov-card">
+      <div class="cov-card-title">📧 Email Coverage</div>
+      <div class="cov-pct-row">
+        <div class="cov-pct-val" style="color:var(--amber)">${emailCovPct}%</div>
+        <div class="cov-pct-sub">${fmt(totalUE)} of ${fmt(totalLeads)} leads emailed</div>
+      </div>
+      <div class="cov-track"><div class="cov-fill" style="width:${emailCovPct}%;background:var(--amber)"></div></div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">${fmt(notEmailed)} leads not yet emailed</div>
+    </div>
+    <div class="cov-card">
+      <div class="cov-card-title">🤝 Meeting Rate</div>
+      <div class="cov-pct-row">
+        <div class="cov-pct-val" style="color:var(--green)">${totalCalls > 0 ? (totalMeetings/totalCalls*100).toFixed(1) : 0}%</div>
+        <div class="cov-pct-sub">${fmt(totalMeetings)} meetings from ${fmt(totalCalls)} calls</div>
+      </div>
+      <div class="cov-track"><div class="cov-fill" style="width:${Math.min(totalCalls>0?totalMeetings/totalCalls*100:0,100)}%;background:var(--green)"></div></div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">Calls → Meeting conversion</div>
+    </div>
+    <div class="cov-card">
+      <div class="cov-card-title">💎 SQL Rate</div>
+      <div class="cov-pct-row">
+        <div class="cov-pct-val" style="color:#A78BFA">${totalMeetings > 0 ? (totalSqlGen/totalMeetings*100).toFixed(1) : 0}%</div>
+        <div class="cov-pct-sub">${fmt(totalSqlGen)} SQLs from ${fmt(totalMeetings)} meetings</div>
+      </div>
+      <div class="cov-track"><div class="cov-fill" style="width:${Math.min(totalMeetings>0?totalSqlGen/totalMeetings*100:0,100)}%;background:#A78BFA"></div></div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">Meeting → SQL conversion</div>
+    </div>`;
 
   // ── Funnel ────────────────────────────────────────────────────────────────
   const steps = [
@@ -2082,6 +2291,71 @@ function renderDashboard() {
 
   // ── SDR leaderboard (full component) ─────────────────────────────────────
   renderLeaderboard('sdrLeaderboard', src.sdr_stats || []);
+
+  // ── POD Team Summary ─────────────────────────────────────────────────────
+  renderPodSummary(cps);
+}
+
+function renderPodSummary(cps) {
+  const el = q('podSummaryTable');
+  if (!el) return;
+
+  // Group campaigns by pod_team
+  const podMap = {};
+  cps.forEach(c => {
+    const pod = (c.pod_team || '').trim() || '(No POD)';
+    if (!podMap[pod]) podMap[pod] = { campaigns:0, leads:0, calls:0, emails:0, meetings:0, sql:0, s1:0, uCalled:0, uEmailed:0 };
+    const p = podMap[pod];
+    p.campaigns++;
+    p.leads    += c.total_leads    || 0;
+    p.calls    += c.total_calls    || 0;
+    p.emails   += c.total_emails   || 0;
+    p.meetings += c.meetings       || 0;
+    p.sql      += c.sql_gen        || 0;
+    p.s1       += c.s1_created     || 0;
+    p.uCalled  += c.unique_leads_called  || 0;
+    p.uEmailed += c.unique_leads_emailed || 0;
+  });
+
+  const pods = Object.entries(podMap).sort((a,b) => b[1].meetings - a[1].meetings);
+  if (!pods.length) { el.innerHTML = '<div style="padding:20px;color:var(--text-dim);font-size:12px">No data — assign campaigns to POD teams.</div>'; return; }
+
+  const covBar = (val, total, color) => {
+    const p = total > 0 ? Math.min(Math.round(val/total*100),100) : 0;
+    return `<div class="pod-cov-bar">
+      <div class="pod-cov-track"><div class="pod-cov-fill" style="width:${p}%;background:${color}"></div></div>
+      <span style="font-size:10.5px;color:${color}">${p}%</span>
+    </div>`;
+  };
+
+  el.innerHTML = `<div style="overflow-x:auto"><table class="pod-table">
+    <thead><tr>
+      <th>POD Team</th>
+      <th>Campaigns</th>
+      <th>Leads</th>
+      <th>Calls</th>
+      <th>Emails</th>
+      <th>Call Cov.</th>
+      <th>Email Cov.</th>
+      <th style="color:var(--green)">Meetings</th>
+      <th style="color:#A78BFA">SQL</th>
+      <th style="color:#F472B6">S1</th>
+    </tr></thead>
+    <tbody>
+    ${pods.map(([pod, p]) => `<tr>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(pod)}">${esc(pod)}</td>
+      <td>${p.campaigns}</td>
+      <td>${fmt(p.leads)}</td>
+      <td style="color:var(--purple)">${fmt(p.calls)}</td>
+      <td style="color:var(--amber)">${fmt(p.emails)}</td>
+      <td>${covBar(p.uCalled, p.leads, '#A78BFA')}</td>
+      <td>${covBar(p.uEmailed, p.leads, '#F59E0B')}</td>
+      <td style="color:var(--green);font-weight:700">${fmt(p.meetings)}</td>
+      <td style="color:#A78BFA;font-weight:700">${fmt(p.sql)}</td>
+      <td style="color:#F472B6;font-weight:700">${fmt(p.s1)}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table></div>`;
 }
 
 function drawBarChart(id, data, opts={}) {
@@ -2523,17 +2797,26 @@ function renderManage() {
     return true;
   });
   q('manageCampCount').textContent = `${cps.length} campaign${cps.length!==1?'s':''}`;
+
+  // Stale detection
+  const tod7 = new Date(); tod7.setDate(tod7.getDate()-7);
+  const tod7s = tod7.toISOString().slice(0,10);
+  const isStale = c => (c.status||'Active')==='Active' && (c.start_date||'')<=tod7s && (c.start_date||'')!=='' && (c.total_calls||0)+(c.total_emails||0)===0;
+
   q('manageList').innerHTML = cps.length ? cps.map(c=>`
-    <div class="manage-item">
+    <div class="manage-item ${S.bulkSelected.has(c.id)?'selected':''}" id="mi-${c.id}">
+      <input type="checkbox" class="manage-item-check admin-only" ${S.bulkSelected.has(c.id)?'checked':''}
+        onclick="event.stopPropagation();toggleBulkSelect('${c.id}')">
       <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${c.status==='Active'?'var(--green)':c.status==='Paused'?'var(--amber)':'var(--blue)'}"></div>
-      <div class="manage-item-info">
-        <div class="manage-item-name" title="${esc(c.name)}">${esc(c.name)}</div>
+      <div class="manage-item-info" style="flex:1;min-width:0">
+        <div class="manage-item-name" title="${esc(c.name)}">${esc(c.name)}${isStale(c)?'<span class="stale-badge">⚠️ No activity</span>':''}</div>
         <div class="manage-item-meta">
           ${c.sdr_owner?'SDR: '+esc(c.sdr_owner)+' · ':''}
           ${c.status}${c.start_date?' · From '+fmtDay(c.start_date):''}${c.end_date?' → '+fmtDay(c.end_date):''}
         </div>
       </div>
       <div class="manage-item-actions admin-only">
+        <button class="btn-sync" id="sync-btn-${c.id}" onclick="event.stopPropagation();syncCampaign('${c.id}')">🔄 Sync</button>
         <button class="btn btn-edit btn-sm" onclick="event.stopPropagation();openEditModal('${c.id}')">✏️ Edit</button>
         <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteCampaign('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">Remove</button>
       </div>
@@ -3703,6 +3986,118 @@ function drawS1rTable(rows) {
     <td colspan="5" style="color:var(--text-muted);font-size:11px;font-weight:600">${rows.length} opportunit${rows.length!==1?'ies':'y'}</td>
     <td class="td-num" style="color:var(--green)">${fmtAmt(totalAmt)}</td>
     <td></td>`;
+}
+
+// ── BULK STATUS UPDATE ────────────────────────────────────────────────────────
+function toggleBulkSelect(id) {
+  if (S.bulkSelected.has(id)) S.bulkSelected.delete(id);
+  else S.bulkSelected.add(id);
+  updateBulkBar();
+  // Toggle .selected class on the item
+  const el = q(`mi-${id}`);
+  if (el) el.classList.toggle('selected', S.bulkSelected.has(id));
+}
+
+function clearBulkSelection() {
+  S.bulkSelected.clear();
+  updateBulkBar();
+  renderManage();
+}
+
+function updateBulkBar() {
+  const bar = q('bulkBar');
+  if (!bar) return;
+  const n = S.bulkSelected.size;
+  bar.classList.toggle('visible', n > 0);
+  const cnt = q('bulkCount');
+  if (cnt) cnt.textContent = `${n} campaign${n!==1?'s':''} selected`;
+}
+
+async function applyBulkStatus(status) {
+  if (!S.bulkSelected.size) return;
+  const ids = [...S.bulkSelected];
+  try {
+    const r = await fetch('/api/campaigns/bulk-status', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-Admin-Token': S.adminToken},
+      body: JSON.stringify({ids, status})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      // Patch local cache
+      (S.data.campaigns||[]).forEach(c => { if(ids.includes(c.id)) c.status = status; });
+      clearBulkSelection();
+      renderManage();
+    }
+  } catch(e) { alert('Bulk update failed: ' + e.message); }
+}
+
+// ── PER-CAMPAIGN SYNC ─────────────────────────────────────────────────────────
+async function syncCampaign(cid) {
+  const btn = q(`sync-btn-${cid}`);
+  if (btn) { btn.classList.add('syncing'); btn.textContent = '⏳ Syncing…'; }
+  try {
+    const r = await fetch(`/api/campaigns/${cid}/sync`, {
+      method:'POST',
+      headers:{'X-Admin-Token': S.adminToken}
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    // Patch local data cache
+    const idx = (S.data.campaigns||[]).findIndex(c=>c.id===cid);
+    if (idx >= 0) S.data.campaigns[idx] = d;
+    else S.data.campaigns.push(d);
+    renderManage();
+    if (btn) { btn.classList.remove('syncing'); btn.textContent = '✅ Done'; setTimeout(()=>{ if(btn) btn.textContent='🔄 Sync'; },2000); }
+  } catch(e) {
+    if (btn) { btn.classList.remove('syncing'); btn.textContent = '❌ Error'; setTimeout(()=>{ if(btn) btn.textContent='🔄 Sync'; },3000); }
+  }
+}
+
+// ── EXPORT CSV ───────────────────────────────────────────────────────────────
+function exportCSV(type) {
+  let rows, filename;
+  if (type === 'campaigns') {
+    const src = (S.timePeriod !== 'all' && S.periodData) ? S.periodData : S.data;
+    const cps = src.campaigns || [];
+    const headers = ['Campaign','SDR Owner','Email Owner','Status','Segment','POD Team',
+                     'Start Date','End Date','Total Leads','Calls','Unique Called',
+                     'Emails','Unique Emailed','Meetings Generated','Meetings Done',
+                     'No Show','SQL','S1 Created','Call Coverage %','Email Coverage %'];
+    rows = [headers, ...cps.map(c=>[
+      c.name, c.sdr_owner||'', c.email_owner||'', c.status||'Active',
+      c.segment||'', c.pod_team||'', c.start_date||'', c.end_date||'',
+      c.total_leads||0, c.total_calls||0, c.unique_leads_called||0,
+      c.total_emails||0, c.unique_leads_emailed||0, c.meetings||0,
+      c.meeting_done||0, c.meeting_noshow||0, c.sql_gen||0, c.s1_created||0,
+      c.total_leads>0 ? ((c.unique_leads_called||0)/c.total_leads*100).toFixed(1)+'%' : '—',
+      c.total_leads>0 ? ((c.unique_leads_emailed||0)/c.total_leads*100).toFixed(1)+'%' : '—',
+    ])];
+    filename = `campaigns_${new Date().toISOString().slice(0,10)}.csv`;
+
+  } else if (type === 'sdr') {
+    const src = (S.timePeriod !== 'all' && S.periodData) ? S.periodData : S.data;
+    const sdrs = src.sdr_stats || [];
+    const headers = ['SDR Name','Calls','Emails','Meetings Generated','Meetings Done','No Show','SQL','S1','NPV'];
+    rows = [headers, ...sdrs.map(s=>[
+      s.name, s.calls||0, s.emails||0, s.meetings||0,
+      s.meeting_done||0, s.meeting_noshow||0, s.sql_gen||0,
+      s.s1||0, s.npv||0
+    ])];
+    filename = `sdr_performance_${new Date().toISOString().slice(0,10)}.csv`;
+  } else return;
+
+  const csv = rows.map(row =>
+    row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')
+  ).join('\n');
+
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ── INIT ─────────────────────────────────────────────────────────────────────

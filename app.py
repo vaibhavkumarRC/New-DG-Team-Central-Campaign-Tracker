@@ -485,7 +485,7 @@ def cnt(res):
 
 # ── Period date helpers ───────────────────────────────────────────────────────
 
-def period_dates(period):
+def period_dates(period, custom_start=None, custom_end=None):
     """Return (start_str, end_str) as YYYY-MM-DD for SOQL date filters."""
     today = date.today()
     if period == '7d':
@@ -495,6 +495,8 @@ def period_dates(period):
     elif period == 'qtd':
         q_start_month = ((today.month - 1) // 3) * 3 + 1
         start = date(today.year, q_start_month, 1)
+    elif period == 'custom' and custom_start and custom_end:
+        return custom_start, custom_end
     else:
         return None, None
     return start.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d')
@@ -1176,20 +1178,25 @@ def api_sdr_detail():
 @app.route('/api/time-data')
 def api_time_data():
     """Return campaigns whose start_date falls within the period, with full metrics.
-    ?period=7d|30d|qtd  — results cached for PERIOD_CACHE_TTL seconds."""
-    period = request.args.get('period', '').strip().lower()
-    refresh = request.args.get('refresh', '').strip().lower() == '1'
-    start, end = period_dates(period)
+    ?period=7d|30d|qtd|custom  — custom requires &start=YYYY-MM-DD&end=YYYY-MM-DD
+    Results cached for PERIOD_CACHE_TTL seconds (custom dates not cached)."""
+    period       = request.args.get('period', '').strip().lower()
+    custom_start = request.args.get('start', '').strip()
+    custom_end   = request.args.get('end',   '').strip()
+    refresh      = request.args.get('refresh', '').strip().lower() == '1'
+    start, end   = period_dates(period, custom_start, custom_end)
     if not start:
-        return jsonify({'error': 'Invalid period. Use 7d, 30d, or qtd.'}), 400
+        return jsonify({'error': 'Invalid period. Use 7d, 30d, qtd, or custom with start/end.'}), 400
 
-    # ── Serve from cache if fresh ────────────────────────────────────────────
-    cached = period_cache.get(period)
-    if cached and not refresh:
-        age = (datetime.now() - cached['fetched_at']).total_seconds()
-        if age < PERIOD_CACHE_TTL:
-            print(f'[period_cache] HIT {period} (age {int(age)}s)')
-            return jsonify(cached['data'])
+    # ── Serve from cache if fresh (custom ranges are never cached) ──────────
+    cache_key = period if period != 'custom' else None
+    if cache_key:
+        cached = period_cache.get(cache_key)
+        if cached and not refresh:
+            age = (datetime.now() - cached['fetched_at']).total_seconds()
+            if age < PERIOD_CACHE_TTL:
+                print(f'[period_cache] HIT {period} (age {int(age)}s)')
+                return jsonify(cached['data'])
     print(f'[period_cache] MISS {period} — fetching from Salesforce…')
 
     camps = load_campaigns()
@@ -1237,8 +1244,9 @@ def api_time_data():
         'end_date':   end,
     }
 
-    # ── Store in cache ───────────────────────────────────────────────────────
-    period_cache[period] = {'data': payload, 'fetched_at': datetime.now()}
+    # ── Store in cache (not for custom date ranges) ──────────────────────────
+    if cache_key:
+        period_cache[cache_key] = {'data': payload, 'fetched_at': datetime.now()}
 
     return jsonify({
         'campaigns':  results,
@@ -1422,6 +1430,52 @@ def api_camps_delete(cid):
     save_campaigns([c for c in load_campaigns() if c['id'] != cid])
     cache['campaigns'] = [c for c in cache['campaigns'] if c.get('id') != cid]
     return jsonify({'ok': True})
+
+@app.route('/api/campaigns/<cid>/sync', methods=['POST'])
+@require_admin
+def api_camp_sync(cid):
+    """Re-sync metrics for a single campaign and patch the cache."""
+    camps = load_campaigns()
+    camp = next((c for c in camps if c['id'] == cid), None)
+    if not camp:
+        return jsonify({'error': 'Campaign not found'}), 404
+    try:
+        updated = campaign_metrics(camp)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    # Patch in-memory cache
+    for i, cc in enumerate(cache['campaigns']):
+        if cc.get('id') == cid:
+            cache['campaigns'][i] = updated
+            break
+    else:
+        cache['campaigns'].append(updated)
+    # Invalidate period caches so they reflect the new data
+    period_cache.clear()
+    return jsonify(updated)
+
+@app.route('/api/campaigns/bulk-status', methods=['POST'])
+@require_admin
+def api_camps_bulk_status():
+    """Update status for multiple campaigns at once.
+    Body: { ids: [...], status: 'Active'|'Paused'|'Completed' }"""
+    d = request.json or {}
+    ids    = set(d.get('ids') or [])
+    status = (d.get('status') or '').strip()
+    if not ids or status not in ('Active', 'Paused', 'Completed'):
+        return jsonify({'error': 'Provide ids[] and a valid status'}), 400
+    camps = load_campaigns()
+    updated = 0
+    for c in camps:
+        if c['id'] in ids:
+            c['status'] = status
+            updated += 1
+    save_campaigns(camps)
+    # Patch in-memory cache too
+    for cc in cache['campaigns']:
+        if cc.get('id') in ids:
+            cc['status'] = status
+    return jsonify({'ok': True, 'updated': updated})
 
 # ── Segments ──────────────────────────────────────────────────────────────────
 
