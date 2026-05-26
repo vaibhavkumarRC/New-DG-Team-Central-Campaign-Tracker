@@ -185,6 +185,62 @@ def _count_distinct_who_for_ids(lead_ids, subject_filter, dt_task):
                     seen.add(wid)
     return len(seen)
 
+def _count_leads_for_ids(lead_ids, extra_filter):
+    """Count Leads matching extra_filter from a frozen list of lead IDs.
+    Batches into groups of _BATCH_SIZE to avoid SOQL length limits."""
+    if not lead_ids:
+        return 0
+    total = 0
+    for i in range(0, len(lead_ids), _BATCH_SIZE):
+        batch = lead_ids[i:i + _BATCH_SIZE]
+        ids_str = ','.join(f"'{lid}'" for lid in batch)
+        q = f"SELECT COUNT(Id) FROM Lead WHERE Id IN ({ids_str}) AND {extra_filter}"
+        total += cnt(soql(q))
+    return total
+
+def _agg_status_sdr_for_ids(lead_ids, status_filter):
+    """Group Leads by Meeting_Generated_by__c + Meeting_Status__c from frozen IDs.
+    Returns {'records': [{Meeting_Generated_by__c, Meeting_Status__c, expr0}]}."""
+    if not lead_ids:
+        return {'records': []}
+    from collections import defaultdict
+    agg = defaultdict(int)
+    for i in range(0, len(lead_ids), _BATCH_SIZE):
+        batch = lead_ids[i:i + _BATCH_SIZE]
+        ids_str = ','.join(f"'{lid}'" for lid in batch)
+        q = (f"SELECT Meeting_Generated_by__c, Meeting_Status__c, COUNT(Id) "
+             f"FROM Lead WHERE Id IN ({ids_str}) AND ({status_filter}) "
+             f"AND Meeting_Generated_by__c != null "
+             f"GROUP BY Meeting_Generated_by__c, Meeting_Status__c")
+        res = soql(q)
+        if res and res.get('records'):
+            for rec in res['records']:
+                key = (rec.get('Meeting_Generated_by__c'), rec.get('Meeting_Status__c'))
+                agg[key] += int(rec.get('expr0', 0) or 0)
+    return {'records': [{'Meeting_Generated_by__c': k[0], 'Meeting_Status__c': k[1], 'expr0': v}
+                        for k, v in agg.items()]}
+
+def _agg_sdr_count_for_ids(lead_ids, extra_filter):
+    """Group Leads by Meeting_Generated_by__c + COUNT from frozen IDs.
+    Returns {'records': [{Meeting_Generated_by__c, expr0}]}."""
+    if not lead_ids:
+        return {'records': []}
+    from collections import defaultdict
+    agg = defaultdict(int)
+    for i in range(0, len(lead_ids), _BATCH_SIZE):
+        batch = lead_ids[i:i + _BATCH_SIZE]
+        ids_str = ','.join(f"'{lid}'" for lid in batch)
+        q = (f"SELECT Meeting_Generated_by__c, COUNT(Id) FROM Lead "
+             f"WHERE Id IN ({ids_str}) AND {extra_filter} "
+             f"AND Meeting_Generated_by__c != null "
+             f"GROUP BY Meeting_Generated_by__c")
+        res = soql(q)
+        if res and res.get('records'):
+            for rec in res['records']:
+                key = rec.get('Meeting_Generated_by__c')
+                agg[key] += int(rec.get('expr0', 0) or 0)
+    return {'records': [{'Meeting_Generated_by__c': k, 'expr0': v} for k, v in agg.items()]}
+
 DEFAULT_SEGMENTS = ['EPIC Campaign', 'TruBridge Campaign', 'Factors Data', 'Hiring Data', 'High Intent Data']
 
 def load_segments():
@@ -498,32 +554,26 @@ def campaign_metrics(c, start_override=None, end_override=None):
         call_subj  = "Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%'"
         email_subj = "Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%'"
 
-        with ThreadPoolExecutor(max_workers=6) as ex:
-            f_calls   = ex.submit(_count_tasks_for_ids,       frozen_lead_ids, call_subj,  dt_task)
-            f_emails  = ex.submit(_count_tasks_for_ids,       frozen_lead_ids, email_subj, dt_task)
+        done_filter   = ("Meeting_Status__c IN ('Meeting Done-Nurture',"
+                         "'Meeting Done- Not Interested','Meeting Done-Unqualified')")
+        noshow_filter = "Meeting_Status__c = 'Meeting No Show'"
+        sql_filter    = "Status = 'SQL'"
+        stssdr_filter = (done_filter + " OR " + noshow_filter)
+
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            f_calls   = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, call_subj,  dt_task)
+            f_emails  = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, email_subj, dt_task)
             f_ucalled = ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, call_subj,  dt_task)
             f_uemailed= ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, email_subj, dt_task)
 
-            # These still use Campaign__c filter (they reflect current lead state,
-            # not historical — status/SQL can legitimately change)
-            live_lead_clause = f"Campaign__c = '{n}'"
-            f_done    = ex.submit(soql, f"SELECT COUNT(Id) FROM Lead WHERE {live_lead_clause} "
-                                        f"AND Meeting_Status__c IN ('Meeting Done-Nurture',"
-                                        f"'Meeting Done- Not Interested','Meeting Done-Unqualified'){dt_mtg}")
-            f_noshow  = ex.submit(soql, f"SELECT COUNT(Id) FROM Lead WHERE {live_lead_clause} "
-                                        f"AND Meeting_Status__c = 'Meeting No Show'{dt_mtg}")
-            f_sql     = ex.submit(soql, f"SELECT COUNT(Id) FROM Lead WHERE {live_lead_clause} "
-                                        f"AND Status = 'SQL'{dt_mtg}")
-            f_stssdr  = ex.submit(soql, f"SELECT Meeting_Generated_by__c, Meeting_Status__c, COUNT(Id) "
-                                        f"FROM Lead WHERE {live_lead_clause} "
-                                        f"AND Meeting_Status__c IN ('Meeting Done-Nurture',"
-                                        f"'Meeting Done- Not Interested','Meeting Done-Unqualified','Meeting No Show'){dt_mtg} "
-                                        f"AND Meeting_Generated_by__c != null "
-                                        f"GROUP BY Meeting_Generated_by__c, Meeting_Status__c")
-            f_sqlsdr  = ex.submit(soql, f"SELECT Meeting_Generated_by__c, COUNT(Id) FROM Lead "
-                                        f"WHERE {live_lead_clause} AND Status = 'SQL' "
-                                        f"AND Meeting_Generated_by__c != null "
-                                        f"GROUP BY Meeting_Generated_by__c")
+            # All frozen — use lead IDs from ledger so counts don't drift
+            # when a lead is reassigned to a different campaign
+            f_done    = ex.submit(_count_leads_for_ids,     frozen_lead_ids, done_filter)
+            f_noshow  = ex.submit(_count_leads_for_ids,     frozen_lead_ids, noshow_filter)
+            f_sql     = ex.submit(_count_leads_for_ids,     frozen_lead_ids, sql_filter)
+            f_stssdr  = ex.submit(_agg_status_sdr_for_ids,  frozen_lead_ids, stssdr_filter)
+            f_sqlsdr  = ex.submit(_agg_sdr_count_for_ids,   frozen_lead_ids, sql_filter)
+
             if not has_manual_s1:
                 f_s1 = ex.submit(soql, f"SELECT COUNT(Id) FROM Opportunity "
                                        f"WHERE Id IN (SELECT ConvertedOpportunityId FROM Lead "
@@ -533,9 +583,9 @@ def campaign_metrics(c, start_override=None, end_override=None):
         total_emails         = f_emails.result()
         unique_leads_called  = f_ucalled.result()
         unique_leads_emailed = f_uemailed.result()
-        results['meeting_done']   = f_done.result()
-        results['meeting_noshow'] = f_noshow.result()
-        results['sql_gen']        = f_sql.result()
+        results['meeting_done']   = f_done.result()   # int
+        results['meeting_noshow'] = f_noshow.result() # int
+        results['sql_gen']        = f_sql.result()    # int
         results['status_sdr']     = f_stssdr.result()
         results['sql_sdr']        = f_sqlsdr.result()
         if not has_manual_s1:
@@ -582,9 +632,9 @@ def campaign_metrics(c, start_override=None, end_override=None):
         'meetings':           total_meetings,
         's1_created':         int(manual_s1) if has_manual_s1 else cnt(results.get('s1')),
         's1_is_manual':       has_manual_s1,
-        'meeting_done':       cnt(results.get('meeting_done')),
-        'meeting_noshow':     cnt(results.get('meeting_noshow')),
-        'sql_gen':            cnt(results.get('sql_gen')),
+        'meeting_done':       results.get('meeting_done', 0),
+        'meeting_noshow':     results.get('meeting_noshow', 0),
+        'sql_gen':            results.get('sql_gen', 0),
         'sdr_breakdown':      sdr_bk,
         'status_sdr_breakdown': [{'name': k, **v} for k, v in status_sdr_bk.items()],
         'synced_at':          datetime.now().isoformat()
