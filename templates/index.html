@@ -1228,6 +1228,9 @@ tfoot td {
           <select class="form-select" id="managePodFilter" style="height:28px;padding:0 8px;font-size:12px;min-width:160px;margin-left:auto" onchange="renderManage()">
             <option value="">All PODs</option>
           </select>
+          <select class="form-select" id="manageSegmentFilter" style="height:28px;padding:0 8px;font-size:12px;min-width:150px" onchange="renderManage()">
+            <option value="">All Segments</option>
+          </select>
           <select class="form-select" id="manageSdrFilter" style="height:28px;padding:0 8px;font-size:12px;min-width:120px" onchange="renderManage()">
             <option value="">All SDRs</option>
           </select>
@@ -2749,14 +2752,25 @@ function renderManage() {
   const allCps = S.data.campaigns||[];
   const sdrSel = q('manageSdrFilter');
   const podSel = q('managePodFilter');
+  const segSel = q('manageSegmentFilter');
   const sdrF   = (sdrSel?.value||'').toLowerCase();
   const podF   = podSel?.value || '';
+  const segF   = segSel?.value || '';
 
   // Populate POD dropdown (keep current selection)
   if(podSel) {
     const cur = podSel.value;
     podSel.innerHTML = '<option value="">All PODs</option>' +
       POD_TEAMS.map(p=>`<option value="${esc(p)}"${p===cur?'selected':''}>${esc(p)}</option>`).join('');
+  }
+
+  // Populate Segment dropdown from live campaign data (keep current selection)
+  if(segSel) {
+    const cur  = segSel.value;
+    const segs = [...new Set(allCps.map(c=>(c.segment||'').trim()).filter(Boolean))].sort();
+    segSel.innerHTML = '<option value="">All Segments</option>' +
+      segs.map(s=>`<option value="${esc(s)}"${s===cur?'selected':''}>${esc(s)}</option>`).join('');
+    if(cur && segs.includes(cur)) segSel.value = cur;
   }
 
   // Populate SDR dropdown (keep current selection)
@@ -2769,6 +2783,7 @@ function renderManage() {
 
   const cps = allCps.filter(c => {
     if(podF && (c.pod_team||'') !== podF) return false;
+    if(segF && (c.segment||'').trim() !== segF) return false;
     if(sdrF && (c.sdr_owner||'').toLowerCase() !== sdrF) return false;
     return true;
   });
