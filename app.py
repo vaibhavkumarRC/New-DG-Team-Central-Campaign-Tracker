@@ -1125,7 +1125,7 @@ def api_sdr_detail():
 
 @app.route('/api/time-data')
 def api_time_data():
-    """Return campaign metrics filtered to a time period.
+    """Return campaigns whose start_date falls within the period, with full metrics.
     ?period=7d|30d|qtd  — results cached for PERIOD_CACHE_TTL seconds."""
     period = request.args.get('period', '').strip().lower()
     refresh = request.args.get('refresh', '').strip().lower() == '1'
@@ -1147,10 +1147,18 @@ def api_time_data():
         return jsonify({'campaigns': [], 'sdr_stats': [], 'period': period,
                         'start_date': start, 'end_date': end})
 
+    # Filter campaigns whose start_date falls within the period window.
+    # Campaigns with no start_date are excluded from period views.
+    period_camps = [
+        c for c in camps
+        if start <= (c.get('start_date') or '') <= end
+    ]
+
     results = []
 
+    # No date override — compute full all-time metrics for each campaign
     with ThreadPoolExecutor(max_workers=3) as ex:
-        futs = {ex.submit(campaign_metrics, c, start, end): c for c in camps}
+        futs = {ex.submit(campaign_metrics, c): c for c in period_camps}
         for f in as_completed(futs):
             try:
                 results.append(f.result())
@@ -1168,15 +1176,11 @@ def api_time_data():
     order = {c['id']: i for i, c in enumerate(camps)}
     results.sort(key=lambda x: order.get(x['id'], 999))
 
-    # Filter to campaigns with any activity in the period
-    active = [r for r in results
-              if r.get('total_calls', 0) + r.get('total_emails', 0) + r.get('meetings', 0) > 0]
-
-    sdr_opp_stats = fetch_sdr_opp_stats(start_date=start, end_date=end)
-    sdr_stats     = build_sdr_stats(active, sdr_opp_stats)
+    sdr_opp_stats = fetch_sdr_opp_stats()
+    sdr_stats     = build_sdr_stats(results, sdr_opp_stats)
 
     payload = {
-        'campaigns':  active,
+        'campaigns':  results,
         'sdr_stats':  sdr_stats,
         'period':     period,
         'start_date': start,
@@ -1187,7 +1191,7 @@ def api_time_data():
     period_cache[period] = {'data': payload, 'fetched_at': datetime.now()}
 
     return jsonify({
-        'campaigns':  active,
+        'campaigns':  results,
         'sdr_stats':  sdr_stats,
         'period':     period,
         'start_date': start,
