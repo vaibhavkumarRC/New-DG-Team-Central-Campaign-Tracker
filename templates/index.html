@@ -2136,34 +2136,6 @@ function renderDashboard() {
       <div class="kpi-sub">${k.sub}</div>
     </div>`).join('');
 
-  // ── Coverage % cards ─────────────────────────────────────────────────────
-  const totalUC = sum(cps,'unique_leads_called');
-  const totalUE = sum(cps,'unique_leads_emailed');
-  const callCovPct  = totalLeads > 0 ? Math.round(totalUC / totalLeads * 100) : 0;
-  const emailCovPct = totalLeads > 0 ? Math.round(totalUE / totalLeads * 100) : 0;
-  const notCalled   = totalLeads - totalUC;
-  const notEmailed  = totalLeads - totalUE;
-  const covEl = q('covRow');
-  if(covEl) covEl.innerHTML = `
-    <div class="cov-card">
-      <div class="cov-card-title">📞 Call Coverage</div>
-      <div class="cov-pct-row">
-        <div class="cov-pct-val" style="color:var(--purple)">${callCovPct}%</div>
-        <div class="cov-pct-sub">${fmt(totalUC)} of ${fmt(totalLeads)} leads called</div>
-      </div>
-      <div class="cov-track"><div class="cov-fill" style="width:${callCovPct}%;background:var(--purple)"></div></div>
-      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">${fmt(notCalled)} leads not yet called</div>
-    </div>
-    <div class="cov-card">
-      <div class="cov-card-title">📧 Email Coverage</div>
-      <div class="cov-pct-row">
-        <div class="cov-pct-val" style="color:var(--amber)">${emailCovPct}%</div>
-        <div class="cov-pct-sub">${fmt(totalUE)} of ${fmt(totalLeads)} leads emailed</div>
-      </div>
-      <div class="cov-track"><div class="cov-fill" style="width:${emailCovPct}%;background:var(--amber)"></div></div>
-      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">${fmt(notEmailed)} leads not yet emailed</div>
-    </div>
-    `;
 
   // ── Funnel ────────────────────────────────────────────────────────────────
   const steps = [
