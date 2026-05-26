@@ -2491,6 +2491,10 @@ function renderCampaigns() {
   }
   q('campEmpty').style.display='none';
 
+  const campTod7 = new Date(); campTod7.setDate(campTod7.getDate()-7);
+  const campTod7s = campTod7.toISOString().slice(0,10);
+  const isStaleCamp = c => (c.status||'Active')==='Active' && (c.start_date||'')<=campTod7s && (c.start_date||'')!=='' && (c.total_calls||0)+(c.total_emails||0)===0;
+
   q('campTbody').innerHTML = cps.map((c,i)=>{
     const callCov      = pct(c.total_calls, c.total_leads);
     const mtgRate      = pct(c.meetings, c.total_calls);
@@ -2501,9 +2505,10 @@ function renderCampaigns() {
     const notEmailed   = (c.total_leads||0) - uEmailed;
     const avgCalls     = c.calls_per_called_lead   || 0;
     const avgEmails    = c.emails_per_emailed_lead || 0;
-    return `<tr onclick="openModal('${c.id}')">
+    const stale        = isStaleCamp(c);
+    return `<tr onclick="openModal('${c.id}')" ${stale ? 'style="background:rgba(245,158,11,0.04)"' : ''}>
       <td class="td-center" style="color:var(--text-dim)">${i+1}</td>
-      <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;font-weight:600" title="${esc(c.name)}">${esc(c.name)}</td>
+      <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;font-weight:600" title="${esc(c.name)}${stale?' — ⚠️ No calls or emails yet':''}">${stale?'<span title="No calls or emails in this campaign yet" style="color:var(--amber);margin-right:4px">⚠️</span>':''}${esc(c.name)}</td>
       <td>${esc(c.sdr_owner||'—')}</td>
       <td>${esc(c.email_owner||'—')}</td>
       <td>${statusBadge(c.status||'Active')}</td>
