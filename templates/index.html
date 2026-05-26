@@ -2074,13 +2074,29 @@ function renderDashboard() {
   const totalCalls    = sum(cps,'total_calls');
   const totalEmails   = sum(cps,'total_emails');
   const totalMeetings = sum(cps,'meetings');
-  const totalMtgDone  = sum(cps,'meeting_done');
-  const totalNoShow   = sum(cps,'meeting_noshow');
-  const totalSqlGen   = sum(cps,'sql_gen');
   const activeCamps   = cps.filter(c=>c.status==='Active').length;
 
-  // S1: sum from campaign-level data (already segment+SDR filtered via cps)
-  const totalS1 = sum(cps, 's1_created');
+  // For MTGS Done, No Show, SQL, S1: use global true totals when no filters applied.
+  // Per-campaign frozen-ID sums can double-count leads that moved between campaigns.
+  // Global totals (stored in src.totals after each sync) count each lead exactly once.
+  const noFilter = S.dashSdrFilter === 'All' && S.dashSegmentFilter === 'All' && S.dashPodFilter === 'All';
+  const globT    = src.totals || {};
+
+  const totalMtgDone  = noFilter ? (globT.meeting_done   ?? sum(cps,'meeting_done'))   : sum(cps,'meeting_done');
+  const totalNoShow   = noFilter ? (globT.meeting_noshow ?? sum(cps,'meeting_noshow')) : sum(cps,'meeting_noshow');
+  const totalSqlGen   = noFilter ? (globT.sql_gen        ?? sum(cps,'sql_gen'))        : sum(cps,'sql_gen');
+
+  // S1: use sdr_stats total (from SDR_Owner__c query) — matches the S1 modal exactly.
+  // Falls back to campaign sum when segment/pod filter is active.
+  let totalS1;
+  if (S.dashSegmentFilter !== 'All' || S.dashPodFilter !== 'All') {
+    totalS1 = sum(cps, 's1_created');
+  } else {
+    const filtSdrStats = S.dashSdrFilter === 'All'
+      ? (src.sdr_stats || [])
+      : (src.sdr_stats || []).filter(s => s.name === S.dashSdrFilter);
+    totalS1 = sum(filtSdrStats, 's1_count');
+  }
 
   // ── KPI cards ────────────────────────────────────────────────────────────
   const _sdr = S.dashSdrFilter === 'All' ? '' : S.dashSdrFilter.replace(/'/g,"\\'");

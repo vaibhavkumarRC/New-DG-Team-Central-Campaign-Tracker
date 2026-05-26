@@ -277,6 +277,7 @@ def require_admin(f):
 
 cache = {
     'campaigns': [], 'sdr_stats': [],
+    'totals': {'meeting_done': 0, 'meeting_noshow': 0, 'sql_gen': 0, 's1': 0},
     'last_sync': None, 'is_syncing': False,
     'sync_progress': 0, 'errors': []
 }
@@ -796,8 +797,25 @@ def sync():
     # Fetch S1 count + NPV from Opportunities (single query, runs after campaign sync)
     sdr_opp_stats = fetch_sdr_opp_stats()
 
+    # Global true totals — avoid double-counting that happens when leads move
+    # between campaigns (frozen-ID approach counts them in every campaign they
+    # ever belonged to, inflating per-campaign sums).  These single queries
+    # count each lead exactly once.
+    global_done   = cnt(soql("SELECT COUNT(Id) FROM Lead WHERE Meeting_Status__c IN "
+                             "('Meeting Done-Nurture','Meeting Done- Not Interested',"
+                             "'Meeting Done-Unqualified')")) or 0
+    global_noshow = cnt(soql("SELECT COUNT(Id) FROM Lead WHERE Meeting_Status__c = 'Meeting No Show'")) or 0
+    global_sql    = cnt(soql("SELECT COUNT(Id) FROM Lead WHERE Status = 'SQL'")) or 0
+    global_s1     = sum(v['s1'] for v in sdr_opp_stats.values()) if sdr_opp_stats else 0
+
     cache['campaigns']     = results
     cache['sdr_stats']     = build_sdr_stats(results, sdr_opp_stats)
+    cache['totals']        = {
+        'meeting_done':   global_done,
+        'meeting_noshow': global_noshow,
+        'sql_gen':        global_sql,
+        's1':             global_s1,
+    }
     cache['last_sync']     = datetime.now().isoformat()
     cache['is_syncing']    = False
     cache['sync_progress'] = 100
@@ -805,7 +823,7 @@ def sync():
     try:
         with open(CACHE_FILE, 'w') as f:
             json.dump({'campaigns': results, 'sdr_stats': cache['sdr_stats'],
-                       'last_sync': cache['last_sync']}, f)
+                       'totals': cache['totals'], 'last_sync': cache['last_sync']}, f)
     except Exception as e:
         print(f'[cache] save error: {e}')
 
@@ -887,6 +905,7 @@ def api_data():
     return jsonify({
         'campaigns':     cache['campaigns'],
         'sdr_stats':     cache['sdr_stats'],
+        'totals':        cache.get('totals', {}),
         'last_sync':     cache['last_sync'],
         'is_syncing':    cache['is_syncing'],
         'sync_progress': cache['sync_progress'],
@@ -1929,6 +1948,7 @@ if os.path.exists(CACHE_FILE):
             saved = json.load(f)
         cache['campaigns'] = saved.get('campaigns', [])
         cache['sdr_stats'] = saved.get('sdr_stats', [])
+        cache['totals']    = saved.get('totals', {'meeting_done':0,'meeting_noshow':0,'sql_gen':0,'s1':0})
         cache['last_sync'] = saved.get('last_sync')
         print('[cache] loaded from disk')
     except Exception as e:
