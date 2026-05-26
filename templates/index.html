@@ -2163,24 +2163,7 @@ function renderDashboard() {
       <div class="cov-track"><div class="cov-fill" style="width:${emailCovPct}%;background:var(--amber)"></div></div>
       <div style="font-size:11px;color:var(--text-dim);margin-top:6px">${fmt(notEmailed)} leads not yet emailed</div>
     </div>
-    <div class="cov-card">
-      <div class="cov-card-title">🤝 Meeting Rate</div>
-      <div class="cov-pct-row">
-        <div class="cov-pct-val" style="color:var(--green)">${totalCalls > 0 ? (totalMeetings/totalCalls*100).toFixed(1) : 0}%</div>
-        <div class="cov-pct-sub">${fmt(totalMeetings)} meetings from ${fmt(totalCalls)} calls</div>
-      </div>
-      <div class="cov-track"><div class="cov-fill" style="width:${Math.min(totalCalls>0?totalMeetings/totalCalls*100:0,100)}%;background:var(--green)"></div></div>
-      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">Calls → Meeting conversion</div>
-    </div>
-    <div class="cov-card">
-      <div class="cov-card-title">💎 SQL Rate</div>
-      <div class="cov-pct-row">
-        <div class="cov-pct-val" style="color:#A78BFA">${totalMeetings > 0 ? (totalSqlGen/totalMeetings*100).toFixed(1) : 0}%</div>
-        <div class="cov-pct-sub">${fmt(totalSqlGen)} SQLs from ${fmt(totalMeetings)} meetings</div>
-      </div>
-      <div class="cov-track"><div class="cov-fill" style="width:${Math.min(totalMeetings>0?totalSqlGen/totalMeetings*100:0,100)}%;background:#A78BFA"></div></div>
-      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">Meeting → SQL conversion</div>
-    </div>`;
+    `;
 
   // ── Funnel ────────────────────────────────────────────────────────────────
   const steps = [
