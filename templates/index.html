@@ -186,7 +186,7 @@ body {
 .kpi-icon { position:absolute; right:16px; top:16px; font-size:20px; opacity:.25; }
 
 /* ── CHART CARDS ── */
-.charts-row { display:grid; grid-template-columns:1fr 1.6fr; gap:16px; margin-bottom:16px; }
+.charts-row { display:grid; grid-template-columns:1fr; gap:16px; margin-bottom:16px; }
 .chart-card {
   background: var(--surface);
   border:1px solid var(--border);
@@ -685,10 +685,6 @@ tfoot td {
     </div>
 
     <div class="charts-row">
-      <div class="chart-card">
-        <div class="chart-title">🔽 Conversion Funnel</div>
-        <div id="funnelChart"></div>
-      </div>
       <div class="chart-card" style="padding:0;overflow:hidden">
         <div style="padding:14px 20px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
           <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--text)">
@@ -702,7 +698,7 @@ tfoot td {
             <button id="cpf-Paused"    class="chip"        onclick="setCampPerfFilter('Paused')">🟡 Paused</button>
           </div>
         </div>
-        <div id="campaignTableWrap" style="overflow-y:auto;max-height:280px"></div>
+        <div id="campaignTableWrap" style="overflow-y:auto;max-height:480px"></div>
       </div>
     </div>
 
@@ -721,6 +717,14 @@ tfoot td {
       <div class="chart-card">
         <div class="chart-title">🏢 POD Team Performance</div>
         <div id="podSummaryTable"></div>
+      </div>
+    </div>
+
+    <!-- Conversion Funnel (full width, bottom) -->
+    <div style="margin-bottom:16px">
+      <div class="chart-card">
+        <div class="chart-title">🔽 Conversion Funnel</div>
+        <div id="funnelChart"></div>
       </div>
     </div>
   </div>
@@ -2165,21 +2169,28 @@ function renderDashboard() {
     {label:'S1 Created',  val:totalS1,       color:'#F472B6'},
   ];
   const maxV = totalLeads || 1;
-  q('funnelChart').innerHTML = steps.map((s,i)=>{
-    const w = Math.max((s.val/maxV)*100,1);
-    const conv = i>0 ? pct(s.val, steps[i-1].val) : '';
-    return `
-      <div class="funnel-item">
-        ${i>0?`<div class="funnel-conv">▼ ${conv} conversion</div>`:''}
-        <div class="funnel-meta">
-          <span class="funnel-label">${s.label}</span>
-          <span class="funnel-val" style="color:${s.color}">${fmt(s.val)}</span>
-        </div>
-        <div class="funnel-track">
-          <div class="funnel-bar" style="width:${w}%;background:${s.color}">${w>12?fmt(s.val):''}</div>
-        </div>
-      </div>`;
-  }).join('');
+  q('funnelChart').innerHTML = `
+    <div style="display:flex;align-items:stretch;gap:0">
+      ${steps.map((s,i)=>{
+        const pctBar = Math.max((s.val/maxV)*100, 1);
+        const conv   = i > 0 ? pct(s.val, steps[i-1].val) : null;
+        return `
+          ${i > 0 ? `
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 4px;gap:4px;min-width:52px">
+              <div style="font-size:10px;font-weight:700;color:var(--text-dim)">→</div>
+              <div style="font-size:10px;font-weight:700;color:${conv && parseFloat(conv)>=20?'var(--green)':'var(--amber)'}">${conv}</div>
+              <div style="font-size:9px;color:var(--text-dim)">conv.</div>
+            </div>` : ''}
+          <div style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:18px 16px;display:flex;flex-direction:column;align-items:center;gap:10px;min-width:0">
+            <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-align:center;white-space:nowrap">${s.label}</div>
+            <div style="font-size:28px;font-weight:900;color:${s.color};line-height:1">${fmt(s.val)}</div>
+            <div style="width:100%;background:var(--surface3);border-radius:4px;height:8px;overflow:hidden">
+              <div style="height:100%;border-radius:4px;background:${s.color};width:${pctBar}%;transition:width 1s ease;opacity:0.85"></div>
+            </div>
+            <div style="font-size:10px;color:var(--text-dim)">${pctBar.toFixed(0)}% of leads</div>
+          </div>`;
+      }).join('')}
+    </div>`;
 
   // ── Campaign Performance Table (replaces bar chart) ───────────────────────
   const perfFiltered = S.campPerfFilter === 'All'
