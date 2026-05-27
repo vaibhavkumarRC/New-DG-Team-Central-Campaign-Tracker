@@ -1635,7 +1635,8 @@ async function addCampaign(e) {
   body.pod_team = q('addPodTeamSelect')?.value || '';
   const r = await fetch('/api/campaigns',{method:'POST',headers:authHeaders(),body:JSON.stringify(body)});
   if(r.ok){
-    showToast('✅ Campaign added! Syncing data…');
+    const added = await r.json();
+    showToast('✅ Campaign added! Fetching Salesforce data…');
     e.target.reset();
     // Reset segment UI
     const addSeg = q('addSegmentSelect');
@@ -1644,8 +1645,21 @@ async function addCampaign(e) {
     if(addOther) { addOther.style.display='none'; addOther.name=''; addOther.value=''; }
     const addNew = q('addNewSegmentRow');
     if(addNew) addNew.style.display='none';
+    // Show stub immediately, then sync only the new campaign
     await fetchData();
-    triggerSync();
+    try {
+      const syncR = await fetch(`/api/campaigns/${added.id}/sync`, {
+        method: 'POST', headers: authHeaders()
+      });
+      if (syncR.ok) {
+        const synced = await syncR.json();
+        const idx = (S.data.campaigns || []).findIndex(c => c.id === added.id);
+        if (idx !== -1) S.data.campaigns[idx] = synced;
+        else if (S.data.campaigns) S.data.campaigns.push(synced);
+        renderAll();
+        showToast(`✅ "${added.name}" synced!`);
+      }
+    } catch (_) { /* global poll will pick it up */ }
   } else {
     const err = await r.json();
     showToast('❌ '+err.error);
@@ -3041,23 +3055,30 @@ async function quickAddCampaign() {
     if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Server error'); }
     const added = await r.json();
 
-    status.textContent = `✅ "${name}" added — syncing Salesforce data…`;
+    status.textContent = `✅ "${name}" added — fetching Salesforce data…`;
     status.style.color = 'var(--green)';
     input.value = '';
 
-    // Trigger sync and refresh
-    await fetch('/api/sync', { method: 'POST', headers: authHeaders() });
+    // Refresh once so the stub campaign appears immediately in the UI
     await fetchData();
 
-    // Poll until sync done
-    const poll = setInterval(async () => {
-      await fetchData();
-      if (!S.data.is_syncing) {
-        clearInterval(poll);
-        status.textContent = `✅ "${added.name}" synced — SDR: ${added.sdr_owner || 'auto-detected'}`;
-        setTimeout(() => { status.textContent = ''; }, 5000);
+    // Sync only the new campaign (fast — one campaign, not all of them)
+    try {
+      const syncR = await fetch(`/api/campaigns/${added.id}/sync`, {
+        method: 'POST', headers: authHeaders()
+      });
+      if (syncR.ok) {
+        const synced = await syncR.json();
+        // Patch local cache so UI updates without another round-trip
+        const idx = (S.data.campaigns || []).findIndex(c => c.id === added.id);
+        if (idx !== -1) S.data.campaigns[idx] = synced;
+        else if (S.data.campaigns) S.data.campaigns.push(synced);
+        renderAll();
       }
-    }, 3000);
+    } catch (_) { /* non-fatal — global 10s poll will pick it up */ }
+
+    status.textContent = `✅ "${added.name}" synced — SDR: ${added.sdr_owner || 'auto-detected'}`;
+    setTimeout(() => { status.textContent = ''; }, 5000);
 
   } catch (e) {
     status.textContent = `❌ ${e.message}`;

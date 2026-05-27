@@ -951,6 +951,16 @@ def api_camps_add():
     }
     camps.append(c)
     save_campaigns(camps)
+    # Immediately add a stub entry to the in-memory cache so the UI sees it
+    # without waiting for a full sync.  Metrics will be 0 until the per-campaign
+    # sync completes (called by the frontend right after this request).
+    stub = {**c, 'total_leads': 0, 'total_calls': 0, 'total_emails': 0,
+            'meetings': 0, 'meeting_done': 0, 'meeting_noshow': 0,
+            'sql_gen': 0, 's1_created': 0, 'unique_leads_called': 0,
+            'unique_leads_emailed': 0, 'calls_per_called_lead': 0,
+            'emails_per_emailed_lead': 0, 'sdr_breakdown': [],
+            'synced_at': None}
+    cache['campaigns'].append(stub)
     return jsonify(c), 201
 
 @app.route('/api/campaigns/import', methods=['POST'])
