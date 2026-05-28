@@ -325,18 +325,29 @@ def _get_sf_token():
         return _sf_token_cache['token'], _sf_token_cache['instance_url']
 
 def soql(query, retries=2):
-    """Run a SOQL query via Salesforce REST API — fast, no sf CLI subprocess."""
+    """Run a SOQL query via Salesforce REST API — fast, no sf CLI subprocess.
+    Automatically follows nextRecordsUrl pagination so queries with > 2000
+    rows (Salesforce's default page size) return the full result set."""
     for attempt in range(retries):
         token, instance_url = _get_sf_token()
         if not token:
             print('[SOQL] No access token available')
             return None
         try:
+            all_records = []
+            total_size  = 0
             url = f"{instance_url}/services/data/v59.0/query?q={urllib.parse.quote(query)}"
-            req = _urllib_req.Request(url, headers={'Authorization': f'Bearer {token}'})
-            with _urllib_req.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read().decode())
-                return {'records': data.get('records', []), 'totalSize': data.get('totalSize', 0)}
+            while url:
+                req = _urllib_req.Request(url, headers={'Authorization': f'Bearer {token}'})
+                with _urllib_req.urlopen(req, timeout=30) as resp:
+                    data = json.loads(resp.read().decode())
+                all_records.extend(data.get('records', []))
+                if total_size == 0:
+                    total_size = data.get('totalSize', 0)
+                # Follow next page if Salesforce says there are more records
+                next_path = data.get('nextRecordsUrl')
+                url = f"{instance_url}{next_path}" if next_path else None
+            return {'records': all_records, 'totalSize': total_size}
         except Exception as e:
             print(f'[SOQL] error (attempt {attempt+1}): {e}')
             with _sf_token_lock:
