@@ -2136,7 +2136,6 @@ function renderDashboard() {
     {label:'Emails Sent',    value:fmt(totalEmails),      sub:pct(totalEmails,totalLeads)+' coverage',              icon:'📧', color:'var(--amber)'},
     {label:'Mtgs Generated', value:fmt(totalMeetings),    sub:'Click to see leads',                                 icon:'🤝', color:'var(--green)',  clickable:true, onclick:meetingsOnClick},
     {label:'Mtgs Done',      value:fmt(totalMtgDone),     sub:'Click to see leads',                                 icon:'✅', color:'#34D399',        clickable:true, onclick:mtgDoneOnClick},
-    {label:'No Show',        value:fmt(totalNoShow),      sub:'Click to see leads',                                 icon:'❌', color:'var(--red)',      clickable:true, onclick:noShowOnClick},
     {label:'SQL Generated',  value:fmt(totalSqlGen),      sub:'Click to see leads',                                 icon:'💎', color:'#A78BFA',        clickable:true, onclick:sqlOnClick},
     {label:'S1 Created',     value:fmt(totalS1),          sub:'Click to see opportunities',                         icon:'🏆', color:'#F472B6', clickable:true, onclick:s1OnClick},
   ];
@@ -2231,7 +2230,6 @@ function renderDashboard() {
           <th style="text-align:right" title="Average email attempts made per emailed lead">Avg Emails per Lead</th>
           <th style="text-align:right;color:var(--green)">Meetings Generated</th>
           <th style="text-align:right;color:#34D399">Meetings Done</th>
-          <th style="text-align:right;color:var(--red)">No Show</th>
           <th style="text-align:right;color:#A78BFA">SQL</th>
           <th style="text-align:right;color:#F472B6">S1</th>
         </tr></thead>
@@ -2256,7 +2254,6 @@ function renderDashboard() {
               <td class="td-num" title="Avg email attempts per emailed lead">${aE > 0 ? aE.toFixed(1) : '—'}</td>
               <td class="td-num" style="color:var(--green);font-weight:800">${fmt(c.meetings)}</td>
               <td class="td-num" style="color:#34D399;font-weight:700">${fmt(c.meeting_done||0)}</td>
-              <td class="td-num" style="color:var(--red);font-weight:700">${fmt(c.meeting_noshow||0)}</td>
               <td class="td-num" style="color:#A78BFA;font-weight:700">${fmt(c.sql_gen||0)}</td>
               <td class="td-num" style="color:#F472B6;font-weight:700">${fmt(c.s1_created)}${c.s1_is_manual?'<span title="Manually set" style="font-size:9px;margin-left:3px;opacity:.7">✏️</span>':''}</td>
             </tr>`;
@@ -2273,7 +2270,6 @@ function renderDashboard() {
           <td class="td-num">${sum(cps,'unique_leads_emailed')>0?(sum(cps,'total_emails')/sum(cps,'unique_leads_emailed')).toFixed(1):'—'}</td>
           <td class="td-num" style="color:var(--green)">${fmt(totalMeetings)}</td>
           <td class="td-num" style="color:#34D399">${fmt(totalMtgDone)}</td>
-          <td class="td-num" style="color:var(--red)">${fmt(totalNoShow)}</td>
           <td class="td-num" style="color:#A78BFA">${fmt(totalSqlGen)}</td>
           <td class="td-num" style="color:#F472B6">${fmt(totalS1)}</td>
         </tr></tfoot>
