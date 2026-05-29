@@ -2107,16 +2107,20 @@ function renderDashboard() {
   const totalNoShow   = noFilter ? (globT.meeting_noshow ?? sum(cps,'meeting_noshow')) : sum(cps,'meeting_noshow');
   const totalSqlGen   = noFilter ? (globT.sql_gen        ?? sum(cps,'sql_gen'))        : sum(cps,'sql_gen');
 
-  // S1: use sdr_stats total (from SDR_Owner__c query) — matches the S1 modal exactly.
-  // Falls back to campaign sum when segment/pod filter is active.
+  // S1: when no filters are active, use globT.s1 (sum from Salesforce across ALL SDRs).
+  // sdr_stats only contains SDRs who own a campaign, so SDRs with opps but no campaign
+  // would be missed — causing the card to show less than the modal.
+  // When an SDR filter is active, use that SDR's s1_count from sdr_stats.
+  // When segment/pod filter is active, fall back to campaign-level s1_created sum.
   let totalS1;
   if (S.dashSegmentFilter !== 'All' || S.dashPodFilter !== 'All') {
     totalS1 = sum(cps, 's1_created');
-  } else {
-    const filtSdrStats = S.dashSdrFilter === 'All'
-      ? (src.sdr_stats || [])
-      : (src.sdr_stats || []).filter(s => s.name === S.dashSdrFilter);
+  } else if (S.dashSdrFilter !== 'All') {
+    const filtSdrStats = (src.sdr_stats || []).filter(s => s.name === S.dashSdrFilter);
     totalS1 = sum(filtSdrStats, 's1_count');
+  } else {
+    // All filters "All" — use the global true total (matches the modal count exactly)
+    totalS1 = globT.s1 ?? sum(src.sdr_stats || [], 's1_count');
   }
 
   // ── KPI cards ────────────────────────────────────────────────────────────
