@@ -2458,6 +2458,8 @@ function renderCampaigns() {
     {k:'sdr_owner',              label:'SDR Owner'},
     {k:'email_owner',            label:'Email Owner'},
     {k:'status',                 label:'Status'},
+    {k:'start_date',             label:'Start Date',               tip:'Campaign start date'},
+    {k:'end_date',               label:'End Date',                 tip:'Campaign end date'},
     {k:'total_leads',            label:'Total Leads',             num:true, tip:'Total leads in this campaign on Salesforce'},
     {k:'total_calls',            label:'Total Call Attempts',      num:true, tip:'Total call attempts made to leads in this campaign (Orum + Nooks)'},
     {k:'unique_leads_called',    label:'Unique Leads Called',      num:true, tip:'No. of unique leads that received at least 1 call — hover each cell to see how many are not yet called'},
@@ -2511,6 +2513,8 @@ function renderCampaigns() {
       <td>${esc(c.sdr_owner||'—')}</td>
       <td>${esc(c.email_owner||'—')}</td>
       <td>${statusBadge(c.status||'Active')}</td>
+      <td style="white-space:nowrap;color:var(--gold);font-size:12px">${c.start_date?fmtDay(c.start_date):'—'}</td>
+      <td style="white-space:nowrap;color:var(--text-muted);font-size:12px">${c.end_date?fmtDay(c.end_date):'—'}</td>
       <td class="td-num" title="Total leads in this campaign">${fmt(c.total_leads)}</td>
       <td class="td-num" title="Total call attempts (Orum + Nooks)">${fmt(c.total_calls)}</td>
       <td class="td-num" title="${uCalled} unique leads called · ${notCalled} not yet called" style="color:var(--purple)">${fmt(uCalled)}</td>
@@ -2538,6 +2542,7 @@ function renderCampaigns() {
   const tAvgE = tUE > 0 ? (tE / tUE).toFixed(1) : '—';
   q('campTfoot').innerHTML = `<tr>
     <td colspan="5">TOTAL (${cps.length} campaigns)</td>
+    <td></td><td></td>
     <td class="td-num">${fmt(tL)}</td>
     <td class="td-num">${fmt(tC)}</td>
     <td class="td-num" style="color:var(--purple)">${fmt(tUC)}</td>
@@ -2761,11 +2766,20 @@ function renderSDR() {
       </div>` : ''}
 
       <div class="sdr-camp-list">
-        ${s.campaigns.slice(0,3).map(c=>`
-          <div class="sdr-camp-row">
-            <span class="sdr-camp-name" title="${esc(c.name)}">${esc(c.name)}</span>
-            <span class="sdr-camp-val">${c.meetings} mtgs</span>
-          </div>`).join('')}
+        ${s.campaigns.slice(0,3).map(c=>{
+          const campCfg = (src.campaigns||[]).find(x=>x.name===c.name) || {};
+          const dateStr = campCfg.start_date
+            ? `<span style="font-size:10px;color:var(--text-dim);margin-left:4px">${fmtDay(campCfg.start_date)}${campCfg.end_date?' → '+fmtDay(campCfg.end_date):''}</span>`
+            : '';
+          return `
+          <div class="sdr-camp-row" style="flex-direction:column;align-items:flex-start;gap:1px;padding:5px 0">
+            <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
+              <span class="sdr-camp-name" title="${esc(c.name)}">${esc(c.name)}</span>
+              <span class="sdr-camp-val">${c.meetings} mtgs</span>
+            </div>
+            ${dateStr}
+          </div>`;
+        }).join('')}
         ${s.campaigns.length>3?`<div style="font-size:10.5px;color:var(--text-dim);padding-top:4px">+${s.campaigns.length-3} more campaigns</div>`:''}
       </div>
     </div>`;
@@ -2898,11 +2912,18 @@ function openModal(id) {
     <div class="modal-kpi-row">
       <div class="modal-kpi"><div class="modal-kpi-val" style="color:#A78BFA">${fmt(c.sql_gen||0)}</div><div class="modal-kpi-lbl">SQL Generated</div></div>
       <div class="modal-kpi"><div class="modal-kpi-val" style="color:#F472B6">${fmt(c.s1_created)}</div><div class="modal-kpi-lbl">S1 Created</div></div>
+      <div class="modal-kpi"></div>
+    </div>
+    <div class="modal-kpi-row">
       <div class="modal-kpi">
-        <div class="modal-kpi-val" style="font-size:15px">${c.start_date?fmtDay(c.start_date):'—'}</div>
-        <div class="modal-kpi-lbl">Date Range</div>
-        ${c.end_date?`<div style="font-size:10px;color:var(--text-dim);margin-top:2px">→ ${fmtDay(c.end_date)}</div>`:''}
+        <div class="modal-kpi-val" style="font-size:15px;color:var(--gold)">${c.start_date?fmtDay(c.start_date):'—'}</div>
+        <div class="modal-kpi-lbl">📅 Start Date</div>
       </div>
+      <div class="modal-kpi">
+        <div class="modal-kpi-val" style="font-size:15px;color:var(--text-muted)">${c.end_date?fmtDay(c.end_date):'—'}</div>
+        <div class="modal-kpi-lbl">🏁 End Date</div>
+      </div>
+      <div class="modal-kpi"></div>
     </div>
 
     <div class="modal-section">
