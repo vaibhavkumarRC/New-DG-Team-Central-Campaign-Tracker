@@ -1801,7 +1801,29 @@ try{
     }
   }
 
-  process.stdout.write(JSON.stringify({ok:true,key_len:key.length,enc_len:enc.length,colon_idx:colonIdx,after_colon_len:afterColon.length,inst,results}));
+  // ── Read @salesforce/core crypto source to find exact algorithm ──────────
+  let coreInfo = {};
+  try{
+    const corePkg=require.resolve('@salesforce/core/package.json');
+    const coreDir=corePkg.replace('/package.json','');
+    const pkgData=JSON.parse(fs.readFileSync(corePkg,'utf8'));
+    coreInfo.version=pkgData.version;
+    // Try to read the crypto implementation file
+    const cryptoPaths=['lib/crypto/crypto.js','lib/crypto.js','lib/util/crypto.js'];
+    for(const cp of cryptoPaths){
+      const fp=coreDir+'/'+cp;
+      if(fs.existsSync(fp)){
+        const src=fs.readFileSync(fp,'utf8');
+        coreInfo.cryptoFile=cp;
+        // Extract key lines about the algorithm
+        const lines=src.split('\n').filter(l=>l.includes('ALGO')||l.includes('aes')||l.includes('gcm')||l.includes('cbc')||l.includes('IV_BYTES')||l.includes('iv')||l.includes('createCipheriv'));
+        coreInfo.algoLines=lines.slice(0,20);
+        break;
+      }
+    }
+  }catch(ex){coreInfo.error=ex.message;}
+
+  process.stdout.write(JSON.stringify({ok:true,key_len:key.length,enc_len:enc.length,colon_idx:colonIdx,after_colon_len:afterColon.length,inst,results,coreInfo}));
 }catch(e){process.stdout.write(JSON.stringify({ok:false,error:e.message}));}
 """
     try:
