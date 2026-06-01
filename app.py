@@ -378,81 +378,52 @@ def _refresh_sf_token():
     except Exception as e:
         print(f'[SF-auth] AES decrypt error: {e}')
 
-    # ── 3. Node.js decrypt — same crypto as SF CLI ───────────────────────────
-    # Run a tiny inline Node.js script using the exact same crypto module SF CLI
-    # uses. This bypasses all Python AES guesswork.
+    # ── 3. Node.js AuthInfo.create() — @salesforce/core official decrypt ─────
+    # Uses the exact same AuthInfo class that SF CLI uses internally.
+    # getFields(true) decrypts the stored accessToken using the key.json secret.
+    # This is the most reliable approach — no manual crypto needed.
     try:
-        node_script = r"""
-const fs=require('fs'),crypto=require('crypto'),home=process.env.HOME||'/root';
-try{
-  const kd=JSON.parse(fs.readFileSync(home+'/.sfdx/key.json','utf8'));
-  const ad=JSON.parse(fs.readFileSync(home+'/.sfdx/""" + SF_ORG + r""".json','utf8'));
-  const enc=ad.accessToken;
-  const inst=ad.instanceUrl||'';
-  const colonIdx=enc.indexOf(':');
-  const afterColon=colonIdx>=0?enc.slice(colonIdx+1):'';
-  // AES-256-GCM: key = 32 ASCII bytes of hex key string, IV = ASCII string
-  const keyBuf=Buffer.from(kd.key);  // 32 ASCII bytes = AES-256 key
-  const errors=[];
-  if(colonIdx>0){
-    const tagHex=afterColon;
-    const tagBuf=tagHex.length===32?Buffer.from(tagHex,'hex'):null;
-    // v1: IV as ASCII string (hex chars used as-is, NOT decoded)
-    for(const ivLen of [24,32,16,20,28]){
-      if(colonIdx<=ivLen) continue;
-      const ivBuf=Buffer.from(enc.slice(0,ivLen));  // ASCII bytes of IV
-      const ctHex=enc.slice(ivLen,colonIdx);
-      if(ctHex.length%2!==0) continue;
-      try{
-        const d=crypto.createDecipheriv('aes-256-gcm',keyBuf,ivBuf);
-        if(tagBuf) d.setAuthTag(tagBuf);
-        const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
-        if(dec.length>20&&!/[\x00-\x08\x0e-\x1f]/.test(dec)){
-          process.stdout.write(JSON.stringify({ok:true,token:dec,instanceUrl:inst,fmt:'v1-ascii-iv',ivLen}));
-          process.exit(0);
-        }
-      }catch(e){errors.push('v1-ascii-iv'+ivLen+':'+e.message);}
-    }
-    // v2: IV hex-decoded to raw bytes
-    for(const ivHexLen of [24,32,16]){
-      if(colonIdx<=ivHexLen) continue;
-      if(ivHexLen%2!==0) continue;
-      const ctHex=enc.slice(ivHexLen,colonIdx);
-      if(ctHex.length%2!==0) continue;
-      try{
-        const ivBuf=Buffer.from(enc.slice(0,ivHexLen),'hex');
-        const d=crypto.createDecipheriv('aes-256-gcm',keyBuf,ivBuf);
-        if(tagBuf) d.setAuthTag(tagBuf);
-        const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
-        if(dec.length>20&&!/[\x00-\x08\x0e-\x1f]/.test(dec)){
-          process.stdout.write(JSON.stringify({ok:true,token:dec,instanceUrl:inst,fmt:'v2-hex-iv',ivHexLen}));
-          process.exit(0);
-        }
-      }catch(e){errors.push('v2-hex-iv'+ivHexLen+':'+e.message);}
-    }
-  }
-  process.stdout.write(JSON.stringify({ok:false,key_len:keyBuf.length,enc_len:enc.length,colon_idx:colonIdx,errors:errors.slice(0,8)}));
-}catch(e){process.stdout.write(JSON.stringify({ok:false,error:e.message}));}
-"""
+        sfcore_path = '/usr/lib/node_modules/@salesforce/cli/node_modules/@salesforce/core'
+        node_script = (
+            "const p='" + sfcore_path + "';"
+            "async function main(){"
+            "try{"
+            "const {AuthInfo}=require(p);"
+            "const ai=await AuthInfo.create({username:'" + SF_ORG + "'});"
+            "const f=ai.getFields(true);"
+            "const tok=f.accessToken||'';"
+            "const inst=f.instanceUrl||'';"
+            "if(tok&&tok.length>20&&!tok.includes('[REDACTED]')){"
+            "process.stdout.write(JSON.stringify({ok:true,token:tok,instanceUrl:inst}));"
+            "}else{"
+            "process.stdout.write(JSON.stringify({ok:false,err:'token invalid',tok_preview:String(tok).slice(0,30)}));"
+            "}"
+            "}catch(e){"
+            "process.stdout.write(JSON.stringify({ok:false,err:e.message}));"
+            "}"
+            "}"
+            "main();"
+        )
         node_r = subprocess.run(
             ['node', '-e', node_script],
-            capture_output=True, text=True, timeout=15, env=env
+            capture_output=True, text=True, timeout=20, env=env
         )
-        if node_r.stdout.strip():
-            nd = json.loads(node_r.stdout.strip())
+        out = node_r.stdout.strip()
+        if out:
+            nd = json.loads(out)
             if nd.get('ok') and nd.get('token'):
                 tok = nd['token'].strip()
                 inst = nd.get('instanceUrl') or instance_url
                 if _valid_token(tok):
-                    print(f"[SF-auth] Token via Node.js decrypt (algo={nd.get('algo')} label={nd.get('label')})")
+                    print(f'[SF-auth] Token via @salesforce/core AuthInfo (len={len(tok)})')
                     return tok, inst
-                print(f"[SF-auth] Node.js decrypt gave invalid token: {repr(tok[:30])}")
+                print(f'[SF-auth] AuthInfo gave invalid token: {repr(tok[:30])}')
             else:
-                print(f"[SF-auth] Node.js decrypt: {nd}")
+                print(f'[SF-auth] AuthInfo failed: {nd}')
         else:
-            print(f'[SF-auth] Node.js: empty stdout rc={node_r.returncode} err={node_r.stderr[:100]}')
+            print(f'[SF-auth] AuthInfo: empty stdout rc={node_r.returncode} err={node_r.stderr[:200]}')
     except Exception as e:
-        print(f'[SF-auth] Node.js error: {e}')
+        print(f'[SF-auth] AuthInfo error: {e}')
 
     # ── 5. sf org auth show-access-token via subprocess (input='y\n') ──────────
     try:
@@ -1514,14 +1485,21 @@ def api_debug_auth():
         show_token_rc     = r2.returncode
         # Also show raw stdout first 800 chars for analysis
         show_token_raw_stdout = repr((r2.stdout or '')[:800])
-        # Check if any line looks like a real token (strip │ box borders)
+        # Check if any line looks like a real token — split on │ to handle box table
         import re as _re_dbg
         clean_out = _re_dbg.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', r2.stdout or '')
         token_line = None
         for ln in reversed(clean_out.splitlines()):
-            candidate = ln.strip().replace('│', '').strip()
-            if len(candidate) > 40 and ' ' not in candidate and '[REDACTED]' not in candidate and any(c.isalnum() for c in candidate[:10]):
-                token_line = candidate
+            stripped = ln.strip()
+            if '│' in stripped:
+                parts = [p.strip() for p in stripped.split('│') if p.strip()]
+                for i, part in enumerate(parts):
+                    if part.lower() in ('access token', 'token') and i + 1 < len(parts):
+                        cand = parts[i + 1]
+                        if len(cand) > 20 and ' ' not in cand and '[REDACTED]' not in cand and any(c.isalnum() for c in cand[:10]):
+                            token_line = cand
+                            break
+            if token_line:
                 break
         show_token_works  = bool(token_line)
         show_token_preview = (token_line or '')[:20] + '...' if token_line else None
