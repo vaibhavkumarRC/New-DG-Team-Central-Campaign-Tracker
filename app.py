@@ -333,10 +333,10 @@ def _refresh_sf_token():
         print(f'[SF-auth] org display exception: {e}')
 
     # ── 2. AES decrypt from ~/.sfdx/ files ───────────────────────────────────
-    # SF CLI v2.x (@salesforce/core) format:
-    #   key.json  → {"key": "<64-hex-AES-256-key>", ...}   (no iv field)
-    #   auth.json → {"accessToken": "<32-hex-IV><hex-ciphertext>", ...}
-    # The IV (16 bytes = 32 hex chars) is PREPENDED to the ciphertext.
+    # @salesforce/core uses AES-256-CBC. Two known formats for the stored token:
+    #   Format A: "IV_HEX:CIPHER_HEX"  (colon-separated, 32+1+N chars)
+    #   Format B: "IV_HEX CIPHER_HEX"  (concatenated,    32+N chars)
+    # key.json → {"key": "<hex key, 48 or 64 hex chars>", ...}
     try:
         key_file  = os.path.expanduser('~/.sfdx/key.json')
         auth_file = os.path.expanduser(f'~/.sfdx/{SF_ORG}.json')
@@ -345,28 +345,37 @@ def _refresh_sf_token():
             with open(auth_file) as f: ad = json.load(f)
             enc_tok  = ad.get('accessToken', '')
             inst_url = ad.get('instanceUrl') or instance_url
-            from Crypto.Cipher       import AES
-            from Crypto.Util.Padding import unpad
-            key_hex = kd.get('key', '')
-            # IV is the first 32 hex chars (16 bytes) of the encrypted token
-            if key_hex and enc_tok and len(enc_tok) > 32:
-                iv_hex     = enc_tok[:32]
-                cipher_hex = enc_tok[32:]
-                try:
-                    dec = unpad(
-                        AES.new(bytes.fromhex(key_hex), AES.MODE_CBC,
-                                bytes.fromhex(iv_hex))
-                           .decrypt(bytes.fromhex(cipher_hex)),
-                        AES.block_size
-                    ).decode('utf-8').strip()
-                    if _valid_token(dec):
-                        print('[SF-auth] Token decrypted via AES (IV from token prefix)')
-                        return dec, inst_url
-                    print(f'[SF-auth] AES gave invalid token: {repr(dec[:30])}')
-                except Exception as aes_err:
-                    print(f'[SF-auth] AES block error: {aes_err}')
-            else:
-                print(f'[SF-auth] AES: key_hex={len(key_hex)}chars enc_tok={len(enc_tok)}chars')
+            key_hex  = kd.get('key', '')
+            print(f'[SF-auth] AES: key_hex len={len(key_hex)} enc_tok len={len(enc_tok)}')
+            if key_hex and enc_tok and len(enc_tok) > 33:
+                # Try both formats: colon-separated and concatenated
+                candidates = []
+                if ':' in enc_tok:
+                    parts = enc_tok.split(':', 1)
+                    candidates.append((parts[0], parts[1], 'colon-sep'))
+                # Also try plain concatenation (IV = first 32 hex chars = 16 bytes)
+                candidates.append((enc_tok[:32], enc_tok[32:], 'concat-32'))
+                # And try with 3DES style (IV = first 16 hex chars = 8 bytes)
+                candidates.append((enc_tok[:16], enc_tok[16:], 'concat-16'))
+
+                from Crypto.Cipher       import AES
+                from Crypto.Util.Padding import unpad
+                import binascii
+                key_bytes = bytes.fromhex(key_hex)
+                for iv_hex, cipher_hex, fmt in candidates:
+                    try:
+                        iv_bytes  = bytes.fromhex(iv_hex)
+                        ct_bytes  = bytes.fromhex(cipher_hex)
+                        dec = unpad(
+                            AES.new(key_bytes, AES.MODE_CBC, iv_bytes).decrypt(ct_bytes),
+                            AES.block_size
+                        ).decode('utf-8').strip()
+                        print(f'[SF-auth] AES {fmt} → {repr(dec[:30])}')
+                        if _valid_token(dec):
+                            print(f'[SF-auth] Token decrypted via AES ({fmt})')
+                            return dec, inst_url
+                    except Exception as aes_err:
+                        print(f'[SF-auth] AES {fmt} failed: {aes_err}')
     except ImportError:
         print('[SF-auth] pycryptodome not available for AES decrypt')
     except Exception as e:
@@ -1511,6 +1520,55 @@ def api_debug_auth():
         'key_json_info':               key_json_info,
         'sfdx_encrypted_token_preview': sfdx_token_preview,
     })
+
+@app.route('/api/debug-aes')
+@require_admin
+def api_debug_aes():
+    """Show raw AES decrypt diagnostics — key lengths, formats tried, results."""
+    out = {}
+    try:
+        key_file  = os.path.expanduser('~/.sfdx/key.json')
+        auth_file = os.path.expanduser(f'~/.sfdx/{SF_ORG}.json')
+        out['key_file_exists']  = os.path.exists(key_file)
+        out['auth_file_exists'] = os.path.exists(auth_file)
+        if os.path.exists(key_file):
+            with open(key_file) as f: kd = json.load(f)
+            out['key_json_keys'] = list(kd.keys())
+            key_hex = kd.get('key', '')
+            out['key_hex_len']   = len(key_hex)
+            out['key_hex_start'] = key_hex[:16]
+        if os.path.exists(auth_file):
+            with open(auth_file) as f: ad = json.load(f)
+            enc_tok = ad.get('accessToken', '')
+            out['enc_tok_len']   = len(enc_tok)
+            out['enc_tok_start'] = enc_tok[:40]
+            out['enc_tok_has_colon'] = ':' in enc_tok
+            out['enc_tok_colon_pos'] = enc_tok.index(':') if ':' in enc_tok else None
+        # Try all decrypt approaches
+        results = []
+        from Crypto.Cipher import AES
+        from Crypto.Util.Padding import unpad
+        key_bytes = bytes.fromhex(key_hex)
+        candidates = []
+        if ':' in enc_tok:
+            p = enc_tok.split(':', 1)
+            candidates.append((p[0], p[1], 'colon-sep'))
+        candidates.append((enc_tok[:32], enc_tok[32:], 'concat-iv16'))
+        candidates.append((enc_tok[:16], enc_tok[16:], 'concat-iv8'))
+        for iv_hex, ct_hex, fmt in candidates:
+            try:
+                dec = unpad(
+                    AES.new(key_bytes, AES.MODE_CBC, bytes.fromhex(iv_hex))
+                       .decrypt(bytes.fromhex(ct_hex)),
+                    AES.block_size
+                ).decode('utf-8', errors='replace').strip()
+                results.append({'fmt': fmt, 'ok': True, 'preview': dec[:40], 'len': len(dec)})
+            except Exception as e:
+                results.append({'fmt': fmt, 'ok': False, 'error': str(e)})
+        out['decrypt_attempts'] = results
+    except Exception as e:
+        out['error'] = str(e)
+    return jsonify(out)
 
 @app.route('/api/campaigns', methods=['GET'])
 def api_camps_get():
