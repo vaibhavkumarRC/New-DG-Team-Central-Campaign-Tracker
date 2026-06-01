@@ -296,34 +296,25 @@ _sf_token_cache = {'token': None, 'instance_url': None, 'fetched_at': None}
 _sf_token_lock  = threading.Lock()
 
 def _refresh_sf_token():
-    """Obtain Salesforce access token + instance URL via sf CLI.
+    """Obtain Salesforce access token + instance URL.
 
-    Newer versions of the SF CLI (v2.x) redact the accessToken in
-    'sf org display' output.  We try multiple strategies in order:
-
-    1. sf org auth show-access-token  — new command that prints raw token
-    2. sf org display --json          — works on older CLI; skip if redacted
-    3. Read token directly from ~/.sf/orgs/<username>/  config files
+    Strategy order:
+    1. sf org display  — works on older CLI (token not yet redacted)
+    2. AES decrypt     — SF CLI v2.x encrypts the token in ~/.sfdx/<user>.json
+                         using ~/.sfdx/key.json; decrypt with pycryptodome
+    3. PTY interaction — use sf org auth show-access-token with a real pseudo-
+                         terminal so the CLI will accept the 'y' confirmation
     """
     env = os.environ.copy()
     env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env.get('PATH', '')
+    instance_url = SF_BASE_URL
 
-    instance_url = SF_BASE_URL  # will be overwritten below if org display works
+    def _valid_token(s):
+        return (s and len(s) >= 20 and ' ' not in s
+                and '[REDACTED]' not in s
+                and any(c.isalnum() for c in s[:10]))
 
-    # ── Pre-step: force SF CLI to refresh its token via a lightweight query ───
-    # The CLI manages its own access token refresh. Running any query forces it
-    # to write a fresh access token back to ~/.sfdx/<username>.json, which we
-    # then read below. Without this step the file may contain an expired token.
-    try:
-        subprocess.run(
-            ['sf', 'data', 'query', '--query', 'SELECT Id FROM Lead LIMIT 1',
-             '--target-org', SF_ORG, '--json'],
-            capture_output=True, text=True, timeout=30, env=env
-        )
-    except Exception:
-        pass  # Even if this fails, try to read whatever token is in the file
-
-    # ── Step 1: get instanceUrl from org display (always try this) ──────────
+    # ── 1. sf org display ────────────────────────────────────────────────────
     try:
         r = subprocess.run(
             ['sf', 'org', 'display', '--target-org', SF_ORG, '--json'],
@@ -333,94 +324,97 @@ def _refresh_sf_token():
         if d.get('status') == 0:
             res = d.get('result', {})
             instance_url = res.get('instanceUrl') or SF_BASE_URL
-            raw_token = res.get('accessToken', '')
-            # If token is NOT redacted, we're done
-            if raw_token and '[REDACTED]' not in raw_token:
-                print('[SF-auth] Token obtained via sf org display')
-                return raw_token, instance_url
-            # Token redacted — fall through to other strategies
-            print('[SF-auth] sf org display returned redacted token, trying alternatives')
-        else:
-            print(f'[SF-auth] sf org display error: {d.get("message")}')
+            tok = res.get('accessToken', '')
+            if _valid_token(tok) and '[REDACTED]' not in tok:
+                print('[SF-auth] Token from sf org display')
+                return tok, instance_url
+            print('[SF-auth] sf org display redacted token — trying AES decrypt')
     except Exception as e:
-        print(f'[SF-auth] sf org display exception: {e}')
+        print(f'[SF-auth] org display exception: {e}')
 
-    # ── Step 2: Read token directly from ~/.sfdx/<username>.json ────────────
-    # The SF CLI stores the real (unredacted) token in this file even when
-    # 'sf org display' redacts it.  This is the fastest + most reliable path.
-    def _looks_like_sf_token(s):
-        """Real SF tokens: long string, no spaces, contains at least some alnum chars.
-        Must NOT be a box-drawing / UI element (those have no alphanumerics)."""
-        if not s or len(s) < 20:
-            return False
-        if '[REDACTED]' in s:
-            return False
-        if ' ' in s:
-            return False
-        # Must contain at least one alphanumeric character in the first 10 chars
-        # (rejects box-drawing strings like └────────┘ which have zero alnum chars)
-        if not any(c.isalnum() for c in s[:10]):
-            return False
-        return True
-
+    # ── 2. AES decrypt from ~/.sfdx/ files ───────────────────────────────────
     try:
-        sfdx_path = os.path.expanduser(f'~/.sfdx/{SF_ORG}.json')
-        if os.path.exists(sfdx_path):
-            with open(sfdx_path) as f:
-                data = json.load(f)
-            token_candidate = data.get('accessToken', '')
-            print(f'[SF-auth] ~/.sfdx token: len={len(token_candidate)} first10={repr(token_candidate[:10])} has_alnum={any(c.isalnum() for c in token_candidate[:10])}')
-            if _looks_like_sf_token(token_candidate):
-                inst = data.get('instanceUrl') or instance_url
-                print(f'[SF-auth] Token obtained from ~/.sfdx/{SF_ORG}.json')
-                return token_candidate, inst
-            else:
-                print(f'[SF-auth] ~/.sfdx file token not usable: {repr(token_candidate[:30])}')
-        else:
-            print(f'[SF-auth] ~/.sfdx/{SF_ORG}.json not found')
+        key_file  = os.path.expanduser('~/.sfdx/key.json')
+        auth_file = os.path.expanduser(f'~/.sfdx/{SF_ORG}.json')
+        if os.path.exists(key_file) and os.path.exists(auth_file):
+            with open(key_file)  as f: kd = json.load(f)
+            with open(auth_file) as f: ad = json.load(f)
+            enc_tok  = ad.get('accessToken', '')
+            inst_url = ad.get('instanceUrl') or instance_url
+            from Crypto.Cipher      import AES
+            from Crypto.Util.Padding import unpad
+            key_hex = kd.get('key', '')
+            iv_hex  = kd.get('iv',  '')
+            if key_hex and iv_hex and enc_tok:
+                dec = unpad(
+                    AES.new(bytes.fromhex(key_hex), AES.MODE_CBC,
+                            bytes.fromhex(iv_hex))
+                       .decrypt(bytes.fromhex(enc_tok)),
+                    AES.block_size
+                ).decode('utf-8').strip()
+                if _valid_token(dec):
+                    print('[SF-auth] Token decrypted via AES (key.json)')
+                    return dec, inst_url
+                print(f'[SF-auth] AES gave invalid token: {repr(dec[:20])}')
+    except ImportError:
+        print('[SF-auth] pycryptodome not available for AES decrypt')
     except Exception as e:
-        print(f'[SF-auth] ~/.sfdx read exception: {e}')
+        print(f'[SF-auth] AES decrypt error: {e}')
 
-    # ── Step 3: Try ~/.sf/orgs/ directory (SF CLI v2.x new location) ────────
+    # ── 3. PTY: sf org auth show-access-token with real terminal ─────────────
     try:
-        import glob
-        for pattern in [
-            os.path.expanduser(f'~/.sf/orgs/{SF_ORG}/*.json'),
-            os.path.expanduser('~/.sf/orgs/*/*.json'),
-        ]:
-            for fpath in glob.glob(pattern):
-                if os.path.basename(fpath) in ('alias.json', 'key.json'):
-                    continue
-                try:
-                    with open(fpath) as f:
-                        data = json.load(f)
-                    token_candidate = data.get('accessToken', '')
-                    if _looks_like_sf_token(token_candidate):
-                        inst = data.get('instanceUrl') or instance_url
-                        print(f'[SF-auth] Token obtained from {fpath}')
-                        return token_candidate, inst
-                except Exception:
-                    pass
-    except Exception as e:
-        print(f'[SF-auth] ~/.sf config-file read exception: {e}')
-
-    # ── Step 4: sf org auth show-access-token (last resort, needs TTY) ───────
-    try:
-        r2 = subprocess.run(
+        import pty, select as _sel, re as _re
+        master_fd, slave_fd = pty.openpty()
+        proc = subprocess.Popen(
             ['sf', 'org', 'auth', 'show-access-token', '--target-org', SF_ORG],
-            capture_output=True, text=True, timeout=30, env=env,
-            input='y\n'
+            stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
+            env=env, close_fds=True
         )
-        stdout_lines = [ln.strip() for ln in (r2.stdout or '').splitlines() if ln.strip()]
-        for line in reversed(stdout_lines):
-            if _looks_like_sf_token(line):
-                print('[SF-auth] Token obtained via sf org auth show-access-token')
+        os.close(slave_fd)
+        buf = b''
+        confirmed = False
+        deadline  = time.time() + 20
+        while time.time() < deadline:
+            try:
+                ready, _, _ = _sel.select([master_fd], [], [], 0.3)
+                if ready:
+                    chunk = os.read(master_fd, 4096)
+                    buf  += chunk
+                    if not confirmed and (b'(y/N)' in chunk or
+                                          b'continue?' in chunk.lower()):
+                        os.write(master_fd, b'y\r\n')
+                        confirmed = True
+            except OSError:
+                break
+            if proc.poll() is not None:
+                # drain remaining bytes
+                try:
+                    while True:
+                        r2, _, _ = _sel.select([master_fd], [], [], 0.2)
+                        if r2:
+                            extra = os.read(master_fd, 4096)
+                            if extra: buf += extra
+                            else: break
+                        else: break
+                except OSError:
+                    pass
+                break
+        try: proc.wait(timeout=3)
+        except Exception: proc.kill()
+        try: os.close(master_fd)
+        except Exception: pass
+        # strip ANSI escape codes and find the token line
+        text = _re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', buf.decode('utf-8', 'ignore'))
+        for line in reversed(text.splitlines()):
+            line = line.strip()
+            if _valid_token(line):
+                print(f'[SF-auth] Token via PTY (len={len(line)})')
                 return line, instance_url
-        print(f'[SF-auth] show-access-token no usable token (rc={r2.returncode}): {stdout_lines[:3]}')
+        print(f'[SF-auth] PTY: no valid token. last lines: {text.splitlines()[-5:]}')
     except Exception as e:
-        print(f'[SF-auth] show-access-token exception: {e}')
+        print(f'[SF-auth] PTY error: {e}')
 
-    print('[SF-auth] All token strategies failed')
+    print('[SF-auth] All strategies failed — soql() will use CLI fallback')
     return None, instance_url
 
 def _get_sf_token():
@@ -1397,7 +1391,29 @@ def api_debug_auth():
         show_token_works  = False
         show_token_preview = None
 
-    # 5. Check auth file locations on disk
+    # 5. Check key.json structure (for encrypted token debugging)
+    key_json_info = {}
+    try:
+        kp = os.path.expanduser('~/.sfdx/key.json')
+        if os.path.exists(kp):
+            with open(kp) as f:
+                kd = json.load(f)
+            key_json_info = {k: (v[:8]+'...' if isinstance(v,str) and len(v)>8 else v) for k,v in kd.items()}
+    except Exception as ke:
+        key_json_info = {'error': str(ke)}
+    # Also show first 16 chars of encrypted token in SFDX file
+    sfdx_token_preview = None
+    try:
+        ap = os.path.expanduser(f'~/.sfdx/{SF_ORG}.json')
+        if os.path.exists(ap):
+            with open(ap) as f:
+                ad = json.load(f)
+            tok = ad.get('accessToken', '')
+            sfdx_token_preview = tok[:16] + '...' if len(tok) > 16 else tok
+    except Exception:
+        pass
+
+    # 5b. Check auth file locations on disk
     import glob as _glob
     auth_files = {}
     for pattern in [
@@ -1480,6 +1496,8 @@ def api_debug_auth():
         'cli_fallback_active':         _soql_use_cli_fallback,
         'rest_direct_result':          rest_direct_result,
         'rest_direct_error':           rest_direct_error,
+        'key_json_info':               key_json_info,
+        'sfdx_encrypted_token_preview': sfdx_token_preview,
     })
 
 @app.route('/api/campaigns', methods=['GET'])
