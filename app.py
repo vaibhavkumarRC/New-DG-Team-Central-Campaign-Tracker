@@ -411,17 +411,58 @@ def _get_sf_token():
                 print('[SF-auth] Token refreshed')
         return _sf_token_cache['token'], _sf_token_cache['instance_url']
 
+_soql_use_cli_fallback = False
+_soql_cli_fallback_lock = threading.Lock()
+
+def _soql_via_cli(query):
+    """Execute SOQL using 'sf data query' subprocess.
+    Used as fallback when REST API auth is broken (token redacted by newer SF CLI)."""
+    try:
+        env = os.environ.copy()
+        env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env.get('PATH', '')
+        r = subprocess.run(
+            ['sf', 'data', 'query',
+             '--query', query,
+             '--target-org', SF_ORG,
+             '--json'],
+            capture_output=True, text=True, timeout=60, env=env
+        )
+        d = json.loads(r.stdout)
+        if d.get('status') == 0:
+            result = d.get('result', {})
+            return {
+                'records':   result.get('records', []),
+                'totalSize': result.get('totalSize', 0),
+            }
+        print(f'[SOQL-CLI] query failed status={d.get("status")}: {d.get("message","")[:200]}')
+    except Exception as e:
+        print(f'[SOQL-CLI] exception: {e}')
+    return None
+
+
 def soql(query, retries=2, paginate=True):
     """Run a SOQL query via Salesforce REST API — fast, no sf CLI subprocess.
     paginate=True  → follows nextRecordsUrl to retrieve all pages (needed for
                      large Lead ID queries that exceed the 2000-row page size).
     paginate=False → single-page only (use for Task COUNT/WhoId queries to avoid
-                     excessive API calls that trigger Salesforce rate limits)."""
+                     excessive API calls that trigger Salesforce rate limits).
+
+    Falls back to 'sf data query' CLI subprocess automatically when REST auth
+    returns a redacted/invalid token (SF CLI v2.x behaviour)."""
+    global _soql_use_cli_fallback
+
+    # Fast path: if we already know REST is broken, go straight to CLI
+    if _soql_use_cli_fallback:
+        return _soql_via_cli(query)
+
+    import urllib.error as _urllib_err
     for attempt in range(retries):
         token, instance_url = _get_sf_token()
         if not token:
-            print('[SOQL] No access token available')
-            return None
+            print('[SOQL] No access token — switching to CLI fallback')
+            with _soql_cli_fallback_lock:
+                _soql_use_cli_fallback = True
+            return _soql_via_cli(query)
         try:
             all_records = []
             total_size  = 0
@@ -438,6 +479,19 @@ def soql(query, retries=2, paginate=True):
                 next_path = data.get('nextRecordsUrl') if paginate else None
                 url = f"{instance_url}{next_path}" if next_path else None
             return {'records': all_records, 'totalSize': total_size}
+        except _urllib_err.HTTPError as e:
+            if e.code in (401, 403):
+                print(f'[SOQL] Auth error HTTP {e.code} — switching to CLI fallback')
+                with _sf_token_lock:
+                    _sf_token_cache['token'] = None
+                with _soql_cli_fallback_lock:
+                    _soql_use_cli_fallback = True
+                return _soql_via_cli(query)
+            print(f'[SOQL] HTTP error (attempt {attempt+1}): {e}')
+            with _sf_token_lock:
+                _sf_token_cache['token'] = None
+            if attempt < retries - 1:
+                time.sleep(2)
         except Exception as e:
             print(f'[SOQL] error (attempt {attempt+1}): {e}')
             with _sf_token_lock:
@@ -1216,19 +1270,48 @@ def api_debug_auth():
         show_token_works  = False
         show_token_preview = None
 
-    # 5. Check env vars are set (don't expose values)
+    # 5. Check auth file locations on disk
+    import glob as _glob
+    auth_files = {}
+    for pattern in [
+        os.path.expanduser('~/.sfdx/*.json'),
+        os.path.expanduser('~/.sf/orgs/*/*.json'),
+        os.path.expanduser('~/.sf/orgs/*/*/*.json'),
+    ]:
+        for fpath in _glob.glob(pattern)[:3]:
+            try:
+                with open(fpath) as f:
+                    raw = json.load(f)
+                tok = raw.get('accessToken', '')
+                auth_files[fpath] = {
+                    'has_accessToken': bool(tok),
+                    'token_redacted': '[REDACTED]' in tok if tok else False,
+                    'instanceUrl': raw.get('instanceUrl', ''),
+                }
+            except Exception as ef:
+                auth_files[fpath] = {'error': str(ef)}
+
+    # 6. Test CLI fallback directly
+    cli_test = _soql_via_cli("SELECT COUNT(Id) FROM Lead")
+    cli_lead_count = cnt(cli_test)
+
+    # 7. Check env vars are set (don't expose values)
     jwt_key_set   = bool(os.environ.get('SF_JWT_KEY', '').strip())
     client_id_set = bool(os.environ.get('SF_CLIENT_ID', '').strip())
 
-    # 6. Force-clear cached token so next soql() uses the fresh token
+    # 8. Force-clear cached token so next soql() uses the fresh token
     with _sf_token_lock:
         _sf_token_cache['token'] = fresh_token
         _sf_token_cache['instance_url'] = instance_url
         _sf_token_cache['fetched_at'] = datetime.now() if fresh_token else None
 
-    # 7. Try one simple query to confirm
+    # 9. Try REST query to confirm (may already be in CLI fallback mode)
+    global _soql_use_cli_fallback
+    was_cli_fallback = _soql_use_cli_fallback
+    _soql_use_cli_fallback = False  # force REST attempt
     test_q = soql("SELECT COUNT(Id) FROM Lead", paginate=False)
     test_lead_count = cnt(test_q)
+    # If REST worked, great; else the soql() call above will have re-enabled CLI fallback
 
     return jsonify({
         'sf_org':               SF_ORG,
@@ -1248,7 +1331,10 @@ def api_debug_auth():
         'show_access_token_token_preview': show_token_preview,
         'show_access_token_lines':    show_token_stdout,
         'show_access_token_stderr':   show_token_stderr,
-        'test_lead_count':            test_lead_count,
+        'auth_files_on_disk':         auth_files,
+        'cli_fallback_lead_count':    cli_lead_count,
+        'rest_lead_count':            test_lead_count,
+        'cli_fallback_active':        _soql_use_cli_fallback,
     })
 
 @app.route('/api/campaigns', methods=['GET'])
