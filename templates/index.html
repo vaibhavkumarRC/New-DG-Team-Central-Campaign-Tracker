@@ -3132,15 +3132,15 @@ async function openMeetingsModal(campaignName, sdrFilter, segmentFilter, podFilt
     let url;
     if (campaignName) {
       url = `/api/meetings-leads?campaign=${encodeURIComponent(campaignName)}`;
-      if (startDate) url += `&start=${startDate}`;
-      if (endDate)   url += `&end=${endDate}`;
+      // For single-campaign view, no period filter needed — campaign's own dates apply
     } else {
       url = '/api/meetings-leads';
       if (sdrFilter)     url += `?sdr=${encodeURIComponent(sdrFilter)}`;
       if (segmentFilter) url += `${url.includes('?')?'&':'?'}segment=${encodeURIComponent(segmentFilter)}`;
       if (podFilter)     url += `${url.includes('?')?'&':'?'}pod_team=${encodeURIComponent(podFilter)}`;
-      if (startDate)     url += `${url.includes('?')?'&':'?'}start=${startDate}`;
-      if (endDate)       url += `${url.includes('?')?'&':'?'}end=${endDate}`;
+      // Filter WHICH campaigns are included by their start_date (matches the card's logic)
+      if (startDate)     url += `${url.includes('?')?'&':'?'}camp_start=${startDate}`;
+      if (endDate)       url += `${url.includes('?')?'&':'?'}camp_end=${endDate}`;
     }
     const r   = await fetch(url);
     const d   = await r.json();
@@ -3332,8 +3332,9 @@ async function openStatusLeadsModal(status, sdrFilter, segmentFilter, podFilter,
     if(sdrFilter)     url += `&sdr=${encodeURIComponent(sdrFilter)}`;
     if(segmentFilter) url += `&segment=${encodeURIComponent(segmentFilter)}`;
     if(podFilter)     url += `&pod_team=${encodeURIComponent(podFilter)}`;
-    if(startDate)     url += `&start=${startDate}`;
-    if(endDate)       url += `&end=${endDate}`;
+    // Filter WHICH campaigns are included by their start_date (matches the card's logic)
+    if(startDate)     url += `&camp_start=${startDate}`;
+    if(endDate)       url += `&camp_end=${endDate}`;
     const r = await fetch(url);
     const d = await r.json();
     _statusAllLeads = d.leads || [];

@@ -993,16 +993,16 @@ def api_meetings_leads():
     camp      = request.args.get('campaign', '').strip()
     segment   = request.args.get('segment',  '').strip()
     pod_team  = request.args.get('pod_team', '').strip()
-    # Period-level date override from frontend (7D / 30D / QTD / Custom)
-    period_start = request.args.get('start', '').strip() or None
-    period_end   = request.args.get('end',   '').strip() or None
+    # camp_start / camp_end: filter WHICH campaigns are included by their start_date
+    # (mirrors the period filter on the dashboard — same campaigns as the KPI card)
+    camp_period_start = request.args.get('camp_start', '').strip() or None
+    camp_period_end   = request.args.get('camp_end',   '').strip() or None
     if camp:
         # Serve from frozen ledger — immune to lead reassignment
         camps_cfg = load_campaigns()
         camp_cfg  = next((c for c in camps_cfg if c['name'] == camp), {})
-        # Period filter overrides campaign date range when provided
-        start = period_start or (camp_cfg.get('start_date') or '').strip()
-        end   = period_end   or (camp_cfg.get('end_date')   or '').strip()
+        start   = (camp_cfg.get('start_date') or '').strip()
+        end     = (camp_cfg.get('end_date')   or '').strip()
         camp_id = camp_cfg.get('id', '')
 
         if camp_id:
@@ -1033,6 +1033,12 @@ def api_meetings_leads():
             camps_cfg = [c for c in camps_cfg if (c.get('segment') or '').strip() == segment]
         if pod_team:
             camps_cfg = [c for c in camps_cfg if (c.get('pod_team') or '').strip() == pod_team]
+        # Filter WHICH campaigns are shown by their start_date (mirrors the dashboard
+        # period filter so the modal matches the KPI card exactly)
+        if camp_period_start:
+            camps_cfg = [c for c in camps_cfg if (c.get('start_date') or '') >= camp_period_start]
+        if camp_period_end:
+            camps_cfg = [c for c in camps_cfg if (c.get('start_date') or '') <= camp_period_end]
 
         with _ledger_lock:
             ledger = load_ledger()
@@ -1043,9 +1049,9 @@ def api_meetings_leads():
             cname = camp_cfg.get('name', '').strip()
             if not cid or not cname:
                 continue
-            # Period filter overrides campaign date range when provided
-            start = period_start or (camp_cfg.get('start_date') or '').strip() or None
-            end   = period_end   or (camp_cfg.get('end_date')   or '').strip() or None
+            # Use each campaign's own dates for meeting date filtering
+            start = (camp_cfg.get('start_date') or '').strip() or None
+            end   = (camp_cfg.get('end_date')   or '').strip() or None
             entry = ledger.get(cid, {})
             meetings = entry.get('meetings', entry) if isinstance(entry, dict) and 'meetings' in entry else entry
             rows = meetings_leads_from_ledger(meetings, start, end)
@@ -1080,9 +1086,9 @@ def api_status_leads():
     sdr          = request.args.get('sdr',      '').strip()
     segment      = request.args.get('segment',  '').strip()
     pod_team     = request.args.get('pod_team', '').strip()
-    # Period-level date override from frontend (7D / 30D / QTD / Custom)
-    period_start = request.args.get('start', '').strip() or None
-    period_end   = request.args.get('end',   '').strip() or None
+    # camp_start / camp_end: filter WHICH campaigns are included by their start_date
+    camp_period_start = request.args.get('camp_start', '').strip() or None
+    camp_period_end   = request.args.get('camp_end',   '').strip() or None
 
     STATUS_FILTERS = {
         'done':   "Meeting_Status__c IN ('Meeting Done-Nurture', 'Meeting Done- Not Interested', 'Meeting Done-Unqualified')",
@@ -1103,14 +1109,18 @@ def api_status_leads():
         camps_cfg = [c for c in camps_cfg if (c.get('segment') or '').strip() == segment]
     if pod_team:
         camps_cfg = [c for c in camps_cfg if (c.get('pod_team') or '').strip() == pod_team]
+    # Filter by campaign start_date to match the dashboard period filter
+    if camp_period_start:
+        camps_cfg = [c for c in camps_cfg if (c.get('start_date') or '') >= camp_period_start]
+    if camp_period_end:
+        camps_cfg = [c for c in camps_cfg if (c.get('start_date') or '') <= camp_period_end]
     all_records = []
     for camp_cfg in camps_cfg:
         cname = camp_cfg.get('name', '').strip()
         if not cname:
             continue
-        # Period filter overrides campaign date range when provided
-        start = period_start or (camp_cfg.get('start_date') or '').strip()
-        end   = period_end   or (camp_cfg.get('end_date')   or '').strip()
+        start = (camp_cfg.get('start_date') or '').strip()
+        end   = (camp_cfg.get('end_date')   or '').strip()
         dt = ''
         if start: dt += f" AND Meeting_Generated_on__c >= {start}"
         if end:   dt += f" AND Meeting_Generated_on__c <= {end}"
