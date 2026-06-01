@@ -333,6 +333,10 @@ def _refresh_sf_token():
         print(f'[SF-auth] org display exception: {e}')
 
     # ── 2. AES decrypt from ~/.sfdx/ files ───────────────────────────────────
+    # SF CLI v2.x (@salesforce/core) format:
+    #   key.json  → {"key": "<64-hex-AES-256-key>", ...}   (no iv field)
+    #   auth.json → {"accessToken": "<32-hex-IV><hex-ciphertext>", ...}
+    # The IV (16 bytes = 32 hex chars) is PREPENDED to the ciphertext.
     try:
         key_file  = os.path.expanduser('~/.sfdx/key.json')
         auth_file = os.path.expanduser(f'~/.sfdx/{SF_ORG}.json')
@@ -341,21 +345,28 @@ def _refresh_sf_token():
             with open(auth_file) as f: ad = json.load(f)
             enc_tok  = ad.get('accessToken', '')
             inst_url = ad.get('instanceUrl') or instance_url
-            from Crypto.Cipher      import AES
+            from Crypto.Cipher       import AES
             from Crypto.Util.Padding import unpad
             key_hex = kd.get('key', '')
-            iv_hex  = kd.get('iv',  '')
-            if key_hex and iv_hex and enc_tok:
-                dec = unpad(
-                    AES.new(bytes.fromhex(key_hex), AES.MODE_CBC,
-                            bytes.fromhex(iv_hex))
-                       .decrypt(bytes.fromhex(enc_tok)),
-                    AES.block_size
-                ).decode('utf-8').strip()
-                if _valid_token(dec):
-                    print('[SF-auth] Token decrypted via AES (key.json)')
-                    return dec, inst_url
-                print(f'[SF-auth] AES gave invalid token: {repr(dec[:20])}')
+            # IV is the first 32 hex chars (16 bytes) of the encrypted token
+            if key_hex and enc_tok and len(enc_tok) > 32:
+                iv_hex     = enc_tok[:32]
+                cipher_hex = enc_tok[32:]
+                try:
+                    dec = unpad(
+                        AES.new(bytes.fromhex(key_hex), AES.MODE_CBC,
+                                bytes.fromhex(iv_hex))
+                           .decrypt(bytes.fromhex(cipher_hex)),
+                        AES.block_size
+                    ).decode('utf-8').strip()
+                    if _valid_token(dec):
+                        print('[SF-auth] Token decrypted via AES (IV from token prefix)')
+                        return dec, inst_url
+                    print(f'[SF-auth] AES gave invalid token: {repr(dec[:30])}')
+                except Exception as aes_err:
+                    print(f'[SF-auth] AES block error: {aes_err}')
+            else:
+                print(f'[SF-auth] AES: key_hex={len(key_hex)}chars enc_tok={len(enc_tok)}chars')
     except ImportError:
         print('[SF-auth] pycryptodome not available for AES decrypt')
     except Exception as e:
@@ -406,10 +417,11 @@ def _refresh_sf_token():
         # strip ANSI escape codes and find the token line
         text = _re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', buf.decode('utf-8', 'ignore'))
         for line in reversed(text.splitlines()):
-            line = line.strip()
-            if _valid_token(line):
-                print(f'[SF-auth] Token via PTY (len={len(line)})')
-                return line, instance_url
+            # SF CLI wraps the token in a Unicode box (│ token │) — strip those borders
+            stripped = line.strip().strip('│').strip()  # │ = │
+            if _valid_token(stripped):
+                print(f'[SF-auth] Token via PTY (len={len(stripped)})')
+                return stripped, instance_url
         print(f'[SF-auth] PTY: no valid token. last lines: {text.splitlines()[-5:]}')
     except Exception as e:
         print(f'[SF-auth] PTY error: {e}')
