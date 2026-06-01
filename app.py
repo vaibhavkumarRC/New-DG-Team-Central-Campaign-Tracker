@@ -310,6 +310,19 @@ def _refresh_sf_token():
 
     instance_url = SF_BASE_URL  # will be overwritten below if org display works
 
+    # ── Pre-step: force SF CLI to refresh its token via a lightweight query ───
+    # The CLI manages its own access token refresh. Running any query forces it
+    # to write a fresh access token back to ~/.sfdx/<username>.json, which we
+    # then read below. Without this step the file may contain an expired token.
+    try:
+        subprocess.run(
+            ['sf', 'data', 'query', '--query', 'SELECT Id FROM Lead LIMIT 1',
+             '--target-org', SF_ORG, '--json'],
+            capture_output=True, text=True, timeout=30, env=env
+        )
+    except Exception:
+        pass  # Even if this fails, try to read whatever token is in the file
+
     # ── Step 1: get instanceUrl from org display (always try this) ──────────
     try:
         r = subprocess.run(
@@ -427,20 +440,38 @@ def _get_sf_token():
 _soql_use_cli_fallback = False
 _soql_cli_fallback_lock = threading.Lock()
 
+_cli_semaphore = threading.Semaphore(4)  # limit concurrent sf CLI processes
+
 def _soql_via_cli(query):
     """Execute SOQL using 'sf data query' subprocess.
-    Used as fallback when REST API auth is broken (token redacted by newer SF CLI)."""
+    Used as fallback when REST API auth is broken (token redacted by newer SF CLI).
+    Uses a semaphore to cap concurrent Node.js (sf) processes on Railway."""
+    import tempfile, os as _os
+    env = os.environ.copy()
+    env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env.get('PATH', '')
+    # Write query to a temp file to avoid shell argument length limits
+    tmp_path = None
     try:
-        env = os.environ.copy()
-        env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env.get('PATH', '')
-        r = subprocess.run(
-            ['sf', 'data', 'query',
-             '--query', query,
-             '--target-org', SF_ORG,
-             '--json'],
-            capture_output=True, text=True, timeout=60, env=env
-        )
-        d = json.loads(r.stdout)
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.soql', delete=False) as tf:
+            tf.write(query)
+            tmp_path = tf.name
+        with _cli_semaphore:
+            r = subprocess.run(
+                ['sf', 'data', 'query',
+                 '--file', tmp_path,
+                 '--target-org', SF_ORG,
+                 '--json'],
+                capture_output=True, text=True, timeout=90, env=env
+            )
+        # SF CLI sometimes emits warnings/preamble before the JSON blob
+        raw = r.stdout or ''
+        json_start = raw.find('{')
+        if json_start > 0:
+            raw = raw[json_start:]
+        if not raw.strip():
+            print(f'[SOQL-CLI] empty stdout (rc={r.returncode}) stderr={r.stderr[:200]}')
+            return None
+        d = json.loads(raw)
         if d.get('status') == 0:
             result = d.get('result', {})
             return {
@@ -449,7 +480,13 @@ def _soql_via_cli(query):
             }
         print(f'[SOQL-CLI] query failed status={d.get("status")}: {d.get("message","")[:200]}')
     except Exception as e:
-        print(f'[SOQL-CLI] exception: {e}')
+        print(f'[SOQL-CLI] exception: {e} | query[:80]={query[:80]}')
+    finally:
+        if tmp_path:
+            try:
+                _os.unlink(tmp_path)
+            except Exception:
+                pass
     return None
 
 
