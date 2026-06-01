@@ -1151,6 +1151,28 @@ def api_sync():
         threading.Thread(target=sync, daemon=True).start()
     return jsonify({'ok': True})
 
+@app.route('/api/cache-disk')
+@require_admin
+def api_cache_disk():
+    """Read data_cache.json directly from disk and return summary (bypasses in-memory cache)."""
+    try:
+        with open(CACHE_FILE) as f:
+            d = json.load(f)
+        camps = d.get('campaigns', [])
+        calls = sum(c.get('total_calls', 0) for c in camps)
+        emails = sum(c.get('total_emails', 0) for c in camps)
+        return jsonify({
+            'source': 'disk',
+            'last_sync': d.get('last_sync'),
+            'total_calls': calls,
+            'total_emails': emails,
+            'num_campaigns': len(camps),
+            'totals': d.get('totals', {}),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+
 @app.route('/api/debug-campaign-metrics')
 @require_admin
 def api_debug_campaign_metrics():
