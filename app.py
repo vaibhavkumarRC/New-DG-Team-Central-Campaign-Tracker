@@ -1077,6 +1077,60 @@ def api_debug_tasks():
         'note':         '00Q prefix = Lead, 003 prefix = Contact in WhoId',
     })
 
+@app.route('/api/debug-auth')
+@require_admin
+def api_debug_auth():
+    """Diagnostic: show Salesforce auth state and attempt a fresh token fetch."""
+    import subprocess
+
+    # 1. Check what the token cache currently holds
+    with _sf_token_lock:
+        has_token   = bool(_sf_token_cache.get('token'))
+        fetched_at  = str(_sf_token_cache.get('fetched_at'))
+        token_start = (_sf_token_cache.get('token') or '')[:8] + '...' if has_token else None
+
+    # 2. Try refreshing the token right now
+    fresh_token, instance_url = _refresh_sf_token()
+
+    # 3. Run sf org display raw to see what it actually returns
+    try:
+        env = os.environ.copy()
+        env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env.get('PATH', '')
+        r = subprocess.run(
+            ['sf', 'org', 'display', '--target-org', SF_ORG, '--json'],
+            capture_output=True, text=True, timeout=30, env=env
+        )
+        sf_display_stdout = r.stdout[:500] if r.stdout else '(empty)'
+        sf_display_stderr = r.stderr[:500] if r.stderr else '(empty)'
+        sf_display_code   = r.returncode
+    except Exception as e:
+        sf_display_stdout = f'exception: {e}'
+        sf_display_stderr = ''
+        sf_display_code   = -1
+
+    # 4. Check env vars are set (don't expose values)
+    jwt_key_set   = bool(os.environ.get('SF_JWT_KEY', '').strip())
+    client_id_set = bool(os.environ.get('SF_CLIENT_ID', '').strip())
+
+    # 5. Try one simple query to confirm
+    test_q = soql("SELECT COUNT(Id) FROM Lead", paginate=False)
+    test_lead_count = cnt(test_q)
+
+    return jsonify({
+        'sf_org':               SF_ORG,
+        'sf_base_url':          SF_BASE_URL,
+        'env_SF_JWT_KEY_set':   jwt_key_set,
+        'env_SF_CLIENT_ID_set': client_id_set,
+        'cached_token_exists':  has_token,
+        'cached_token_start':   token_start,
+        'cached_fetched_at':    fetched_at,
+        'fresh_token_obtained': bool(fresh_token),
+        'sf_display_returncode': sf_display_code,
+        'sf_display_stdout':    sf_display_stdout,
+        'sf_display_stderr':    sf_display_stderr,
+        'test_lead_count':      test_lead_count,
+    })
+
 @app.route('/api/campaigns', methods=['GET'])
 def api_camps_get():
     return jsonify(load_campaigns())
