@@ -467,21 +467,21 @@ try{
         clean = _re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', raw)
         for line in clean.splitlines():
             stripped = line.strip()
-            # Token is inside a box: │ <token> │
-            if '│' in stripped:          # │ character
-                candidate = stripped.replace('│', '').strip()
-                if _valid_token(candidate):
-                    print(f'[SF-auth] Token via show-access-token subprocess (len={len(candidate)})')
-                    return candidate, instance_url
-        # Fallback: any long non-space token-like line (handles different box styles)
-        for line in clean.splitlines():
-            candidate = line.strip()
-            # Skip box-drawing lines (only ─ └ ┘ ┌ ┐ chars)
-            if candidate and not any(c.isalnum() for c in candidate[:10]):
-                continue
-            if _valid_token(candidate):
-                print(f'[SF-auth] Token via show-access-token fallback (len={len(candidate)})')
-                return candidate, instance_url
+            # Token is in a box row: │ Access Token │ <token> │
+            # Split on │ and find non-empty segments; if one is "Access Token"
+            # the next one is the token value.
+            if '│' in stripped:
+                parts = [p.strip() for p in stripped.split('│') if p.strip()]
+                for i, part in enumerate(parts):
+                    if part.lower() in ('access token', 'token') and i + 1 < len(parts):
+                        candidate = parts[i + 1]
+                        if _valid_token(candidate):
+                            print(f'[SF-auth] Token via show-access-token (box row, len={len(candidate)})')
+                            return candidate, instance_url
+                # Generic fallback: a single valid token in the cell
+                if len(parts) == 1 and _valid_token(parts[0]):
+                    print(f'[SF-auth] Token via show-access-token (single cell, len={len(parts[0])})')
+                    return parts[0], instance_url
         print(f'[SF-auth] show-access-token: no token found. rc={r3.returncode} lines={clean.splitlines()[-5:]}')
     except Exception as e:
         print(f'[SF-auth] show-access-token error: {e}')
@@ -530,10 +530,18 @@ try{
         except Exception: pass
         text = _re2.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', buf.decode('utf-8', 'ignore'))
         for line in reversed(text.splitlines()):
-            stripped = line.strip().replace('│', '').strip()
-            if _valid_token(stripped):
-                print(f'[SF-auth] Token via PTY (len={len(stripped)})')
-                return stripped, instance_url
+            stripped = line.strip()
+            if '│' in stripped:
+                parts = [p.strip() for p in stripped.split('│') if p.strip()]
+                for i, part in enumerate(parts):
+                    if part.lower() in ('access token', 'token') and i + 1 < len(parts):
+                        candidate = parts[i + 1]
+                        if _valid_token(candidate):
+                            print(f'[SF-auth] Token via PTY (box row, len={len(candidate)})')
+                            return candidate, instance_url
+                if len(parts) == 1 and _valid_token(parts[0]):
+                    print(f'[SF-auth] Token via PTY (single cell, len={len(parts[0])})')
+                    return parts[0], instance_url
         print(f'[SF-auth] PTY: no valid token. last lines: {text.splitlines()[-5:]}')
     except Exception as e:
         print(f'[SF-auth] PTY error: {e}')
