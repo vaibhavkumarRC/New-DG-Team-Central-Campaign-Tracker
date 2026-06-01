@@ -1830,7 +1830,7 @@ try{
         nr = subprocess.run(['node', '-e', node_script],
                             capture_output=True, text=True, timeout=20, env=env)
         out['node_rc']     = nr.returncode
-        out['node_stdout'] = nr.stdout[:2000]
+        out['node_stdout'] = nr.stdout[:8000]
         out['node_stderr'] = nr.stderr[:500]
         if nr.stdout.strip():
             try:
@@ -1847,6 +1847,88 @@ try{
         out['node_run_error'] = str(e)
 
     return jsonify(out)
+
+@app.route('/api/debug-sfcore')
+@require_admin
+def api_debug_sfcore():
+    """Find @salesforce/core crypto source and read the encryption algorithm."""
+    env = os.environ.copy()
+    env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env.get('PATH', '')
+    script = r"""
+const fs=require('fs'), path=require('path');
+const out={};
+// 1. Find @salesforce/core
+try{
+  const p=require.resolve('@salesforce/core');
+  out.core_main=p;
+  out.core_dir=path.dirname(p);
+}catch(e){out.resolve_error=e.message;}
+
+// 2. Search for crypto files in common SF CLI locations
+const searchDirs=[
+  '/usr/local/lib/node_modules/@salesforce',
+  '/usr/lib/node_modules/@salesforce',
+  process.env.HOME+'/.local/share/sf/client/node_modules/@salesforce',
+  '/usr/local/lib/node_modules/@salesforce/cli/node_modules/@salesforce/core',
+];
+out.found_crypto_files=[];
+function findCrypto(dir){
+  if(!fs.existsSync(dir)) return;
+  try{
+    const entries=fs.readdirSync(dir,{withFileTypes:true});
+    for(const e of entries){
+      if(e.isDirectory()&&!e.name.startsWith('.')){
+        const sub=dir+'/'+e.name;
+        if(e.name==='crypto'||e.name.includes('crypt')){
+          out.found_crypto_files.push(sub);
+          // Try to read any .js file here
+          try{
+            const files=fs.readdirSync(sub).filter(f=>f.endsWith('.js'));
+            for(const f of files){
+              const src=fs.readFileSync(sub+'/'+f,'utf8');
+              const algoMatch=src.match(/ALGO\s*=\s*['"]([^'"]+)['"]/);
+              const ivMatch=src.match(/IV_BYTES\s*=\s*(\d+)/);
+              if(algoMatch||ivMatch){
+                out.crypto_algo=algoMatch?algoMatch[1]:null;
+                out.iv_bytes=ivMatch?parseInt(ivMatch[1]):null;
+                out.crypto_source_file=sub+'/'+f;
+                const lines=src.split('\n').filter(l=>l.includes('ALGO')||l.includes('IV_BYTES')||l.includes('createCipheriv')||l.includes('getAuthTag')||l.includes('tag'));
+                out.key_lines=lines.slice(0,15);
+              }
+            }
+          }catch(re){}
+        }
+        if(out.found_crypto_files.length<5) findCrypto(sub);
+      }
+    }
+  }catch(e){}
+}
+for(const d of searchDirs) findCrypto(d);
+
+// 3. Also try require directly
+try{
+  const c=require('@salesforce/core/lib/crypto/crypto');
+  out.crypto_module_loaded=true;
+}catch(e){
+  try{
+    const c=require('@salesforce/core/lib/crypto');
+    out.crypto_module_loaded=true;
+  }catch(e2){out.crypto_require_error=e2.message;}
+}
+
+process.stdout.write(JSON.stringify(out));
+"""
+    try:
+        nr = subprocess.run(['node', '-e', script],
+                            capture_output=True, text=True, timeout=20, env=env)
+        result = {}
+        if nr.stdout.strip():
+            try: result = json.loads(nr.stdout.strip())
+            except: result = {'raw': nr.stdout[:1000]}
+        result['stderr'] = nr.stderr[:300] if nr.stderr else ''
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)})
 
 @app.route('/api/campaigns', methods=['GET'])
 def api_camps_get():
