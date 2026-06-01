@@ -7,4 +7,4 @@ sf org login sfdx-url --sfdx-url-file /tmp/sfdx_auth_url.txt --set-default --no-
 rm -f /tmp/sfdx_auth_url.txt
 
 echo "=== Starting Flask App ==="
-exec gunicorn app:app --bind "0.0.0.0:${PORT:-5001}" --workers 2 --timeout 120 --access-logfile -
+exec gunicorn app:app --bind "0.0.0.0:${PORT:-5001}" --workers 1 --threads 4 --timeout 120 --access-logfile -
