@@ -1036,13 +1036,44 @@ def api_debug_tasks():
             })
     results['sample_task_subjects'] = sample_tasks
 
+    # 7. Check Events object (some dialers log as Events, not Tasks)
+    r7 = soql(f"SELECT COUNT(Id) FROM Event WHERE WhoId IN ({ids_str})", paginate=False)
+    results['total_events_no_filter'] = cnt(r7)
+
+    # 8. Use FRESH lead IDs from Salesforce (not ledger) for the same campaign
+    live_res = soql(f"SELECT Id FROM Lead WHERE Campaign__c = '{esc(target_camp[\"name\"])}' LIMIT 50", paginate=False)
+    live_ids = [r['Id'] for r in (live_res.get('records') or [])] if live_res else []
+    if live_ids:
+        live_ids_str = ','.join(f"'{lid}'" for lid in live_ids)
+        r8 = soql(f"SELECT COUNT(Id) FROM Task WHERE WhoId IN ({live_ids_str})", paginate=False)
+        results['tasks_for_live_lead_ids'] = cnt(r8)
+        # Also check if any of the live IDs differ from ledger IDs
+        live_set   = set(live_ids)
+        ledger_set = set(target_ids)
+        results['live_ids_not_in_ledger']   = len(live_set - ledger_set)
+        results['ledger_ids_not_in_live']   = len(ledger_set - live_set)
+    else:
+        results['tasks_for_live_lead_ids'] = 'could not fetch live IDs'
+
+    # 9. Sample any Tasks from the whole org (not filtered by lead) to confirm Task access
+    r9 = soql("SELECT Subject, WhoId FROM Task LIMIT 5", paginate=False)
+    sample_org_tasks = []
+    if r9 and r9.get('records'):
+        for t in r9['records']:
+            sample_org_tasks.append({
+                'subject': t.get('Subject'),
+                'who_id_prefix': (t.get('WhoId') or '')[:3],  # 00Q=Lead, 003=Contact
+            })
+    results['sample_org_tasks'] = sample_org_tasks
+    results['total_org_tasks_sample'] = r9.get('totalSize', 0) if r9 else 'query failed'
+
     return jsonify({
-        'campaign':    target_camp.get('name'),
-        'start_date':  start,
-        'end_date':    end,
+        'campaign':     target_camp.get('name'),
+        'start_date':   start,
+        'end_date':     end,
         'leads_tested': len(target_ids),
-        'results':     results,
-        'soql_errors': 'check Railway logs for [SOQL] error lines',
+        'results':      results,
+        'note':         '00Q prefix = Lead, 003 prefix = Contact in WhoId',
     })
 
 @app.route('/api/campaigns', methods=['GET'])
