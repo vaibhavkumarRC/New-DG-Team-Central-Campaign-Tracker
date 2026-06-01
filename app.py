@@ -333,17 +333,29 @@ def _refresh_sf_token():
         print(f'[SF-auth] sf org display exception: {e}')
 
     # ── Step 2: sf org auth show-access-token (SF CLI v2.x) ─────────────────
+    # This command asks for interactive confirmation ("Proceed? y/N").
+    # We auto-confirm by piping 'y\n' to stdin, then extract the actual token
+    # from stdout (it's the last meaningful line after the confirmation prompt).
     try:
         r2 = subprocess.run(
             ['sf', 'org', 'auth', 'show-access-token', '--target-org', SF_ORG],
-            capture_output=True, text=True, timeout=30, env=env
+            capture_output=True, text=True, timeout=30, env=env,
+            input='y\n'
         )
-        token_candidate = (r2.stdout or '').strip()
-        if token_candidate and '[REDACTED]' not in token_candidate and r2.returncode == 0:
-            print('[SF-auth] Token obtained via sf org auth show-access-token')
+        stdout_lines = [ln.strip() for ln in (r2.stdout or '').splitlines() if ln.strip()]
+        # The prompt lines start with '?' or contain 'reveal' / 'sensitive'
+        # The real token is a long alphanumeric string (typically 100+ chars)
+        token_candidate = ''
+        for line in reversed(stdout_lines):
+            # SF access tokens are long alphanumeric+special strings, no spaces
+            if len(line) > 40 and ' ' not in line and '[REDACTED]' not in line:
+                token_candidate = line
+                break
+        if token_candidate:
+            print('[SF-auth] Token obtained via sf org auth show-access-token (auto-confirmed)')
             return token_candidate, instance_url
         else:
-            print(f'[SF-auth] show-access-token failed (rc={r2.returncode}): {r2.stderr[:200]}')
+            print(f'[SF-auth] show-access-token no usable token (rc={r2.returncode}): stdout={stdout_lines[:3]}')
     except Exception as e:
         print(f'[SF-auth] show-access-token exception: {e}')
 
@@ -1180,23 +1192,29 @@ def api_debug_auth():
         sf_display_stderr = ''
         sf_display_code   = -1
 
-    # 4. Try sf org auth show-access-token directly
+    # 4. Try sf org auth show-access-token directly (with auto-confirm)
     try:
         env2 = os.environ.copy()
         env2['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env2.get('PATH', '')
         r2 = subprocess.run(
             ['sf', 'org', 'auth', 'show-access-token', '--target-org', SF_ORG],
-            capture_output=True, text=True, timeout=30, env=env2
+            capture_output=True, text=True, timeout=30, env=env2,
+            input='y\n'
         )
-        show_token_stdout = (r2.stdout or '').strip()[:80] + '...' if len((r2.stdout or '').strip()) > 80 else (r2.stdout or '').strip()
+        raw_lines = [ln.strip() for ln in (r2.stdout or '').splitlines() if ln.strip()]
+        show_token_stdout = str(raw_lines[:5])  # show first 5 lines for debug
         show_token_stderr = r2.stderr[:300] if r2.stderr else '(empty)'
         show_token_rc     = r2.returncode
-        show_token_works  = (r2.returncode == 0 and bool(show_token_stdout) and '[REDACTED]' not in show_token_stdout)
+        # Check if any line looks like a real token
+        token_line = next((ln for ln in reversed(raw_lines) if len(ln) > 40 and ' ' not in ln and '[REDACTED]' not in ln), None)
+        show_token_works  = bool(token_line)
+        show_token_preview = (token_line or '')[:12] + '...' if token_line else None
     except Exception as e:
         show_token_stdout = f'exception: {e}'
         show_token_stderr = ''
         show_token_rc     = -1
         show_token_works  = False
+        show_token_preview = None
 
     # 5. Check env vars are set (don't expose values)
     jwt_key_set   = bool(os.environ.get('SF_JWT_KEY', '').strip())
@@ -1225,11 +1243,12 @@ def api_debug_auth():
         'sf_display_returncode': sf_display_code,
         'sf_display_stdout':    sf_display_stdout,
         'sf_display_stderr':    sf_display_stderr,
-        'show_access_token_rc':    show_token_rc,
-        'show_access_token_works': show_token_works,
-        'show_access_token_stdout_preview': show_token_stdout,
-        'show_access_token_stderr': show_token_stderr,
-        'test_lead_count':      test_lead_count,
+        'show_access_token_rc':       show_token_rc,
+        'show_access_token_works':    show_token_works,
+        'show_access_token_token_preview': show_token_preview,
+        'show_access_token_lines':    show_token_stdout,
+        'show_access_token_stderr':   show_token_stderr,
+        'test_lead_count':            test_lead_count,
     })
 
 @app.route('/api/campaigns', methods=['GET'])
