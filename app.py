@@ -332,11 +332,11 @@ def _refresh_sf_token():
     except Exception as e:
         print(f'[SF-auth] org display exception: {e}')
 
-    # ── 2. AES decrypt from ~/.sfdx/ files ───────────────────────────────────
-    # @salesforce/core uses AES-256-CBC. Two known formats for the stored token:
-    #   Format A: "IV_HEX:CIPHER_HEX"  (colon-separated, 32+1+N chars)
-    #   Format B: "IV_HEX CIPHER_HEX"  (concatenated,    32+N chars)
-    # key.json → {"key": "<hex key, 48 or 64 hex chars>", ...}
+    # ── 2. AES-256-GCM decrypt — @salesforce/core v1 format ─────────────────
+    # CONFIRMED from source: algo=aes-256-gcm, key=buffer.toString('utf8')
+    # (= raw ASCII bytes of the hex key string = 32 bytes = AES-256).
+    # IV v1: randomBytes(12).toString('hex') used as UTF-8 string (24 ASCII bytes).
+    # Format: IV_ASCII(24) + CIPHER_HEX + ':' + TAG_HEX(32)
     try:
         key_file  = os.path.expanduser('~/.sfdx/key.json')
         auth_file = os.path.expanduser(f'~/.sfdx/{SF_ORG}.json')
@@ -348,30 +348,31 @@ def _refresh_sf_token():
             key_hex  = kd.get('key', '')
             print(f'[SF-auth] AES: key_hex len={len(key_hex)} enc_tok len={len(enc_tok)}')
             if key_hex and enc_tok and len(enc_tok) > 33:
-                # Format: IV_HEX(32 chars) + CIPHER_HEX + optional ':TAG_HEX'
-                # The colon separates cipher from a trailing MAC/tag — strip it.
-                # Key is 16 bytes (AES-128-CBC) on this system (key_hex_len=32).
-                from Crypto.Cipher       import AES
-                from Crypto.Util.Padding import unpad
-                key_bytes = bytes.fromhex(key_hex)
-                iv_hex    = enc_tok[:32]                          # 16-byte IV
-                # Strip trailing ':...' tag if present
-                body = enc_tok[32:]
-                cipher_hex = body.split(':')[0] if ':' in body else body
-
-                try:
-                    dec = unpad(
-                        AES.new(key_bytes, AES.MODE_CBC, bytes.fromhex(iv_hex))
-                           .decrypt(bytes.fromhex(cipher_hex)),
-                        AES.block_size
-                    ).decode('utf-8').strip()
-                    print(f'[SF-auth] AES iv16+colon-strip → {repr(dec[:30])}')
-                    if _valid_token(dec):
-                        print('[SF-auth] Token decrypted via AES (iv16 + colon-strip)')
-                        return dec, inst_url
-                    print(f'[SF-auth] AES gave invalid/unexpected token: {repr(dec[:40])}')
-                except Exception as aes_err:
-                    print(f'[SF-auth] AES iv16+colon-strip failed: {aes_err}')
+                from Crypto.Cipher import AES
+                # v1 format: key = ASCII bytes of hex string, IV = first 24 ASCII chars
+                # key.json has 32 hex chars → 32 ASCII bytes = AES-256 key
+                key_bytes = key_hex.encode('ascii')   # 32 ASCII bytes = AES-256
+                colon_pos = enc_tok.index(':') if ':' in enc_tok else len(enc_tok)
+                # Try v1 (IV=24 ASCII chars) and v2 (IV=hex-decoded, 12 or 16 bytes)
+                iv_candidates = [
+                    (enc_tok[:24].encode('ascii'), enc_tok[24:colon_pos], 'v1-iv24-ascii'),
+                    (enc_tok[:32].encode('ascii'), enc_tok[32:colon_pos], 'v1-iv32-ascii'),
+                    (bytes.fromhex(enc_tok[:24]),  enc_tok[24:colon_pos], 'v2-iv12-hex'),
+                    (bytes.fromhex(enc_tok[:32]),  enc_tok[32:colon_pos], 'v2-iv16-hex'),
+                ]
+                tag_bytes = bytes.fromhex(enc_tok[colon_pos+1:]) if ':' in enc_tok else b''
+                for iv_bytes, cipher_hex, label in iv_candidates:
+                    try:
+                        cipher = AES.new(key_bytes, AES.MODE_GCM, nonce=iv_bytes)
+                        dec = cipher.decrypt_and_verify(
+                            bytes.fromhex(cipher_hex), tag_bytes
+                        ).decode('utf-8').strip()
+                        print(f'[SF-auth] GCM {label} → {repr(dec[:30])}')
+                        if _valid_token(dec):
+                            print(f'[SF-auth] Token decrypted via AES-256-GCM ({label})')
+                            return dec, inst_url
+                    except Exception as gcm_err:
+                        print(f'[SF-auth] GCM {label} failed: {gcm_err}')
     except ImportError:
         print('[SF-auth] pycryptodome not available for AES decrypt')
     except Exception as e:
@@ -386,46 +387,51 @@ const fs=require('fs'),crypto=require('crypto'),home=process.env.HOME||'/root';
 try{
   const kd=JSON.parse(fs.readFileSync(home+'/.sfdx/key.json','utf8'));
   const ad=JSON.parse(fs.readFileSync(home+'/.sfdx/""" + SF_ORG + r""".json','utf8'));
-  const key=Buffer.from(kd.key,'hex');
   const enc=ad.accessToken;
   const inst=ad.instanceUrl||'';
   const colonIdx=enc.indexOf(':');
   const afterColon=colonIdx>=0?enc.slice(colonIdx+1):'';
-  const kBits=key.length*8;
 
-  function tryDec(algo,ivHex,ctHex,tagHex){
-    try{
-      const d=crypto.createDecipheriv(algo,key,Buffer.from(ivHex,'hex'));
-      if(tagHex&&tagHex.length===32) d.setAuthTag(Buffer.from(tagHex,'hex'));
-      const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
-      if(dec.length>20&&!/[\x00-\x08\x0e-\x1f]/.test(dec)){
-        process.stdout.write(JSON.stringify({ok:true,token:dec,instanceUrl:inst,algo}));
-        process.exit(0);
-      }
-    }catch(e){}
-  }
-
-  // The key might be stored as raw bytes (not hex-decoded).
-  // If key.json stores the ASCII string of 32 chars, Buffer.from(key,'utf8')=32B → AES-256.
-  const keyRaw=Buffer.from(kd.key);  // raw bytes of the key string
-
-  // GCM: iv12 + colon-sep tag (most likely for @salesforce/core v5+ with AES-256-GCM raw key)
-  if(colonIdx>24){
-    // Try hex-decoded key (16B → aes-128-gcm) and raw-bytes key (32B → aes-256-gcm)
-    for(const [kb,kl] of [[key,'hex'],[keyRaw,'raw']]){
-      const algo='aes-'+kb.length*8+'-gcm';
-      for(const ivB of [12,8,16]){
-        if(colonIdx<=ivB*2) continue;
-        try{
-          const d=crypto.createDecipheriv(algo,kb,Buffer.from(enc.slice(0,ivB*2),'hex'));
-          if(afterColon.length===32) d.setAuthTag(Buffer.from(afterColon,'hex'));
-          const dec=Buffer.concat([d.update(Buffer.from(enc.slice(ivB*2,colonIdx),'hex')),d.final()]).toString('utf8').trim();
-          if(dec.length>20&&!/[\x00-\x08\x0e-\x1f]/.test(dec)){
-            process.stdout.write(JSON.stringify({ok:true,token:dec,instanceUrl:inst,algo,keyLabel:kl,ivBytes:ivB}));
-            process.exit(0);
-          }
-        }catch(e){}
-      }
+  // ── @salesforce/core v1 format (CONFIRMED from source) ────────────────────
+  // Algorithm: aes-256-gcm
+  // Key:   buffer.toString('utf8') → raw ASCII bytes of the hex key string
+  //        Buffer.from(kd.key) = 32 ASCII bytes = AES-256 key
+  // IV v1: crypto.randomBytes(12).toString('hex') used as UTF-8 string
+  //        → 24 ASCII chars as the IV bytes (NOT hex-decoded!)
+  // IV v2: crypto.randomBytes(N) stored as ivHex, decoded back normally
+  // Format: ${ivASCII}${cipherHex}:${tagHex}
+  const keyBuf=Buffer.from(kd.key);  // 32 ASCII bytes of the hex key string
+  if(colonIdx>0){
+    const tagHex=afterColon;
+    // v1: IV = first 24 ASCII chars of enc, used as-is (not hex-decoded)
+    for(const ivLen of [24,16,32]){
+      if(colonIdx<=ivLen) continue;
+      try{
+        const ivBuf=Buffer.from(enc.slice(0,ivLen));  // ASCII bytes, NOT hex-decoded
+        const ctHex=enc.slice(ivLen,colonIdx);
+        const d=crypto.createDecipheriv('aes-256-gcm',keyBuf,ivBuf);
+        if(tagHex.length===32) d.setAuthTag(Buffer.from(tagHex,'hex'));
+        const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
+        if(dec.length>20&&!/[\x00-\x08\x0e-\x1f]/.test(dec)){
+          process.stdout.write(JSON.stringify({ok:true,token:dec,instanceUrl:inst,algo:'aes-256-gcm-v1',ivLen}));
+          process.exit(0);
+        }
+      }catch(e){}
+    }
+    // v2: IV stored as hex, decoded to raw bytes
+    for(const ivHexLen of [24,32,16]){
+      if(colonIdx<=ivHexLen) continue;
+      try{
+        const ivBuf=Buffer.from(enc.slice(0,ivHexLen),'hex');
+        const ctHex=enc.slice(ivHexLen,colonIdx);
+        const d=crypto.createDecipheriv('aes-256-gcm',keyBuf,ivBuf);
+        if(tagHex.length===32) d.setAuthTag(Buffer.from(tagHex,'hex'));
+        const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
+        if(dec.length>20&&!/[\x00-\x08\x0e-\x1f]/.test(dec)){
+          process.stdout.write(JSON.stringify({ok:true,token:dec,instanceUrl:inst,algo:'aes-256-gcm-v2',ivHexLen}));
+          process.exit(0);
+        }
+      }catch(e){}
     }
   }
   // CBC with raw-bytes key (AES-256-CBC, 16B IV)
