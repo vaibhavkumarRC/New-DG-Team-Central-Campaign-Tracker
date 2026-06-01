@@ -391,60 +391,47 @@ try{
   const inst=ad.instanceUrl||'';
   const colonIdx=enc.indexOf(':');
   const afterColon=colonIdx>=0?enc.slice(colonIdx+1):'';
-
-  // ── @salesforce/core v1 format (CONFIRMED from source) ────────────────────
-  // Algorithm: aes-256-gcm
-  // Key:   buffer.toString('utf8') → raw ASCII bytes of the hex key string
-  //        Buffer.from(kd.key) = 32 ASCII bytes = AES-256 key
-  // IV v1: crypto.randomBytes(12).toString('hex') used as UTF-8 string
-  //        → 24 ASCII chars as the IV bytes (NOT hex-decoded!)
-  // IV v2: crypto.randomBytes(N) stored as ivHex, decoded back normally
-  // Format: ${ivASCII}${cipherHex}:${tagHex}
-  const keyBuf=Buffer.from(kd.key);  // 32 ASCII bytes of the hex key string
+  // AES-256-GCM: key = 32 ASCII bytes of hex key string, IV = ASCII string
+  const keyBuf=Buffer.from(kd.key);  // 32 ASCII bytes = AES-256 key
+  const errors=[];
   if(colonIdx>0){
     const tagHex=afterColon;
-    // v1: IV = first 24 ASCII chars of enc, used as-is (not hex-decoded)
-    for(const ivLen of [24,16,32]){
+    const tagBuf=tagHex.length===32?Buffer.from(tagHex,'hex'):null;
+    // v1: IV as ASCII string (hex chars used as-is, NOT decoded)
+    for(const ivLen of [24,32,16,20,28]){
       if(colonIdx<=ivLen) continue;
+      const ivBuf=Buffer.from(enc.slice(0,ivLen));  // ASCII bytes of IV
+      const ctHex=enc.slice(ivLen,colonIdx);
+      if(ctHex.length%2!==0) continue;
       try{
-        const ivBuf=Buffer.from(enc.slice(0,ivLen));  // ASCII bytes, NOT hex-decoded
-        const ctHex=enc.slice(ivLen,colonIdx);
         const d=crypto.createDecipheriv('aes-256-gcm',keyBuf,ivBuf);
-        if(tagHex.length===32) d.setAuthTag(Buffer.from(tagHex,'hex'));
+        if(tagBuf) d.setAuthTag(tagBuf);
         const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
         if(dec.length>20&&!/[\x00-\x08\x0e-\x1f]/.test(dec)){
-          process.stdout.write(JSON.stringify({ok:true,token:dec,instanceUrl:inst,algo:'aes-256-gcm-v1',ivLen}));
+          process.stdout.write(JSON.stringify({ok:true,token:dec,instanceUrl:inst,fmt:'v1-ascii-iv',ivLen}));
           process.exit(0);
         }
-      }catch(e){}
+      }catch(e){errors.push('v1-ascii-iv'+ivLen+':'+e.message);}
     }
-    // v2: IV stored as hex, decoded to raw bytes
+    // v2: IV hex-decoded to raw bytes
     for(const ivHexLen of [24,32,16]){
       if(colonIdx<=ivHexLen) continue;
+      if(ivHexLen%2!==0) continue;
+      const ctHex=enc.slice(ivHexLen,colonIdx);
+      if(ctHex.length%2!==0) continue;
       try{
         const ivBuf=Buffer.from(enc.slice(0,ivHexLen),'hex');
-        const ctHex=enc.slice(ivHexLen,colonIdx);
         const d=crypto.createDecipheriv('aes-256-gcm',keyBuf,ivBuf);
-        if(tagHex.length===32) d.setAuthTag(Buffer.from(tagHex,'hex'));
+        if(tagBuf) d.setAuthTag(tagBuf);
         const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
         if(dec.length>20&&!/[\x00-\x08\x0e-\x1f]/.test(dec)){
-          process.stdout.write(JSON.stringify({ok:true,token:dec,instanceUrl:inst,algo:'aes-256-gcm-v2',ivHexLen}));
+          process.stdout.write(JSON.stringify({ok:true,token:dec,instanceUrl:inst,fmt:'v2-hex-iv',ivHexLen}));
           process.exit(0);
         }
-      }catch(e){}
+      }catch(e){errors.push('v2-hex-iv'+ivHexLen+':'+e.message);}
     }
   }
-  // CBC with raw-bytes key (AES-256-CBC, 16B IV)
-  {
-    const ctHex=colonIdx>32?enc.slice(32,colonIdx):enc.slice(32);
-    tryDec('aes-256-cbc', enc.slice(0,32), ctHex, null);
-  }
-  // CFB/OFB/CTR stream modes
-  for(const mode of ['cfb','ofb','ctr']){
-    const ct=colonIdx>32?enc.slice(32,colonIdx):enc.slice(32);
-    tryDec('aes-'+kBits+'-'+mode, enc.slice(0,32), ct, null);
-  }
-  process.stdout.write(JSON.stringify({ok:false,key_len:key.length,enc_len:enc.length,colon_idx:colonIdx}));
+  process.stdout.write(JSON.stringify({ok:false,key_len:keyBuf.length,enc_len:enc.length,colon_idx:colonIdx,errors:errors.slice(0,8)}));
 }catch(e){process.stdout.write(JSON.stringify({ok:false,error:e.message}));}
 """
         node_r = subprocess.run(
