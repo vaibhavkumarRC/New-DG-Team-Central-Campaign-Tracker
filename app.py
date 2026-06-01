@@ -332,10 +332,62 @@ def _refresh_sf_token():
     except Exception as e:
         print(f'[SF-auth] sf org display exception: {e}')
 
-    # ── Step 2: sf org auth show-access-token (SF CLI v2.x) ─────────────────
-    # This command asks for interactive confirmation ("Proceed? y/N").
-    # We auto-confirm by piping 'y\n' to stdin, then extract the actual token
-    # from stdout (it's the last meaningful line after the confirmation prompt).
+    # ── Step 2: Read token directly from ~/.sfdx/<username>.json ────────────
+    # The SF CLI stores the real (unredacted) token in this file even when
+    # 'sf org display' redacts it.  This is the fastest + most reliable path.
+    def _looks_like_sf_token(s):
+        """Real SF tokens: long alphanumeric string, no spaces, starts with alnum."""
+        if not s or len(s) < 20:
+            return False
+        if '[REDACTED]' in s:
+            return False
+        if not s[0].isalnum():   # rejects box-drawing chars like └, │, ─
+            return False
+        if ' ' in s:
+            return False
+        return True
+
+    try:
+        sfdx_path = os.path.expanduser(f'~/.sfdx/{SF_ORG}.json')
+        if os.path.exists(sfdx_path):
+            with open(sfdx_path) as f:
+                data = json.load(f)
+            token_candidate = data.get('accessToken', '')
+            if _looks_like_sf_token(token_candidate):
+                inst = data.get('instanceUrl') or instance_url
+                print(f'[SF-auth] Token obtained from ~/.sfdx/{SF_ORG}.json')
+                return token_candidate, inst
+            else:
+                print(f'[SF-auth] ~/.sfdx file token not usable: {token_candidate[:30]}')
+        else:
+            print(f'[SF-auth] ~/.sfdx/{SF_ORG}.json not found')
+    except Exception as e:
+        print(f'[SF-auth] ~/.sfdx read exception: {e}')
+
+    # ── Step 3: Try ~/.sf/orgs/ directory (SF CLI v2.x new location) ────────
+    try:
+        import glob
+        for pattern in [
+            os.path.expanduser(f'~/.sf/orgs/{SF_ORG}/*.json'),
+            os.path.expanduser('~/.sf/orgs/*/*.json'),
+        ]:
+            for fpath in glob.glob(pattern):
+                if os.path.basename(fpath) in ('alias.json', 'key.json'):
+                    continue
+                try:
+                    with open(fpath) as f:
+                        data = json.load(f)
+                    token_candidate = data.get('accessToken', '')
+                    if _looks_like_sf_token(token_candidate):
+                        inst = data.get('instanceUrl') or instance_url
+                        print(f'[SF-auth] Token obtained from {fpath}')
+                        return token_candidate, inst
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f'[SF-auth] ~/.sf config-file read exception: {e}')
+
+    # ── Step 4: sf org auth show-access-token (last resort, needs TTY) ───────
     try:
         r2 = subprocess.run(
             ['sf', 'org', 'auth', 'show-access-token', '--target-org', SF_ORG],
@@ -343,56 +395,13 @@ def _refresh_sf_token():
             input='y\n'
         )
         stdout_lines = [ln.strip() for ln in (r2.stdout or '').splitlines() if ln.strip()]
-        # The prompt lines start with '?' or contain 'reveal' / 'sensitive'
-        # The real token is a long alphanumeric string (typically 100+ chars)
-        token_candidate = ''
         for line in reversed(stdout_lines):
-            # SF access tokens are long alphanumeric+special strings, no spaces
-            if len(line) > 40 and ' ' not in line and '[REDACTED]' not in line:
-                token_candidate = line
-                break
-        if token_candidate:
-            print('[SF-auth] Token obtained via sf org auth show-access-token (auto-confirmed)')
-            return token_candidate, instance_url
-        else:
-            print(f'[SF-auth] show-access-token no usable token (rc={r2.returncode}): stdout={stdout_lines[:3]}')
+            if _looks_like_sf_token(line):
+                print('[SF-auth] Token obtained via sf org auth show-access-token')
+                return line, instance_url
+        print(f'[SF-auth] show-access-token no usable token (rc={r2.returncode}): {stdout_lines[:3]}')
     except Exception as e:
         print(f'[SF-auth] show-access-token exception: {e}')
-
-    # ── Step 3: Read token from ~/.sf/orgs/<username>/  config files ─────────
-    try:
-        import glob
-        sf_org_dir = os.path.expanduser(f'~/.sf/orgs/{SF_ORG}')
-        if not os.path.isdir(sf_org_dir):
-            # Try alternate location pattern
-            candidates = glob.glob(os.path.expanduser('~/.sf/orgs/*/sfdx-config.json'))
-            for c in candidates:
-                if SF_ORG.lower() in c.lower():
-                    sf_org_dir = os.path.dirname(c)
-                    break
-        # Look for accessToken in org JSON files
-        for fname in ['org.json', 'sfdx-config.json', 'authinfo.json']:
-            fpath = os.path.join(sf_org_dir, fname)
-            if os.path.exists(fpath):
-                with open(fpath) as f:
-                    data = json.load(f)
-                token_candidate = data.get('accessToken', '')
-                if token_candidate and '[REDACTED]' not in token_candidate:
-                    inst = data.get('instanceUrl') or instance_url
-                    print(f'[SF-auth] Token obtained from {fname}')
-                    return token_candidate, inst
-        # Also try ~/.sfdx directory (older format)
-        sfdx_path = os.path.expanduser(f'~/.sfdx/{SF_ORG}.json')
-        if os.path.exists(sfdx_path):
-            with open(sfdx_path) as f:
-                data = json.load(f)
-            token_candidate = data.get('accessToken', '')
-            if token_candidate and '[REDACTED]' not in token_candidate:
-                inst = data.get('instanceUrl') or instance_url
-                print('[SF-auth] Token obtained from ~/.sfdx file')
-                return token_candidate, inst
-    except Exception as e:
-        print(f'[SF-auth] config-file read exception: {e}')
 
     print('[SF-auth] All token strategies failed')
     return None, instance_url
