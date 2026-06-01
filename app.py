@@ -1041,7 +1041,8 @@ def api_debug_tasks():
     results['total_events_no_filter'] = cnt(r7)
 
     # 8. Use FRESH lead IDs from Salesforce (not ledger) for the same campaign
-    live_res = soql(f"SELECT Id FROM Lead WHERE Campaign__c = '{esc(target_camp[\"name\"])}' LIMIT 50", paginate=False)
+    camp_name = esc(target_camp.get('name', ''))
+    live_res = soql(f"SELECT Id FROM Lead WHERE Campaign__c = '{camp_name}' LIMIT 50", paginate=False)
     live_ids = [r['Id'] for r in (live_res.get('records') or [])] if live_res else []
     if live_ids:
         live_ids_str = ','.join(f"'{lid}'" for lid in live_ids)
