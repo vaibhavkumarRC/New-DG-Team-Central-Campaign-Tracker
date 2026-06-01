@@ -296,10 +296,22 @@ _sf_token_cache = {'token': None, 'instance_url': None, 'fetched_at': None}
 _sf_token_lock  = threading.Lock()
 
 def _refresh_sf_token():
-    """Call sf org display once to get access token + instance URL."""
+    """Obtain Salesforce access token + instance URL via sf CLI.
+
+    Newer versions of the SF CLI (v2.x) redact the accessToken in
+    'sf org display' output.  We try multiple strategies in order:
+
+    1. sf org auth show-access-token  — new command that prints raw token
+    2. sf org display --json          — works on older CLI; skip if redacted
+    3. Read token directly from ~/.sf/orgs/<username>/  config files
+    """
+    env = os.environ.copy()
+    env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env.get('PATH', '')
+
+    instance_url = SF_BASE_URL  # will be overwritten below if org display works
+
+    # ── Step 1: get instanceUrl from org display (always try this) ──────────
     try:
-        env = os.environ.copy()
-        env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env.get('PATH', '')
         r = subprocess.run(
             ['sf', 'org', 'display', '--target-org', SF_ORG, '--json'],
             capture_output=True, text=True, timeout=30, env=env
@@ -307,11 +319,71 @@ def _refresh_sf_token():
         d = json.loads(r.stdout)
         if d.get('status') == 0:
             res = d.get('result', {})
-            return res.get('accessToken'), res.get('instanceUrl', SF_BASE_URL)
-        print(f'[SF-auth] error: {d.get("message")}')
+            instance_url = res.get('instanceUrl') or SF_BASE_URL
+            raw_token = res.get('accessToken', '')
+            # If token is NOT redacted, we're done
+            if raw_token and '[REDACTED]' not in raw_token:
+                print('[SF-auth] Token obtained via sf org display')
+                return raw_token, instance_url
+            # Token redacted — fall through to other strategies
+            print('[SF-auth] sf org display returned redacted token, trying alternatives')
+        else:
+            print(f'[SF-auth] sf org display error: {d.get("message")}')
     except Exception as e:
-        print(f'[SF-auth] exception: {e}')
-    return None, SF_BASE_URL
+        print(f'[SF-auth] sf org display exception: {e}')
+
+    # ── Step 2: sf org auth show-access-token (SF CLI v2.x) ─────────────────
+    try:
+        r2 = subprocess.run(
+            ['sf', 'org', 'auth', 'show-access-token', '--target-org', SF_ORG],
+            capture_output=True, text=True, timeout=30, env=env
+        )
+        token_candidate = (r2.stdout or '').strip()
+        if token_candidate and '[REDACTED]' not in token_candidate and r2.returncode == 0:
+            print('[SF-auth] Token obtained via sf org auth show-access-token')
+            return token_candidate, instance_url
+        else:
+            print(f'[SF-auth] show-access-token failed (rc={r2.returncode}): {r2.stderr[:200]}')
+    except Exception as e:
+        print(f'[SF-auth] show-access-token exception: {e}')
+
+    # ── Step 3: Read token from ~/.sf/orgs/<username>/  config files ─────────
+    try:
+        import glob
+        sf_org_dir = os.path.expanduser(f'~/.sf/orgs/{SF_ORG}')
+        if not os.path.isdir(sf_org_dir):
+            # Try alternate location pattern
+            candidates = glob.glob(os.path.expanduser('~/.sf/orgs/*/sfdx-config.json'))
+            for c in candidates:
+                if SF_ORG.lower() in c.lower():
+                    sf_org_dir = os.path.dirname(c)
+                    break
+        # Look for accessToken in org JSON files
+        for fname in ['org.json', 'sfdx-config.json', 'authinfo.json']:
+            fpath = os.path.join(sf_org_dir, fname)
+            if os.path.exists(fpath):
+                with open(fpath) as f:
+                    data = json.load(f)
+                token_candidate = data.get('accessToken', '')
+                if token_candidate and '[REDACTED]' not in token_candidate:
+                    inst = data.get('instanceUrl') or instance_url
+                    print(f'[SF-auth] Token obtained from {fname}')
+                    return token_candidate, inst
+        # Also try ~/.sfdx directory (older format)
+        sfdx_path = os.path.expanduser(f'~/.sfdx/{SF_ORG}.json')
+        if os.path.exists(sfdx_path):
+            with open(sfdx_path) as f:
+                data = json.load(f)
+            token_candidate = data.get('accessToken', '')
+            if token_candidate and '[REDACTED]' not in token_candidate:
+                inst = data.get('instanceUrl') or instance_url
+                print('[SF-auth] Token obtained from ~/.sfdx file')
+                return token_candidate, inst
+    except Exception as e:
+        print(f'[SF-auth] config-file read exception: {e}')
+
+    print('[SF-auth] All token strategies failed')
+    return None, instance_url
 
 def _get_sf_token():
     """Return cached (token, instance_url), refreshing every 90 minutes."""
@@ -1108,11 +1180,35 @@ def api_debug_auth():
         sf_display_stderr = ''
         sf_display_code   = -1
 
-    # 4. Check env vars are set (don't expose values)
+    # 4. Try sf org auth show-access-token directly
+    try:
+        env2 = os.environ.copy()
+        env2['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env2.get('PATH', '')
+        r2 = subprocess.run(
+            ['sf', 'org', 'auth', 'show-access-token', '--target-org', SF_ORG],
+            capture_output=True, text=True, timeout=30, env=env2
+        )
+        show_token_stdout = (r2.stdout or '').strip()[:80] + '...' if len((r2.stdout or '').strip()) > 80 else (r2.stdout or '').strip()
+        show_token_stderr = r2.stderr[:300] if r2.stderr else '(empty)'
+        show_token_rc     = r2.returncode
+        show_token_works  = (r2.returncode == 0 and bool(show_token_stdout) and '[REDACTED]' not in show_token_stdout)
+    except Exception as e:
+        show_token_stdout = f'exception: {e}'
+        show_token_stderr = ''
+        show_token_rc     = -1
+        show_token_works  = False
+
+    # 5. Check env vars are set (don't expose values)
     jwt_key_set   = bool(os.environ.get('SF_JWT_KEY', '').strip())
     client_id_set = bool(os.environ.get('SF_CLIENT_ID', '').strip())
 
-    # 5. Try one simple query to confirm
+    # 6. Force-clear cached token so next soql() uses the fresh token
+    with _sf_token_lock:
+        _sf_token_cache['token'] = fresh_token
+        _sf_token_cache['instance_url'] = instance_url
+        _sf_token_cache['fetched_at'] = datetime.now() if fresh_token else None
+
+    # 7. Try one simple query to confirm
     test_q = soql("SELECT COUNT(Id) FROM Lead", paginate=False)
     test_lead_count = cnt(test_q)
 
@@ -1125,9 +1221,14 @@ def api_debug_auth():
         'cached_token_start':   token_start,
         'cached_fetched_at':    fetched_at,
         'fresh_token_obtained': bool(fresh_token),
+        'fresh_token_start':    (fresh_token or '')[:8] + '...' if fresh_token else None,
         'sf_display_returncode': sf_display_code,
         'sf_display_stdout':    sf_display_stdout,
         'sf_display_stderr':    sf_display_stderr,
+        'show_access_token_rc':    show_token_rc,
+        'show_access_token_works': show_token_works,
+        'show_access_token_stdout_preview': show_token_stdout,
+        'show_access_token_stderr': show_token_stderr,
         'test_lead_count':      test_lead_count,
     })
 
