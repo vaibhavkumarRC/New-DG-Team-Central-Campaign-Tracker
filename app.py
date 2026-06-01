@@ -405,16 +405,35 @@ try{
     }catch(e){}
   }
 
-  // GCM: iv12 + colon-sep tag (most likely for @salesforce/core v5+)
+  // The key might be stored as raw bytes (not hex-decoded).
+  // If key.json stores the ASCII string of 32 chars, Buffer.from(key,'utf8')=32B → AES-256.
+  const keyRaw=Buffer.from(kd.key);  // raw bytes of the key string
+
+  // GCM: iv12 + colon-sep tag (most likely for @salesforce/core v5+ with AES-256-GCM raw key)
   if(colonIdx>24){
-    tryDec('aes-'+kBits+'-gcm', enc.slice(0,24), enc.slice(24,colonIdx), afterColon);
+    // Try hex-decoded key (16B → aes-128-gcm) and raw-bytes key (32B → aes-256-gcm)
+    for(const [kb,kl] of [[key,'hex'],[keyRaw,'raw']]){
+      const algo='aes-'+kb.length*8+'-gcm';
+      for(const ivB of [12,8,16]){
+        if(colonIdx<=ivB*2) continue;
+        try{
+          const d=crypto.createDecipheriv(algo,kb,Buffer.from(enc.slice(0,ivB*2),'hex'));
+          if(afterColon.length===32) d.setAuthTag(Buffer.from(afterColon,'hex'));
+          const dec=Buffer.concat([d.update(Buffer.from(enc.slice(ivB*2,colonIdx),'hex')),d.final()]).toString('utf8').trim();
+          if(dec.length>20&&!/[\x00-\x08\x0e-\x1f]/.test(dec)){
+            process.stdout.write(JSON.stringify({ok:true,token:dec,instanceUrl:inst,algo,keyLabel:kl,ivBytes:ivB}));
+            process.exit(0);
+          }
+        }catch(e){}
+      }
+    }
   }
-  // CBC with different IV sizes, strip :tag
-  for(const ivB of [8,16]){
-    const ctHex=colonIdx>ivB*2?enc.slice(ivB*2,colonIdx):enc.slice(ivB*2);
-    tryDec('aes-'+kBits+'-cbc', enc.slice(0,ivB*2), ctHex, null);
+  // CBC with raw-bytes key (AES-256-CBC, 16B IV)
+  {
+    const ctHex=colonIdx>32?enc.slice(32,colonIdx):enc.slice(32);
+    tryDec('aes-256-cbc', enc.slice(0,32), ctHex, null);
   }
-  // CFB/OFB/CTR stream modes (no padding required)
+  // CFB/OFB/CTR stream modes
   for(const mode of ['cfb','ofb','ctr']){
     const ct=colonIdx>32?enc.slice(32,colonIdx):enc.slice(32);
     tryDec('aes-'+kBits+'-'+mode, enc.slice(0,32), ct, null);
@@ -1736,20 +1755,35 @@ try{
     }
   }
 
-  // ── GCM modes (auth tag = afterColon) ─────────────────────────────────────
-  for(const algo of ['aes-'+key.length*8+'-gcm','aes-128-gcm','aes-256-gcm']){
-    for(const ivBytes of [8,12,16]){
-      const ivHex=enc.slice(0,ivBytes*2);
-      const ctHex=colonIdx>ivBytes*2?enc.slice(ivBytes*2,colonIdx):enc.slice(ivBytes*2);
-      const tagHex=afterColon;
-      if(!ctHex||ctHex.length%2!==0) continue;
-      try{
-        const d=crypto.createDecipheriv(algo,key,Buffer.from(ivHex,'hex'));
-        if(tagHex&&tagHex.length===32) d.setAuthTag(Buffer.from(tagHex,'hex'));
-        const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
-        results.push({algo,ivBytes,mode:'gcm',ok:true,preview:dec.slice(0,30),len:dec.length});
-      }catch(e){results.push({algo,ivBytes,mode:'gcm',ok:false,err:e.message.slice(0,60)});}
+  // ── GCM modes — try both hex-decoded key AND raw-bytes key ──────────────
+  // @salesforce/core v5+ uses aes-256-gcm. The key might be stored as raw
+  // bytes in key.json (Buffer.from(key,'utf8') = 32B) not hex-decoded (16B).
+  const keyRaw=Buffer.from(kd.key);  // raw UTF-8/ASCII bytes of the key string
+  for(const [keyBuf,keyLabel] of [[key,'hex-decoded'],[keyRaw,'raw-bytes']]){
+    for(const algo of ['aes-'+keyBuf.length*8+'-gcm']){
+      for(const ivBytes of [8,12,16]){
+        const ivHex=enc.slice(0,ivBytes*2);
+        const ctHex=colonIdx>ivBytes*2?enc.slice(ivBytes*2,colonIdx):enc.slice(ivBytes*2);
+        const tagHex=afterColon;
+        if(!ctHex||ctHex.length%2!==0) continue;
+        try{
+          const d=crypto.createDecipheriv(algo,keyBuf,Buffer.from(ivHex,'hex'));
+          if(tagHex&&tagHex.length===32) d.setAuthTag(Buffer.from(tagHex,'hex'));
+          const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
+          results.push({algo,ivBytes,mode:'gcm',keyLabel,ok:true,preview:dec.slice(0,30),len:dec.length});
+        }catch(e){results.push({algo,ivBytes,mode:'gcm',keyLabel,ok:false,err:e.message.slice(0,60)});}
+      }
     }
+  }
+  // Also try CBC with raw-bytes key (32B = AES-256-CBC)
+  for(const ivBytes of [16]){
+    const ctFull=enc.slice(ivBytes*2);
+    const ctHex=ctFull.includes(':')?ctFull.split(':')[0]:ctFull;
+    try{
+      const d=crypto.createDecipheriv('aes-256-cbc',keyRaw,Buffer.from(enc.slice(0,ivBytes*2),'hex'));
+      const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
+      results.push({algo:'aes-256-cbc',ivBytes,mode:'cbc',keyLabel:'raw-bytes',ok:true,preview:dec.slice(0,30),len:dec.length});
+    }catch(e){results.push({algo:'aes-256-cbc',ivBytes,mode:'cbc',keyLabel:'raw-bytes',ok:false,err:e.message.slice(0,60)});}
   }
 
   // ── Stream modes (CFB, OFB, CTR) — no padding needed ─────────────────────
