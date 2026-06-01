@@ -1667,6 +1667,88 @@ def api_debug_aes():
         out['error'] = str(e)
     return jsonify(out)
 
+@app.route('/api/debug-node')
+@require_admin
+def api_debug_node():
+    """Run Node.js decrypt inline + show raw output for diagnosis."""
+    out = {}
+    env = os.environ.copy()
+    env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + env.get('PATH', '')
+
+    # Which node?
+    try:
+        wn = subprocess.run(['which', 'node'], capture_output=True, text=True, timeout=5, env=env)
+        out['node_path'] = wn.stdout.strip() or '(not found)'
+        wn2 = subprocess.run(['node', '--version'], capture_output=True, text=True, timeout=5, env=env)
+        out['node_version'] = wn2.stdout.strip()
+    except Exception as e:
+        out['node_path'] = f'error: {e}'
+
+    # Read raw files
+    try:
+        kp = os.path.expanduser('~/.sfdx/key.json')
+        ap = os.path.expanduser(f'~/.sfdx/{SF_ORG}.json')
+        with open(kp) as f: kd = json.load(f)
+        with open(ap) as f: ad = json.load(f)
+        out['key_hex_len'] = len(kd.get('key', ''))
+        out['key_hex_start'] = kd.get('key', '')[:16]
+        enc = ad.get('accessToken', '')
+        out['enc_len'] = len(enc)
+        out['enc_start'] = enc[:40]
+        out['enc_colon_idx'] = enc.index(':') if ':' in enc else None
+    except Exception as e:
+        out['file_read_error'] = str(e)
+
+    # Run Node.js script
+    node_script = r"""
+const fs=require('fs'),crypto=require('crypto'),home=process.env.HOME||'/root';
+try{
+  const kd=JSON.parse(fs.readFileSync(home+'/.sfdx/key.json','utf8'));
+  const ad=JSON.parse(fs.readFileSync(home+'/.sfdx/""" + SF_ORG + r""".json','utf8'));
+  const key=Buffer.from(kd.key,'hex');
+  const enc=ad.accessToken;
+  const inst=ad.instanceUrl||'';
+  const results=[];
+  const algos=['aes-'+key.length*8+'-cbc','aes-128-cbc','aes-256-cbc','des3'];
+  const ivSizes=[8,12,16,24];
+  for(const algo of algos){
+    for(const ivBytes of ivSizes){
+      const ivHex=enc.slice(0,ivBytes*2);
+      const colonIdx=enc.indexOf(':');
+      const ctFull=enc.slice(ivBytes*2);
+      const ctHex=ctFull.includes(':')?ctFull.split(':')[0]:ctFull;
+      try{
+        const d=crypto.createDecipheriv(algo,key,Buffer.from(ivHex,'hex'));
+        const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
+        results.push({algo,ivBytes,label:'iv'+ivBytes+'-strip-colon',ok:true,preview:dec.slice(0,30),len:dec.length});
+      }catch(e){results.push({algo,ivBytes,label:'iv'+ivBytes+'-strip-colon',ok:false,err:e.message.slice(0,50)});}
+    }
+  }
+  process.stdout.write(JSON.stringify({ok:true,key_len:key.length,enc_len:enc.length,inst,results}));
+}catch(e){process.stdout.write(JSON.stringify({ok:false,error:e.message}));}
+"""
+    try:
+        nr = subprocess.run(['node', '-e', node_script],
+                            capture_output=True, text=True, timeout=20, env=env)
+        out['node_rc']     = nr.returncode
+        out['node_stdout'] = nr.stdout[:2000]
+        out['node_stderr'] = nr.stderr[:500]
+        if nr.stdout.strip():
+            try:
+                nd = json.loads(nr.stdout.strip())
+                out['node_parsed'] = nd
+                # Find any successful decrypt with a plausible token
+                for r in (nd.get('results') or []):
+                    if r.get('ok') and r.get('len', 0) > 20:
+                        out['best_candidate'] = r
+                        break
+            except Exception as je:
+                out['json_parse_error'] = str(je)
+    except Exception as e:
+        out['node_run_error'] = str(e)
+
+    return jsonify(out)
+
 @app.route('/api/campaigns', methods=['GET'])
 def api_camps_get():
     return jsonify(load_campaigns())
