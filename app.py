@@ -1151,6 +1151,61 @@ def api_sync():
         threading.Thread(target=sync, daemon=True).start()
     return jsonify({'ok': True})
 
+@app.route('/api/debug-campaign-metrics')
+@require_admin
+def api_debug_campaign_metrics():
+    """Run campaign_metrics() for one campaign and return all intermediate values."""
+    camps = load_campaigns()
+    if not camps:
+        return jsonify({'error': 'no campaigns'})
+    # Pick a campaign with known leads
+    with _ledger_lock:
+        ledger = load_ledger()
+    target_camp = None
+    for c in camps:
+        entry = ledger.get(c['id'], {})
+        if len(entry.get('lead_ids', [])) > 0:
+            target_camp = c
+            break
+    if not target_camp:
+        target_camp = camps[0]
+    # Run full campaign_metrics but with debug info
+    c = target_camp
+    n = esc(c['name'])
+    start = (c.get('start_date') or '').strip()
+    end = (c.get('end_date') or '').strip()
+    dt_task = ''
+    if start: dt_task += f" AND ActivityDate >= {start}"
+    if end:   dt_task += f" AND ActivityDate <= {end}"
+    # Step 1: get current lead IDs via soql
+    lead_res = soql(f"SELECT Id FROM Lead WHERE Campaign__c = '{n}' LIMIT 10000")
+    current_ids = [r['Id'] for r in (lead_res.get('records') or [])] if lead_res else []
+    # Check if Id is actually coming back (might be lowercase or missing)
+    raw_record_keys = list((lead_res.get('records') or [{}])[0].keys()) if lead_res and lead_res.get('records') else []
+    first_id = current_ids[0] if current_ids else None
+    frozen_ids = merge_leads_into_ledger(c['id'], current_ids)
+    # Run task count with frozen IDs
+    call_subj = "Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%'"
+    total_calls = _count_tasks_for_ids(frozen_ids, call_subj, dt_task)
+    total_emails = _count_tasks_for_ids(frozen_ids, "Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%'", dt_task)
+    # Test with first 5 IDs directly
+    sample_ids = frozen_ids[:5]
+    sample_ids_str = ','.join(f"'{lid}'" for lid in sample_ids) if sample_ids else "'NONE'"
+    sample_count = cnt(soql(f"SELECT COUNT(Id) FROM Task WHERE ({call_subj}) AND WhoId IN ({sample_ids_str}){dt_task}", paginate=False))
+    return jsonify({
+        'campaign': c['name'],
+        'current_lead_count': len(current_ids),
+        'frozen_lead_count': len(frozen_ids),
+        'first_id': first_id,
+        'raw_record_keys': raw_record_keys,
+        'soql_use_cli_fallback': _soql_use_cli_fallback,
+        'dt_task': dt_task,
+        'total_calls': total_calls,
+        'total_emails': total_emails,
+        'sample_5_ids_call_count': sample_count,
+    })
+
+
 @app.route('/api/debug-tasks')
 @require_admin
 def api_debug_tasks():
