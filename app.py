@@ -336,14 +336,17 @@ def _refresh_sf_token():
     # The SF CLI stores the real (unredacted) token in this file even when
     # 'sf org display' redacts it.  This is the fastest + most reliable path.
     def _looks_like_sf_token(s):
-        """Real SF tokens: long alphanumeric string, no spaces, starts with alnum."""
+        """Real SF tokens: long string, no spaces, contains at least some alnum chars.
+        Must NOT be a box-drawing / UI element (those have no alphanumerics)."""
         if not s or len(s) < 20:
             return False
         if '[REDACTED]' in s:
             return False
-        if not s[0].isalnum():   # rejects box-drawing chars like └, │, ─
-            return False
         if ' ' in s:
+            return False
+        # Must contain at least one alphanumeric character in the first 10 chars
+        # (rejects box-drawing strings like └────────┘ which have zero alnum chars)
+        if not any(c.isalnum() for c in s[:10]):
             return False
         return True
 
@@ -353,12 +356,13 @@ def _refresh_sf_token():
             with open(sfdx_path) as f:
                 data = json.load(f)
             token_candidate = data.get('accessToken', '')
+            print(f'[SF-auth] ~/.sfdx token: len={len(token_candidate)} first10={repr(token_candidate[:10])} has_alnum={any(c.isalnum() for c in token_candidate[:10])}')
             if _looks_like_sf_token(token_candidate):
                 inst = data.get('instanceUrl') or instance_url
                 print(f'[SF-auth] Token obtained from ~/.sfdx/{SF_ORG}.json')
                 return token_candidate, inst
             else:
-                print(f'[SF-auth] ~/.sfdx file token not usable: {token_candidate[:30]}')
+                print(f'[SF-auth] ~/.sfdx file token not usable: {repr(token_candidate[:30])}')
         else:
             print(f'[SF-auth] ~/.sfdx/{SF_ORG}.json not found')
     except Exception as e:
