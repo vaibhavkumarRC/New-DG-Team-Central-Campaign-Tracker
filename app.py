@@ -1567,7 +1567,7 @@ def api_segments_add():
 
 @app.route('/api/mql-leads')
 def api_mql_leads():
-    """Return leads where Status = 'MQL', filtered by Meeting_Generated_on__c."""
+    """Return leads where Meeting_Generated_on__c is set, filtered by date period."""
     period = request.args.get('period', '30d').strip()
     custom_start = request.args.get('start', '').strip()
     custom_end   = request.args.get('end',   '').strip()
@@ -1581,29 +1581,37 @@ def api_mql_leads():
     if start: dt += f" AND Meeting_Generated_on__c >= {start}"
     if end:   dt += f" AND Meeting_Generated_on__c <= {end}"
 
-    q = (f"SELECT Id, Name, Title, Company, Status, "
-         f"Meeting_Generated_by__c, Meeting_Generated_on__c, "
-         f"Meeting_Channel__c, Meeting_Type__c, Seller_Name__c, Meeting_Source__c, "
-         f"Follow_Up_Owner__c "
-         f"FROM Lead "
-         f"WHERE Status = 'MQL'"
-         f"{dt} "
-         f"ORDER BY Meeting_Generated_on__c DESC NULLS LAST LIMIT 2000")
+    # Try full query with optional custom fields first; fall back to core fields if SOQL fails
+    q_full = (f"SELECT Id, Name, Title, Company, Status, "
+              f"Meeting_Generated_by__c, Meeting_Generated_on__c, "
+              f"Meeting_Channel__c, Meeting_Type__c, Seller_Name__c, Meeting_Source__c, "
+              f"Follow_Up_Owner__c "
+              f"FROM Lead "
+              f"WHERE Meeting_Generated_on__c != null{dt} "
+              f"ORDER BY Meeting_Generated_on__c DESC NULLS LAST LIMIT 2000")
+    q_core = (f"SELECT Id, Name, Title, Company, Status, "
+              f"Meeting_Generated_by__c, Meeting_Generated_on__c, Meeting_Source__c "
+              f"FROM Lead "
+              f"WHERE Meeting_Generated_on__c != null{dt} "
+              f"ORDER BY Meeting_Generated_on__c DESC NULLS LAST LIMIT 2000")
 
-    result = soql(q)
+    result = soql(q_full)
+    if result is None:
+        result = soql(q_core)
     records = result.get('records', []) if result else []
     leads = []
     for r in records:
         lid = r.get('Id') or ''
         leads.append({
-            'id':           lid,
-            'name':         r.get('Name') or '—',
-            'title':        r.get('Title') or '—',
-            'company':      r.get('Company') or '—',
-            'generated_by': norm_sdr(r.get('Meeting_Generated_by__c') or '—'),
-            'date':         (r.get('Meeting_Generated_on__c') or '')[:10],
-            'channel':      r.get('Meeting_Channel__c') or '—',
-            'type':         r.get('Meeting_Type__c') or '—',
+            'id':              lid,
+            'name':            r.get('Name') or '—',
+            'title':           r.get('Title') or '—',
+            'company':         r.get('Company') or '—',
+            'status':          r.get('Status') or '—',
+            'generated_by':    norm_sdr(r.get('Meeting_Generated_by__c') or '—'),
+            'date':            (r.get('Meeting_Generated_on__c') or '')[:10],
+            'channel':         r.get('Meeting_Channel__c') or '—',
+            'type':            r.get('Meeting_Type__c') or '—',
             'seller':          r.get('Seller_Name__c') or '—',
             'source':          r.get('Meeting_Source__c') or '—',
             'follow_up_owner': norm_sdr(r.get('Follow_Up_Owner__c') or '—'),
@@ -1614,7 +1622,7 @@ def api_mql_leads():
 
 @app.route('/api/sql-leads')
 def api_sql_leads():
-    """Return leads where Status = 'SQL', filtered by SQL_Converted_Date__c."""
+    """Return leads where Status = 'SQL', filtered by Meeting_Generated_on__c date."""
     period = request.args.get('period', '30d').strip()
     custom_start = request.args.get('start', '').strip()
     custom_end   = request.args.get('end',   '').strip()
@@ -1624,30 +1632,42 @@ def api_sql_leads():
     else:
         start, end = period_dates(period)
 
+    # Filter by Meeting_Generated_on__c (always populated) instead of SQL_Converted_Date__c (often null)
     dt = ''
-    if start: dt += f" AND SQL_Converted_Date__c >= {start}"
-    if end:   dt += f" AND SQL_Converted_Date__c <= {end}"
+    if start: dt += f" AND Meeting_Generated_on__c >= {start}"
+    if end:   dt += f" AND Meeting_Generated_on__c <= {end}"
 
-    q = (f"SELECT Id, Name, Title, Company, Status, "
-         f"SQL_Seller_Owner__c, SQL_Converted_Date__c, SQL_Source__c, "
-         f"Follow_Up_Owner__c "
-         f"FROM Lead "
-         f"WHERE Status = 'SQL'"
-         f"{dt} "
-         f"ORDER BY SQL_Converted_Date__c DESC NULLS LAST LIMIT 2000")
+    # Try full query with optional custom fields first; fall back to core fields if SOQL fails
+    q_full = (f"SELECT Id, Name, Title, Company, Status, "
+              f"Meeting_Generated_by__c, Meeting_Generated_on__c, "
+              f"SQL_Seller_Owner__c, SQL_Converted_Date__c, SQL_Source__c, "
+              f"Follow_Up_Owner__c "
+              f"FROM Lead "
+              f"WHERE Status = 'SQL'{dt} "
+              f"ORDER BY Meeting_Generated_on__c DESC NULLS LAST LIMIT 2000")
+    q_core = (f"SELECT Id, Name, Title, Company, Status, "
+              f"Meeting_Generated_by__c, Meeting_Generated_on__c "
+              f"FROM Lead "
+              f"WHERE Status = 'SQL'{dt} "
+              f"ORDER BY Meeting_Generated_on__c DESC NULLS LAST LIMIT 2000")
 
-    result = soql(q)
+    result = soql(q_full)
+    if result is None:
+        result = soql(q_core)
     records = result.get('records', []) if result else []
     leads = []
     for r in records:
         lid = r.get('Id') or ''
         leads.append({
-            'id':      lid,
-            'name':    r.get('Name') or '—',
-            'title':   r.get('Title') or '—',
-            'company': r.get('Company') or '—',
+            'id':              lid,
+            'name':            r.get('Name') or '—',
+            'title':           r.get('Title') or '—',
+            'company':         r.get('Company') or '—',
+            'status':          r.get('Status') or '—',
+            'generated_by':    norm_sdr(r.get('Meeting_Generated_by__c') or '—'),
+            'date':            (r.get('Meeting_Generated_on__c') or '')[:10],
             'seller':          norm_sdr(r.get('SQL_Seller_Owner__c') or '—'),
-            'date':            (r.get('SQL_Converted_Date__c') or '')[:10],
+            'converted_date':  (r.get('SQL_Converted_Date__c') or '')[:10],
             'source':          r.get('SQL_Source__c') or '—',
             'follow_up_owner': norm_sdr(r.get('Follow_Up_Owner__c') or '—'),
             'sf_url':          f"{SF_BASE_URL}/lightning/r/Lead/{lid}/view" if lid else '',
