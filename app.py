@@ -389,28 +389,38 @@ try{
   const key=Buffer.from(kd.key,'hex');
   const enc=ad.accessToken;
   const inst=ad.instanceUrl||'';
-  const algos=['aes-'+key.length*8+'-cbc','des3','aes-128-cbc','aes-256-cbc'];
-  // IV candidates: first 16 hex (8B), first 32 hex (16B)
-  const ivCandidates=[
-    [enc.slice(0,16),enc.slice(16),'iv8-concat'],
-    [enc.slice(0,32),enc.slice(32),'iv16-concat'],
-  ];
-  if(enc.includes(':')){const ci=enc.indexOf(':');ivCandidates.push([enc.slice(0,ci),enc.slice(ci+1),'pre-colon-iv']);}
-  for(const algo of algos){
-    for(const [ivHex,ctFull,label] of ivCandidates){
-      const ctHex=ctFull.includes(':')?ctFull.split(':')[0]:ctFull;
-      try{
-        const d=crypto.createDecipheriv(algo,key,Buffer.from(ivHex,'hex'));
-        const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
-        if(dec.length>20&&!/[\x00-\x08]/.test(dec)){
-          console.log(JSON.stringify({ok:true,token:dec,instanceUrl:inst,algo,label}));
-          process.exit(0);
-        }
-      }catch(e){}
-    }
+  const colonIdx=enc.indexOf(':');
+  const afterColon=colonIdx>=0?enc.slice(colonIdx+1):'';
+  const kBits=key.length*8;
+
+  function tryDec(algo,ivHex,ctHex,tagHex){
+    try{
+      const d=crypto.createDecipheriv(algo,key,Buffer.from(ivHex,'hex'));
+      if(tagHex&&tagHex.length===32) d.setAuthTag(Buffer.from(tagHex,'hex'));
+      const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
+      if(dec.length>20&&!/[\x00-\x08\x0e-\x1f]/.test(dec)){
+        process.stdout.write(JSON.stringify({ok:true,token:dec,instanceUrl:inst,algo}));
+        process.exit(0);
+      }
+    }catch(e){}
   }
-  console.log(JSON.stringify({ok:false,key_len:key.length,enc_len:enc.length}));
-}catch(e){console.log(JSON.stringify({ok:false,error:e.message}));}
+
+  // GCM: iv12 + colon-sep tag (most likely for @salesforce/core v5+)
+  if(colonIdx>24){
+    tryDec('aes-'+kBits+'-gcm', enc.slice(0,24), enc.slice(24,colonIdx), afterColon);
+  }
+  // CBC with different IV sizes, strip :tag
+  for(const ivB of [8,16]){
+    const ctHex=colonIdx>ivB*2?enc.slice(ivB*2,colonIdx):enc.slice(ivB*2);
+    tryDec('aes-'+kBits+'-cbc', enc.slice(0,ivB*2), ctHex, null);
+  }
+  // CFB/OFB/CTR stream modes (no padding required)
+  for(const mode of ['cfb','ofb','ctr']){
+    const ct=colonIdx>32?enc.slice(32,colonIdx):enc.slice(32);
+    tryDec('aes-'+kBits+'-'+mode, enc.slice(0,32), ct, null);
+  }
+  process.stdout.write(JSON.stringify({ok:false,key_len:key.length,enc_len:enc.length,colon_idx:colonIdx}));
+}catch(e){process.stdout.write(JSON.stringify({ok:false,error:e.message}));}
 """
         node_r = subprocess.run(
             ['node', '-e', node_script],
@@ -1699,7 +1709,7 @@ def api_debug_node():
     except Exception as e:
         out['file_read_error'] = str(e)
 
-    # Run Node.js script
+    # Run Node.js script — exhaustive: CBC, GCM (with auth tag), stream modes
     node_script = r"""
 const fs=require('fs'),crypto=require('crypto'),home=process.env.HOME||'/root';
 try{
@@ -1708,23 +1718,56 @@ try{
   const key=Buffer.from(kd.key,'hex');
   const enc=ad.accessToken;
   const inst=ad.instanceUrl||'';
+  const colonIdx=enc.indexOf(':');
+  const afterColon=colonIdx>=0?enc.slice(colonIdx+1):'';
   const results=[];
-  const algos=['aes-'+key.length*8+'-cbc','aes-128-cbc','aes-256-cbc','des3'];
-  const ivSizes=[8,12,16,24];
-  for(const algo of algos){
-    for(const ivBytes of ivSizes){
+
+  // ── CBC modes ─────────────────────────────────────────────────────────────
+  for(const algo of ['aes-'+key.length*8+'-cbc','aes-128-cbc','aes-256-cbc','des3']){
+    for(const ivBytes of [8,12,16,24]){
       const ivHex=enc.slice(0,ivBytes*2);
-      const colonIdx=enc.indexOf(':');
       const ctFull=enc.slice(ivBytes*2);
       const ctHex=ctFull.includes(':')?ctFull.split(':')[0]:ctFull;
       try{
         const d=crypto.createDecipheriv(algo,key,Buffer.from(ivHex,'hex'));
         const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
-        results.push({algo,ivBytes,label:'iv'+ivBytes+'-strip-colon',ok:true,preview:dec.slice(0,30),len:dec.length});
-      }catch(e){results.push({algo,ivBytes,label:'iv'+ivBytes+'-strip-colon',ok:false,err:e.message.slice(0,50)});}
+        results.push({algo,ivBytes,mode:'cbc',ok:true,preview:dec.slice(0,30),len:dec.length});
+      }catch(e){results.push({algo,ivBytes,mode:'cbc',ok:false,err:e.message.slice(0,60)});}
     }
   }
-  process.stdout.write(JSON.stringify({ok:true,key_len:key.length,enc_len:enc.length,inst,results}));
+
+  // ── GCM modes (auth tag = afterColon) ─────────────────────────────────────
+  for(const algo of ['aes-'+key.length*8+'-gcm','aes-128-gcm','aes-256-gcm']){
+    for(const ivBytes of [8,12,16]){
+      const ivHex=enc.slice(0,ivBytes*2);
+      const ctHex=colonIdx>ivBytes*2?enc.slice(ivBytes*2,colonIdx):enc.slice(ivBytes*2);
+      const tagHex=afterColon;
+      if(!ctHex||ctHex.length%2!==0) continue;
+      try{
+        const d=crypto.createDecipheriv(algo,key,Buffer.from(ivHex,'hex'));
+        if(tagHex&&tagHex.length===32) d.setAuthTag(Buffer.from(tagHex,'hex'));
+        const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
+        results.push({algo,ivBytes,mode:'gcm',ok:true,preview:dec.slice(0,30),len:dec.length});
+      }catch(e){results.push({algo,ivBytes,mode:'gcm',ok:false,err:e.message.slice(0,60)});}
+    }
+  }
+
+  // ── Stream modes (CFB, OFB, CTR) — no padding needed ─────────────────────
+  for(const algo of ['aes-'+key.length*8+'-cfb','aes-'+key.length*8+'-ofb','aes-'+key.length*8+'-ctr']){
+    for(const ivBytes of [8,16]){
+      const ivHex=enc.slice(0,ivBytes*2);
+      const ctFull=enc.slice(ivBytes*2);
+      const ctHex=ctFull.includes(':')?ctFull.split(':')[0]:ctFull;
+      if(!ctHex||ctHex.length%2!==0) continue;
+      try{
+        const d=crypto.createDecipheriv(algo,key,Buffer.from(ivHex,'hex'));
+        const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
+        results.push({algo,ivBytes,mode:'stream',ok:true,preview:dec.slice(0,30),len:dec.length});
+      }catch(e){results.push({algo,ivBytes,mode:'stream',ok:false,err:e.message.slice(0,60)});}
+    }
+  }
+
+  process.stdout.write(JSON.stringify({ok:true,key_len:key.length,enc_len:enc.length,colon_idx:colonIdx,after_colon_len:afterColon.length,inst,results}));
 }catch(e){process.stdout.write(JSON.stringify({ok:false,error:e.message}));}
 """
     try:
