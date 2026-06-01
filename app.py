@@ -377,12 +377,62 @@ def _refresh_sf_token():
     except Exception as e:
         print(f'[SF-auth] AES decrypt error: {e}')
 
-    # ── 3. sf org auth show-access-token via subprocess (input='y\n') ──────────
-    # The debug endpoint confirmed this command runs with rc=0 and outputs:
-    #   ┌──────────────────────────────────────────────┐
-    #   │ 00Dxxxxxxxx!<token>                           │
-    #   └──────────────────────────────────────────────┘
-    # Token line contains '│' borders — strip them.
+    # ── 3. Node.js decrypt — same crypto as SF CLI ───────────────────────────
+    # Run a tiny inline Node.js script using the exact same crypto module SF CLI
+    # uses. This bypasses all Python AES guesswork.
+    try:
+        node_script = r"""
+const fs=require('fs'),crypto=require('crypto'),home=process.env.HOME||'/root';
+try{
+  const kd=JSON.parse(fs.readFileSync(home+'/.sfdx/key.json','utf8'));
+  const ad=JSON.parse(fs.readFileSync(home+'/.sfdx/""" + SF_ORG + r""".json','utf8'));
+  const key=Buffer.from(kd.key,'hex');
+  const enc=ad.accessToken;
+  const inst=ad.instanceUrl||'';
+  const algos=['aes-'+key.length*8+'-cbc','des3','aes-128-cbc','aes-256-cbc'];
+  // IV candidates: first 16 hex (8B), first 32 hex (16B)
+  const ivCandidates=[
+    [enc.slice(0,16),enc.slice(16),'iv8-concat'],
+    [enc.slice(0,32),enc.slice(32),'iv16-concat'],
+  ];
+  if(enc.includes(':')){const ci=enc.indexOf(':');ivCandidates.push([enc.slice(0,ci),enc.slice(ci+1),'pre-colon-iv']);}
+  for(const algo of algos){
+    for(const [ivHex,ctFull,label] of ivCandidates){
+      const ctHex=ctFull.includes(':')?ctFull.split(':')[0]:ctFull;
+      try{
+        const d=crypto.createDecipheriv(algo,key,Buffer.from(ivHex,'hex'));
+        const dec=Buffer.concat([d.update(Buffer.from(ctHex,'hex')),d.final()]).toString('utf8').trim();
+        if(dec.length>20&&!/[\x00-\x08]/.test(dec)){
+          console.log(JSON.stringify({ok:true,token:dec,instanceUrl:inst,algo,label}));
+          process.exit(0);
+        }
+      }catch(e){}
+    }
+  }
+  console.log(JSON.stringify({ok:false,key_len:key.length,enc_len:enc.length}));
+}catch(e){console.log(JSON.stringify({ok:false,error:e.message}));}
+"""
+        node_r = subprocess.run(
+            ['node', '-e', node_script],
+            capture_output=True, text=True, timeout=15, env=env
+        )
+        if node_r.stdout.strip():
+            nd = json.loads(node_r.stdout.strip())
+            if nd.get('ok') and nd.get('token'):
+                tok = nd['token'].strip()
+                inst = nd.get('instanceUrl') or instance_url
+                if _valid_token(tok):
+                    print(f"[SF-auth] Token via Node.js decrypt (algo={nd.get('algo')} label={nd.get('label')})")
+                    return tok, inst
+                print(f"[SF-auth] Node.js decrypt gave invalid token: {repr(tok[:30])}")
+            else:
+                print(f"[SF-auth] Node.js decrypt: {nd}")
+        else:
+            print(f'[SF-auth] Node.js: empty stdout rc={node_r.returncode} err={node_r.stderr[:100]}')
+    except Exception as e:
+        print(f'[SF-auth] Node.js error: {e}')
+
+    # ── 5. sf org auth show-access-token via subprocess (input='y\n') ──────────
     try:
         import re as _re
         r3 = subprocess.run(
@@ -414,7 +464,7 @@ def _refresh_sf_token():
     except Exception as e:
         print(f'[SF-auth] show-access-token error: {e}')
 
-    # ── 4. PTY: sf org auth show-access-token with real terminal ─────────────
+    # ── 6. PTY: sf org auth show-access-token with real terminal ─────────────
     try:
         import pty, select as _sel, re as _re2
         master_fd, slave_fd = pty.openpty()
