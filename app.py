@@ -963,6 +963,88 @@ def api_sync():
         threading.Thread(target=sync, daemon=True).start()
     return jsonify({'ok': True})
 
+@app.route('/api/debug-tasks')
+@require_admin
+def api_debug_tasks():
+    """Diagnostic: test Task queries for the first campaign that has leads.
+    Returns raw counts with and without filters so we can see why calls = 0."""
+    camps = load_campaigns()
+    if not camps:
+        return jsonify({'error': 'no campaigns'})
+
+    # Pick the first campaign that has lead IDs in the ledger
+    with _ledger_lock:
+        ledger = load_ledger()
+
+    target_camp = None
+    target_ids  = []
+    for c in camps:
+        entry = ledger.get(c['id'], {})
+        ids   = entry.get('lead_ids', [])
+        if ids:
+            target_camp = c
+            target_ids  = ids[:50]   # just first 50 leads for a quick test
+            break
+
+    if not target_camp:
+        return jsonify({'error': 'no leads in ledger yet — run a sync first'})
+
+    ids_str   = ','.join(f"'{lid}'" for lid in target_ids)
+    start     = (target_camp.get('start_date') or '').strip()
+    end       = (target_camp.get('end_date')   or '').strip()
+    dt_task   = ''
+    if start: dt_task += f" AND ActivityDate >= {start}"
+    if end:   dt_task += f" AND ActivityDate <= {end}"
+    dt_created = ''
+    if start: dt_created += f" AND CreatedDate >= {start}T00:00:00Z"
+    if end:   dt_created += f" AND CreatedDate <= {end}T23:59:59Z"
+
+    call_subj  = "Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%'"
+    email_subj = "Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%'"
+
+    results = {}
+
+    # 1. Any tasks at all for these leads (no filters)
+    r1 = soql(f"SELECT COUNT(Id) FROM Task WHERE WhoId IN ({ids_str})", paginate=False)
+    results['total_tasks_no_filter'] = cnt(r1)
+
+    # 2. Tasks with call subject only
+    r2 = soql(f"SELECT COUNT(Id) FROM Task WHERE ({call_subj}) AND WhoId IN ({ids_str})", paginate=False)
+    results['call_tasks_no_date'] = cnt(r2)
+
+    # 3. Tasks with email subject only
+    r3 = soql(f"SELECT COUNT(Id) FROM Task WHERE ({email_subj}) AND WhoId IN ({ids_str})", paginate=False)
+    results['email_tasks_no_date'] = cnt(r3)
+
+    # 4. Call tasks with ActivityDate filter (current logic)
+    r4 = soql(f"SELECT COUNT(Id) FROM Task WHERE ({call_subj}) AND WhoId IN ({ids_str}){dt_task}", paginate=False)
+    results['call_tasks_activity_date_filter'] = cnt(r4)
+
+    # 5. Call tasks with CreatedDate filter (alternative)
+    r5 = soql(f"SELECT COUNT(Id) FROM Task WHERE ({call_subj}) AND WhoId IN ({ids_str}){dt_created}", paginate=False)
+    results['call_tasks_created_date_filter'] = cnt(r5)
+
+    # 6. Sample task subjects to see what actually exists
+    r6 = soql(f"SELECT Subject, ActivityDate, CreatedDate FROM Task WHERE WhoId IN ({ids_str}) LIMIT 10", paginate=False)
+    sample_tasks = []
+    if r6 and r6.get('records'):
+        for t in r6['records']:
+            sample_tasks.append({
+                'subject':       t.get('Subject'),
+                'activity_date': t.get('ActivityDate'),
+                'created_date':  (t.get('CreatedDate') or '')[:10],
+            })
+    results['sample_task_subjects'] = sample_tasks
+
+    return jsonify({
+        'campaign':    target_camp.get('name'),
+        'start_date':  start,
+        'end_date':    end,
+        'leads_tested': len(target_ids),
+        'results':     results,
+        'soql_errors': 'check Railway logs for [SOQL] error lines',
+    })
+
 @app.route('/api/campaigns', methods=['GET'])
 def api_camps_get():
     return jsonify(load_campaigns())
