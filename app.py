@@ -377,9 +377,46 @@ def _refresh_sf_token():
     except Exception as e:
         print(f'[SF-auth] AES decrypt error: {e}')
 
-    # ── 3. PTY: sf org auth show-access-token with real terminal ─────────────
+    # ── 3. sf org auth show-access-token via subprocess (input='y\n') ──────────
+    # The debug endpoint confirmed this command runs with rc=0 and outputs:
+    #   ┌──────────────────────────────────────────────┐
+    #   │ 00Dxxxxxxxx!<token>                           │
+    #   └──────────────────────────────────────────────┘
+    # Token line contains '│' borders — strip them.
     try:
-        import pty, select as _sel, re as _re
+        import re as _re
+        r3 = subprocess.run(
+            ['sf', 'org', 'auth', 'show-access-token', '--target-org', SF_ORG],
+            capture_output=True, text=True, timeout=30, env=env,
+            input='y\n'
+        )
+        raw = r3.stdout or ''
+        # Strip ANSI escape codes
+        clean = _re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', raw)
+        for line in clean.splitlines():
+            stripped = line.strip()
+            # Token is inside a box: │ <token> │
+            if '│' in stripped:          # │ character
+                candidate = stripped.replace('│', '').strip()
+                if _valid_token(candidate):
+                    print(f'[SF-auth] Token via show-access-token subprocess (len={len(candidate)})')
+                    return candidate, instance_url
+        # Fallback: any long non-space token-like line (handles different box styles)
+        for line in clean.splitlines():
+            candidate = line.strip()
+            # Skip box-drawing lines (only ─ └ ┘ ┌ ┐ chars)
+            if candidate and not any(c.isalnum() for c in candidate[:10]):
+                continue
+            if _valid_token(candidate):
+                print(f'[SF-auth] Token via show-access-token fallback (len={len(candidate)})')
+                return candidate, instance_url
+        print(f'[SF-auth] show-access-token: no token found. rc={r3.returncode} lines={clean.splitlines()[-5:]}')
+    except Exception as e:
+        print(f'[SF-auth] show-access-token error: {e}')
+
+    # ── 4. PTY: sf org auth show-access-token with real terminal ─────────────
+    try:
+        import pty, select as _sel, re as _re2
         master_fd, slave_fd = pty.openpty()
         proc = subprocess.Popen(
             ['sf', 'org', 'auth', 'show-access-token', '--target-org', SF_ORG],
@@ -419,11 +456,9 @@ def _refresh_sf_token():
         except Exception: proc.kill()
         try: os.close(master_fd)
         except Exception: pass
-        # strip ANSI escape codes and find the token line
-        text = _re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', buf.decode('utf-8', 'ignore'))
+        text = _re2.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', buf.decode('utf-8', 'ignore'))
         for line in reversed(text.splitlines()):
-            # SF CLI wraps the token in a Unicode box (│ token │) — strip those borders
-            stripped = line.strip().strip('│').strip()  # │ = │
+            stripped = line.strip().replace('│', '').strip()
             if _valid_token(stripped):
                 print(f'[SF-auth] Token via PTY (len={len(stripped)})')
                 return stripped, instance_url
