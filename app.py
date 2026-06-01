@@ -153,7 +153,9 @@ _BATCH_SIZE = 500
 
 def _count_tasks_for_ids(lead_ids, subject_filter, dt_task):
     """Count Tasks matching subject_filter for a list of lead IDs.
-    Batches into groups of _BATCH_SIZE to avoid SOQL length limits."""
+    Batches into groups of _BATCH_SIZE to avoid SOQL length limits.
+    Uses paginate=False — COUNT queries return 1 row, no pagination needed,
+    and avoiding extra API calls prevents Salesforce rate limits."""
     if not lead_ids:
         return 0
     total = 0
@@ -162,14 +164,15 @@ def _count_tasks_for_ids(lead_ids, subject_filter, dt_task):
         ids_str = ','.join(f"'{lid}'" for lid in batch)
         q = (f"SELECT COUNT(Id) FROM Task "
              f"WHERE ({subject_filter}) AND WhoId IN ({ids_str}){dt_task}")
-        total += cnt(soql(q))
+        total += cnt(soql(q, paginate=False))
     return total
 
 def _count_distinct_who_for_ids(lead_ids, subject_filter, dt_task):
-    """Count distinct WhoIds (unique leads contacted) for a list of lead IDs."""
+    """Count distinct WhoIds (unique leads contacted) for a list of lead IDs.
+    Uses paginate=False — each batch has at most _BATCH_SIZE (500) unique leads
+    so the first page of results is enough to find all unique WhoIds per batch."""
     if not lead_ids:
         return 0
-    # Fetch all matching WhoIds across batches then deduplicate in Python
     seen = set()
     for i in range(0, len(lead_ids), _BATCH_SIZE):
         batch = lead_ids[i:i + _BATCH_SIZE]
@@ -177,7 +180,7 @@ def _count_distinct_who_for_ids(lead_ids, subject_filter, dt_task):
         q = (f"SELECT WhoId FROM Task "
              f"WHERE ({subject_filter}) AND WhoId IN ({ids_str}){dt_task} "
              f"LIMIT 50000")
-        res = soql(q)
+        res = soql(q, paginate=False)
         if res and res.get('records'):
             for rec in res['records']:
                 wid = rec.get('WhoId')
@@ -324,10 +327,12 @@ def _get_sf_token():
                 print('[SF-auth] Token refreshed')
         return _sf_token_cache['token'], _sf_token_cache['instance_url']
 
-def soql(query, retries=2):
+def soql(query, retries=2, paginate=True):
     """Run a SOQL query via Salesforce REST API — fast, no sf CLI subprocess.
-    Automatically follows nextRecordsUrl pagination so queries with > 2000
-    rows (Salesforce's default page size) return the full result set."""
+    paginate=True  → follows nextRecordsUrl to retrieve all pages (needed for
+                     large Lead ID queries that exceed the 2000-row page size).
+    paginate=False → single-page only (use for Task COUNT/WhoId queries to avoid
+                     excessive API calls that trigger Salesforce rate limits)."""
     for attempt in range(retries):
         token, instance_url = _get_sf_token()
         if not token:
@@ -344,8 +349,9 @@ def soql(query, retries=2):
                 all_records.extend(data.get('records', []))
                 if total_size == 0:
                     total_size = data.get('totalSize', 0)
-                # Follow next page if Salesforce says there are more records
-                next_path = data.get('nextRecordsUrl')
+                # Only follow pagination if requested — Task queries use paginate=False
+                # to stay within one API call per batch and avoid rate limits
+                next_path = data.get('nextRecordsUrl') if paginate else None
                 url = f"{instance_url}{next_path}" if next_path else None
             return {'records': all_records, 'totalSize': total_size}
         except Exception as e:
@@ -819,14 +825,36 @@ def sync():
     global_sql    = cnt(soql("SELECT COUNT(Id) FROM Lead WHERE Status = 'SQL'")) or 0
     global_s1     = sum(v['s1'] for v in sdr_opp_stats.values()) if sdr_opp_stats else 0
 
-    cache['campaigns']     = results
-    cache['sdr_stats']     = build_sdr_stats(results, sdr_opp_stats)
-    cache['totals']        = {
+    # ── Protect against wiping good cached data with silent query failures ────
+    # If a sync produces 0 calls/emails for a campaign that previously had
+    # non-zero values, keep the old numbers (Salesforce rate limit or network
+    # hiccup returned None → 0, not a real zero).
+    old_by_id = {c['id']: c for c in (cache.get('campaigns') or [])}
+    for r in results:
+        old = old_by_id.get(r['id'], {})
+        if r.get('total_calls', 0) == 0 and old.get('total_calls', 0) > 0:
+            r['total_calls']           = old['total_calls']
+            r['unique_leads_called']   = old.get('unique_leads_called', 0)
+            r['calls_per_called_lead'] = old.get('calls_per_called_lead', 0)
+        if r.get('total_emails', 0) == 0 and old.get('total_emails', 0) > 0:
+            r['total_emails']             = old['total_emails']
+            r['unique_leads_emailed']     = old.get('unique_leads_emailed', 0)
+            r['emails_per_emailed_lead']  = old.get('emails_per_emailed_lead', 0)
+
+    # Keep old global totals if new sync returned all zeros (indicates query failure)
+    old_totals = cache.get('totals') or {}
+    new_totals = {
         'meeting_done':   global_done,
         'meeting_noshow': global_noshow,
         'sql_gen':        global_sql,
         's1':             global_s1,
     }
+    if all(v == 0 for v in new_totals.values()) and any(v > 0 for v in old_totals.values()):
+        new_totals = old_totals  # keep old totals — new ones look like query failures
+
+    cache['campaigns']     = results
+    cache['sdr_stats']     = build_sdr_stats(results, sdr_opp_stats)
+    cache['totals']        = new_totals
     cache['last_sync']     = datetime.now().isoformat()
     cache['is_syncing']    = False
     cache['sync_progress'] = 100
