@@ -1432,7 +1432,23 @@ def api_debug_auth():
         _sf_token_cache['instance_url'] = instance_url
         _sf_token_cache['fetched_at'] = datetime.now() if fresh_token else None
 
-    # 9. Try REST query to confirm (may already be in CLI fallback mode)
+    # 9. Direct REST call to test token (bypass soql() to see raw error)
+    rest_direct_result = None
+    rest_direct_error  = None
+    try:
+        import urllib.error as _ue
+        test_url = f"{instance_url}/services/data/v59.0/query?q=SELECT+COUNT(Id)+FROM+Lead"
+        test_req = _urllib_req.Request(test_url, headers={'Authorization': f'Bearer {fresh_token}'})
+        with _urllib_req.urlopen(test_req, timeout=15) as resp:
+            raw = json.loads(resp.read().decode())
+            rest_direct_result = raw.get('records', [{}])[0].get('expr0', 'no-expr0')
+    except _ue.HTTPError as he:
+        body = he.read().decode('utf-8', errors='replace')[:400]
+        rest_direct_error = f'HTTP {he.code}: {body}'
+    except Exception as ex:
+        rest_direct_error = str(ex)[:200]
+
+    # 10. Try REST query via soql() to confirm (may already be in CLI fallback mode)
     global _soql_use_cli_fallback
     was_cli_fallback = _soql_use_cli_fallback
     _soql_use_cli_fallback = False  # force REST attempt
@@ -1459,9 +1475,11 @@ def api_debug_auth():
         'show_access_token_lines':    show_token_stdout,
         'show_access_token_stderr':   show_token_stderr,
         'auth_files_on_disk':         auth_files,
-        'cli_fallback_lead_count':    cli_lead_count,
-        'rest_lead_count':            test_lead_count,
-        'cli_fallback_active':        _soql_use_cli_fallback,
+        'cli_fallback_lead_count':     cli_lead_count,
+        'rest_lead_count':             test_lead_count,
+        'cli_fallback_active':         _soql_use_cli_fallback,
+        'rest_direct_result':          rest_direct_result,
+        'rest_direct_error':           rest_direct_error,
     })
 
 @app.route('/api/campaigns', methods=['GET'])
