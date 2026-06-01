@@ -2124,13 +2124,16 @@ function renderDashboard() {
   }
 
   // ── KPI cards ────────────────────────────────────────────────────────────
-  const _sdr = S.dashSdrFilter === 'All' ? '' : S.dashSdrFilter.replace(/'/g,"\\'");
-  const _seg = S.dashSegmentFilter !== 'All' ? S.dashSegmentFilter.replace(/'/g,"\\'") : '';
-  const _pod = S.dashPodFilter !== 'All' ? S.dashPodFilter.replace(/'/g,"\\'") : '';
-  const meetingsOnClick  = `openMeetingsModal('','${_sdr}','${_seg}','${_pod}')`;
-  const mtgDoneOnClick   = `openStatusLeadsModal('done','${_sdr}','${_seg}','${_pod}')`;
-  const noShowOnClick    = `openStatusLeadsModal('noshow','${_sdr}','${_seg}','${_pod}')`;
-  const sqlOnClick       = `openStatusLeadsModal('sql','${_sdr}','${_seg}','${_pod}')`;
+  const _sdr   = S.dashSdrFilter === 'All' ? '' : S.dashSdrFilter.replace(/'/g,"\\'");
+  const _seg   = S.dashSegmentFilter !== 'All' ? S.dashSegmentFilter.replace(/'/g,"\\'") : '';
+  const _pod   = S.dashPodFilter !== 'All' ? S.dashPodFilter.replace(/'/g,"\\'") : '';
+  // Pass active period dates so modals only show leads within the selected period
+  const _pStart = (S.timePeriod !== 'all' && S.periodData) ? (S.periodData.start_date || '') : '';
+  const _pEnd   = (S.timePeriod !== 'all' && S.periodData) ? (S.periodData.end_date   || '') : '';
+  const meetingsOnClick  = `openMeetingsModal('','${_sdr}','${_seg}','${_pod}','${_pStart}','${_pEnd}')`;
+  const mtgDoneOnClick   = `openStatusLeadsModal('done','${_sdr}','${_seg}','${_pod}','${_pStart}','${_pEnd}')`;
+  const noShowOnClick    = `openStatusLeadsModal('noshow','${_sdr}','${_seg}','${_pod}','${_pStart}','${_pEnd}')`;
+  const sqlOnClick       = `openStatusLeadsModal('sql','${_sdr}','${_seg}','${_pod}','${_pStart}','${_pEnd}')`;
   const s1OnClick        = `openS1Modal('${_sdr}','${_seg}','${_pod}')`;
 
   const kpis = [
@@ -3112,11 +3115,12 @@ async function quickAddCampaign() {
 // ── MEETINGS LEADS MODAL ─────────────────────────────────────────────────────
 let _meetingsAllLeads = [];
 
-async function openMeetingsModal(campaignName, sdrFilter, segmentFilter, podFilter) {
+async function openMeetingsModal(campaignName, sdrFilter, segmentFilter, podFilter, startDate, endDate) {
   q('meetingsOverlay').classList.add('open');
   q('meetingsSearch').value = '';
+  const periodNote = startDate ? ` · ${fmtDay(startDate)} – ${fmtDay(endDate||startDate)}` : '';
   const subLabel = campaignName ? `Campaign: ${campaignName}`
-    : (segmentFilter ? `Segment: ${segmentFilter}` : (podFilter ? `POD: ${podFilter}` : 'All campaigns')) + ' · loading…';
+    : (segmentFilter ? `Segment: ${segmentFilter}` : (podFilter ? `POD: ${podFilter}` : 'All campaigns')) + periodNote + ' · loading…';
   q('meetingsModalSub').textContent = subLabel;
   q('meetingsTableWrap').innerHTML = `
     <div style="padding:40px;text-align:center;color:var(--text-dim)">
@@ -3128,18 +3132,22 @@ async function openMeetingsModal(campaignName, sdrFilter, segmentFilter, podFilt
     let url;
     if (campaignName) {
       url = `/api/meetings-leads?campaign=${encodeURIComponent(campaignName)}`;
+      if (startDate) url += `&start=${startDate}`;
+      if (endDate)   url += `&end=${endDate}`;
     } else {
       url = '/api/meetings-leads';
       if (sdrFilter)     url += `?sdr=${encodeURIComponent(sdrFilter)}`;
       if (segmentFilter) url += `${url.includes('?')?'&':'?'}segment=${encodeURIComponent(segmentFilter)}`;
       if (podFilter)     url += `${url.includes('?')?'&':'?'}pod_team=${encodeURIComponent(podFilter)}`;
+      if (startDate)     url += `${url.includes('?')?'&':'?'}start=${startDate}`;
+      if (endDate)       url += `${url.includes('?')?'&':'?'}end=${endDate}`;
     }
     const r   = await fetch(url);
     const d   = await r.json();
     _meetingsAllLeads = d.leads || [];
     const ctx = campaignName ? `Campaign: ${campaignName}`
       : (segmentFilter ? `Segment: ${segmentFilter}` : (podFilter ? `POD: ${podFilter}` : 'All campaigns'));
-    q('meetingsModalSub').textContent = `${ctx} · ${_meetingsAllLeads.length} meetings`;
+    q('meetingsModalSub').textContent = `${ctx}${periodNote} · ${_meetingsAllLeads.length} meetings`;
     renderMeetingsTable(_meetingsAllLeads);
   } catch(e) {
     q('meetingsTableWrap').innerHTML = `<div style="padding:30px;color:var(--red);text-align:center">Failed to load: ${e.message}</div>`;
@@ -3302,11 +3310,12 @@ const STATUS_LABELS = {
 };
 let _statusAllLeads = [];
 
-async function openStatusLeadsModal(status, sdrFilter, segmentFilter, podFilter) {
+async function openStatusLeadsModal(status, sdrFilter, segmentFilter, podFilter, startDate, endDate) {
   const meta = STATUS_LABELS[status] || { title:'Lead Details', sub:'' };
   q('meetingsOverlay').classList.add('open');
   q('meetingsSearch').value = '';
-  const ctxLabel = (sdrFilter ? ` · SDR: ${sdrFilter}` : '') + (segmentFilter ? ` · Segment: ${segmentFilter}` : '') + (podFilter ? ` · POD: ${podFilter}` : '');
+  const periodNote = startDate ? ` · ${fmtDay(startDate)} – ${fmtDay(endDate||startDate)}` : '';
+  const ctxLabel = (sdrFilter ? ` · SDR: ${sdrFilter}` : '') + (segmentFilter ? ` · Segment: ${segmentFilter}` : '') + (podFilter ? ` · POD: ${podFilter}` : '') + periodNote;
   q('meetingsModalSub').textContent = meta.sub + ctxLabel + ' · loading…';
   q('meetingsTableWrap').innerHTML = `
     <div style="padding:40px;text-align:center;color:var(--text-dim)">
@@ -3323,6 +3332,8 @@ async function openStatusLeadsModal(status, sdrFilter, segmentFilter, podFilter)
     if(sdrFilter)     url += `&sdr=${encodeURIComponent(sdrFilter)}`;
     if(segmentFilter) url += `&segment=${encodeURIComponent(segmentFilter)}`;
     if(podFilter)     url += `&pod_team=${encodeURIComponent(podFilter)}`;
+    if(startDate)     url += `&start=${startDate}`;
+    if(endDate)       url += `&end=${endDate}`;
     const r = await fetch(url);
     const d = await r.json();
     _statusAllLeads = d.leads || [];

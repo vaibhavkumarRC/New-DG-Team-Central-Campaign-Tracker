@@ -987,16 +987,22 @@ def api_camps_import():
 def api_meetings_leads():
     """Return leads where Meeting_Generated_on__c is not null. Optional ?campaign= or ?segment= filter.
     When filtering by campaign, serves from the frozen ledger so results are
-    correct even after leads have been reassigned to a different campaign."""
-    camp     = request.args.get('campaign', '').strip()
-    segment  = request.args.get('segment',  '').strip()
-    pod_team = request.args.get('pod_team', '').strip()
+    correct even after leads have been reassigned to a different campaign.
+    Optional ?start=YYYY-MM-DD&end=YYYY-MM-DD overrides campaign date range
+    (used when a period filter is active on the dashboard)."""
+    camp      = request.args.get('campaign', '').strip()
+    segment   = request.args.get('segment',  '').strip()
+    pod_team  = request.args.get('pod_team', '').strip()
+    # Period-level date override from frontend (7D / 30D / QTD / Custom)
+    period_start = request.args.get('start', '').strip() or None
+    period_end   = request.args.get('end',   '').strip() or None
     if camp:
         # Serve from frozen ledger — immune to lead reassignment
         camps_cfg = load_campaigns()
         camp_cfg  = next((c for c in camps_cfg if c['name'] == camp), {})
-        start = (camp_cfg.get('start_date') or '').strip()
-        end   = (camp_cfg.get('end_date')   or '').strip()
+        # Period filter overrides campaign date range when provided
+        start = period_start or (camp_cfg.get('start_date') or '').strip()
+        end   = period_end   or (camp_cfg.get('end_date')   or '').strip()
         camp_id = camp_cfg.get('id', '')
 
         if camp_id:
@@ -1037,8 +1043,9 @@ def api_meetings_leads():
             cname = camp_cfg.get('name', '').strip()
             if not cid or not cname:
                 continue
-            start = (camp_cfg.get('start_date') or '').strip() or None
-            end   = (camp_cfg.get('end_date')   or '').strip() or None
+            # Period filter overrides campaign date range when provided
+            start = period_start or (camp_cfg.get('start_date') or '').strip() or None
+            end   = period_end   or (camp_cfg.get('end_date')   or '').strip() or None
             entry = ledger.get(cid, {})
             meetings = entry.get('meetings', entry) if isinstance(entry, dict) and 'meetings' in entry else entry
             rows = meetings_leads_from_ledger(meetings, start, end)
@@ -1069,10 +1076,13 @@ def api_meetings_leads():
 @app.route('/api/status-leads')
 def api_status_leads():
     """Return leads filtered by Meeting_Status__c. ?status=done|noshow|sql [&sdr=] [&segment=]"""
-    status   = request.args.get('status',   '').strip()
-    sdr      = request.args.get('sdr',      '').strip()
-    segment  = request.args.get('segment',  '').strip()
-    pod_team = request.args.get('pod_team', '').strip()
+    status       = request.args.get('status',   '').strip()
+    sdr          = request.args.get('sdr',      '').strip()
+    segment      = request.args.get('segment',  '').strip()
+    pod_team     = request.args.get('pod_team', '').strip()
+    # Period-level date override from frontend (7D / 30D / QTD / Custom)
+    period_start = request.args.get('start', '').strip() or None
+    period_end   = request.args.get('end',   '').strip() or None
 
     STATUS_FILTERS = {
         'done':   "Meeting_Status__c IN ('Meeting Done-Nurture', 'Meeting Done- Not Interested', 'Meeting Done-Unqualified')",
@@ -1098,8 +1108,9 @@ def api_status_leads():
         cname = camp_cfg.get('name', '').strip()
         if not cname:
             continue
-        start = (camp_cfg.get('start_date') or '').strip()
-        end   = (camp_cfg.get('end_date')   or '').strip()
+        # Period filter overrides campaign date range when provided
+        start = period_start or (camp_cfg.get('start_date') or '').strip()
+        end   = period_end   or (camp_cfg.get('end_date')   or '').strip()
         dt = ''
         if start: dt += f" AND Meeting_Generated_on__c >= {start}"
         if end:   dt += f" AND Meeting_Generated_on__c <= {end}"
