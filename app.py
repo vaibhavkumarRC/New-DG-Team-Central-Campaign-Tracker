@@ -1429,13 +1429,22 @@ def api_debug_auth():
             input='y\n'
         )
         raw_lines = [ln.strip() for ln in (r2.stdout or '').splitlines() if ln.strip()]
-        show_token_stdout = str(raw_lines[:5])  # show first 5 lines for debug
+        show_token_stdout = str(raw_lines)  # ALL lines for debug
         show_token_stderr = r2.stderr[:300] if r2.stderr else '(empty)'
         show_token_rc     = r2.returncode
-        # Check if any line looks like a real token
-        token_line = next((ln for ln in reversed(raw_lines) if len(ln) > 40 and ' ' not in ln and '[REDACTED]' not in ln), None)
+        # Also show raw stdout first 800 chars for analysis
+        show_token_raw_stdout = repr((r2.stdout or '')[:800])
+        # Check if any line looks like a real token (strip │ box borders)
+        import re as _re_dbg
+        clean_out = _re_dbg.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', r2.stdout or '')
+        token_line = None
+        for ln in reversed(clean_out.splitlines()):
+            candidate = ln.strip().replace('│', '').strip()
+            if len(candidate) > 40 and ' ' not in candidate and '[REDACTED]' not in candidate and any(c.isalnum() for c in candidate[:10]):
+                token_line = candidate
+                break
         show_token_works  = bool(token_line)
-        show_token_preview = (token_line or '')[:12] + '...' if token_line else None
+        show_token_preview = (token_line or '')[:20] + '...' if token_line else None
     except Exception as e:
         show_token_stdout = f'exception: {e}'
         show_token_stderr = ''
@@ -1537,11 +1546,12 @@ def api_debug_auth():
         'sf_display_returncode': sf_display_code,
         'sf_display_stdout':    sf_display_stdout,
         'sf_display_stderr':    sf_display_stderr,
-        'show_access_token_rc':       show_token_rc,
-        'show_access_token_works':    show_token_works,
+        'show_access_token_rc':         show_token_rc,
+        'show_access_token_works':      show_token_works,
         'show_access_token_token_preview': show_token_preview,
-        'show_access_token_lines':    show_token_stdout,
-        'show_access_token_stderr':   show_token_stderr,
+        'show_access_token_lines':      show_token_stdout,
+        'show_access_token_stderr':     show_token_stderr,
+        'show_access_token_raw_stdout': show_token_raw_stdout,
         'auth_files_on_disk':         auth_files,
         'cli_fallback_lead_count':     cli_lead_count,
         'rest_lead_count':             test_lead_count,
