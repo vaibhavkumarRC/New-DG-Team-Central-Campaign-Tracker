@@ -734,28 +734,8 @@ tfoot td {
     <div class="section-hdr" style="flex-wrap:wrap;gap:12px;margin-bottom:12px">
       <div class="section-title">Campaigns</div>
       <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
-        <span style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.5px;text-transform:uppercase">Period</span>
-        <div style="display:flex;gap:4px;flex-wrap:wrap">
-          <button id="camp-period-all"    class="chip active" onclick="setTimePeriod('all')">All</button>
-          <button id="camp-period-7d"     class="chip"        onclick="setTimePeriod('7d')">7D</button>
-          <button id="camp-period-30d"    class="chip"        onclick="setTimePeriod('30d')">30D</button>
-          <button id="camp-period-qtd"    class="chip"        onclick="setTimePeriod('qtd')">QTD</button>
-          <button id="camp-period-custom" class="chip"        onclick="setTimePeriod('custom')">📅 Custom</button>
-        </div>
-        <div id="camp-customDateRow" class="custom-date-row">
-          <input type="date" id="camp-customStart" class="custom-date-input" onchange="applyCustomPeriod()">
-          <span style="font-size:11px;color:var(--text-dim)">→</span>
-          <input type="date" id="camp-customEnd" class="custom-date-input" onchange="applyCustomPeriod()">
-        </div>
-        <span id="camp-periodDateRange" style="font-size:10.5px;color:var(--text-dim);white-space:nowrap"></span>
         <button class="btn-export" onclick="exportCSV('campaigns')" title="Export visible campaigns to CSV">⬇ Export CSV</button>
       </div>
-    </div>
-    <div id="campPeriodLoadingBanner" style="display:none;align-items:center;gap:12px;
-         background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
-         padding:12px 20px;margin-bottom:12px;font-size:12.5px;color:var(--text-muted)">
-      <div class="spinner" style="width:16px;height:16px;flex-shrink:0"></div>
-      <span>Fetching data from Salesforce…</span>
     </div>
     <div class="toolbar">
       <input class="search-box" id="searchBox" type="search" placeholder="🔍  Search campaigns…" oninput="renderCampaigns()">
@@ -796,28 +776,8 @@ tfoot td {
         <div style="font-size:11px;color:var(--text-dim);margin-top:2px">Calls/Emails/Leads from campaign ownership · Meetings from Meeting_Generated_by__c in Salesforce</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
-        <span style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.5px;text-transform:uppercase">Period</span>
-        <div style="display:flex;gap:4px;flex-wrap:wrap">
-          <button id="sdr-period-all"    class="chip active" onclick="setTimePeriod('all')">All</button>
-          <button id="sdr-period-7d"     class="chip"        onclick="setTimePeriod('7d')">7D</button>
-          <button id="sdr-period-30d"    class="chip"        onclick="setTimePeriod('30d')">30D</button>
-          <button id="sdr-period-qtd"    class="chip"        onclick="setTimePeriod('qtd')">QTD</button>
-          <button id="sdr-period-custom" class="chip"        onclick="setTimePeriod('custom')">📅 Custom</button>
-        </div>
-        <div id="sdr-customDateRow" class="custom-date-row">
-          <input type="date" id="sdr-customStart" class="custom-date-input" onchange="applyCustomPeriod()">
-          <span style="font-size:11px;color:var(--text-dim)">→</span>
-          <input type="date" id="sdr-customEnd" class="custom-date-input" onchange="applyCustomPeriod()">
-        </div>
-        <span id="sdr-periodDateRange" style="font-size:10.5px;color:var(--text-dim);white-space:nowrap"></span>
         <button class="btn-export" onclick="exportCSV('sdr')" title="Export SDR performance to CSV">⬇ Export CSV</button>
       </div>
-    </div>
-    <div id="sdrPeriodLoadingBanner" style="display:none;align-items:center;gap:12px;
-         background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
-         padding:12px 20px;margin-bottom:16px;font-size:12.5px;color:var(--text-muted)">
-      <div class="spinner" style="width:16px;height:16px;flex-shrink:0"></div>
-      <span>Fetching data from Salesforce…</span>
     </div>
     <!-- LEADERBOARD -->
     <div id="leaderboardSection" style="margin-bottom:28px"></div>
@@ -1954,7 +1914,7 @@ function setCampPerfFilter(val) {
 }
 
 // Period button IDs across all tabs: [prefix][period]
-const PERIOD_PREFIXES = ['dash-', 'camp-', 'sdr-'];
+const PERIOD_PREFIXES = ['dash-'];  // Period filter only applies to Dashboard tab
 
 function syncPeriodUI(period) {
   const fmtD = s => { try { return new Date(s+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); } catch { return s; } };
@@ -1975,7 +1935,7 @@ function syncPeriodUI(period) {
 }
 
 function setLoadingBanners(visible, text) {
-  ['periodLoadingBanner','campPeriodLoadingBanner','sdrPeriodLoadingBanner'].forEach(id => {
+  ['periodLoadingBanner'].forEach(id => {
     const el = q(id);
     if (!el) return;
     el.style.display = visible ? 'flex' : 'none';
@@ -2413,7 +2373,7 @@ function renderCampaigns() {
   const sdrF     = (q('campSdrFilter')?.value||'').toLowerCase();
   const segF     = q('campSegmentFilter')?.value || '';
   const podF     = q('campPodFilter')?.value || '';
-  const src = (S.timePeriod !== 'all' && S.periodData) ? S.periodData : S.data;
+  const src = S.data;  // Campaigns tab always shows all data — period filter is Dashboard-only
   const allCps   = src.campaigns||[];
 
   // Populate SDR dropdown (keep current selection)
@@ -2658,7 +2618,7 @@ function renderLeaderboard(containerId, sdrs) {
 }
 
 function renderSDR() {
-  const src  = (S.timePeriod !== 'all' && S.periodData) ? S.periodData : S.data;
+  const src  = S.data;  // SDR tab always shows all data — period filter is Dashboard-only
   const sdrs = src.sdr_stats || [];
   if(!sdrs.length){ q('sdrEmpty').style.display='block'; q('sdrGrid').innerHTML=''; q('leaderboardSection').innerHTML=''; return; }
   q('sdrEmpty').style.display='none';
