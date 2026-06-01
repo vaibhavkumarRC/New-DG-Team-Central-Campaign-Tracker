@@ -348,34 +348,30 @@ def _refresh_sf_token():
             key_hex  = kd.get('key', '')
             print(f'[SF-auth] AES: key_hex len={len(key_hex)} enc_tok len={len(enc_tok)}')
             if key_hex and enc_tok and len(enc_tok) > 33:
-                # Try both formats: colon-separated and concatenated
-                candidates = []
-                if ':' in enc_tok:
-                    parts = enc_tok.split(':', 1)
-                    candidates.append((parts[0], parts[1], 'colon-sep'))
-                # Also try plain concatenation (IV = first 32 hex chars = 16 bytes)
-                candidates.append((enc_tok[:32], enc_tok[32:], 'concat-32'))
-                # And try with 3DES style (IV = first 16 hex chars = 8 bytes)
-                candidates.append((enc_tok[:16], enc_tok[16:], 'concat-16'))
-
+                # Format: IV_HEX(32 chars) + CIPHER_HEX + optional ':TAG_HEX'
+                # The colon separates cipher from a trailing MAC/tag — strip it.
+                # Key is 16 bytes (AES-128-CBC) on this system (key_hex_len=32).
                 from Crypto.Cipher       import AES
                 from Crypto.Util.Padding import unpad
-                import binascii
                 key_bytes = bytes.fromhex(key_hex)
-                for iv_hex, cipher_hex, fmt in candidates:
-                    try:
-                        iv_bytes  = bytes.fromhex(iv_hex)
-                        ct_bytes  = bytes.fromhex(cipher_hex)
-                        dec = unpad(
-                            AES.new(key_bytes, AES.MODE_CBC, iv_bytes).decrypt(ct_bytes),
-                            AES.block_size
-                        ).decode('utf-8').strip()
-                        print(f'[SF-auth] AES {fmt} → {repr(dec[:30])}')
-                        if _valid_token(dec):
-                            print(f'[SF-auth] Token decrypted via AES ({fmt})')
-                            return dec, inst_url
-                    except Exception as aes_err:
-                        print(f'[SF-auth] AES {fmt} failed: {aes_err}')
+                iv_hex    = enc_tok[:32]                          # 16-byte IV
+                # Strip trailing ':...' tag if present
+                body = enc_tok[32:]
+                cipher_hex = body.split(':')[0] if ':' in body else body
+
+                try:
+                    dec = unpad(
+                        AES.new(key_bytes, AES.MODE_CBC, bytes.fromhex(iv_hex))
+                           .decrypt(bytes.fromhex(cipher_hex)),
+                        AES.block_size
+                    ).decode('utf-8').strip()
+                    print(f'[SF-auth] AES iv16+colon-strip → {repr(dec[:30])}')
+                    if _valid_token(dec):
+                        print('[SF-auth] Token decrypted via AES (iv16 + colon-strip)')
+                        return dec, inst_url
+                    print(f'[SF-auth] AES gave invalid/unexpected token: {repr(dec[:40])}')
+                except Exception as aes_err:
+                    print(f'[SF-auth] AES iv16+colon-strip failed: {aes_err}')
     except ImportError:
         print('[SF-auth] pycryptodome not available for AES decrypt')
     except Exception as e:
@@ -1549,13 +1545,19 @@ def api_debug_aes():
         from Crypto.Cipher import AES
         from Crypto.Util.Padding import unpad
         key_bytes = bytes.fromhex(key_hex)
-        candidates = []
-        if ':' in enc_tok:
-            p = enc_tok.split(':', 1)
-            candidates.append((p[0], p[1], 'colon-sep'))
-        candidates.append((enc_tok[:32], enc_tok[32:], 'concat-iv16'))
-        candidates.append((enc_tok[:16], enc_tok[16:], 'concat-iv8'))
+        # Format discovered: IV(32 hex) + CIPHER_HEX + ':' + TAG(32 hex)
+        body       = enc_tok[32:]
+        cipher_stripped = body.split(':')[0] if ':' in body else body
+        candidates = [
+            (enc_tok[:32], cipher_stripped,    'iv16+colon-strip'),   # ← correct
+            (enc_tok[:32], enc_tok[32:],        'iv16+no-strip'),
+            (enc_tok[:32], enc_tok[32:].split(':')[1] if ':' in enc_tok[32:] else '', 'iv16+after-colon'),
+            (enc_tok[:16], enc_tok[16:],        'iv8+full'),
+        ]
         for iv_hex, ct_hex, fmt in candidates:
+            if not ct_hex:
+                results.append({'fmt': fmt, 'ok': False, 'error': 'empty ct_hex'})
+                continue
             try:
                 dec = unpad(
                     AES.new(key_bytes, AES.MODE_CBC, bytes.fromhex(iv_hex))
