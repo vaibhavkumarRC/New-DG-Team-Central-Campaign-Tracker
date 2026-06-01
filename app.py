@@ -283,7 +283,7 @@ cache = {
 }
 
 # ── Period data cache (7d / 30d / qtd) ───────────────────────────────────────
-PERIOD_CACHE_TTL = 600   # 10 minutes
+PERIOD_CACHE_TTL = 3600  # 1 hour — period data now comes from main cache, not Salesforce
 period_cache = {}        # key: period → {'data': {...}, 'fetched_at': datetime}
 
 # ── Salesforce helpers ────────────────────────────────────────────────────────
@@ -1257,28 +1257,31 @@ def api_time_data():
 
     # Filter campaigns whose start_date falls within the period window.
     # Campaigns with no start_date are excluded from period views.
-    period_camps = [
-        c for c in camps
+    period_ids = {
+        c['id'] for c in camps
         if start <= (c.get('start_date') or '') <= end
-    ]
+    }
+
+    # Use already-cached metrics (populated by the last full sync) instead of
+    # re-querying Salesforce. This makes period filter switches near-instant.
+    # Falls back to the config entry (zero metrics) for campaigns not yet synced.
+    cached_by_id = {c['id']: c for c in (cache.get('campaigns') or [])}
+    config_by_id = {c['id']: c for c in camps}
 
     results = []
-
-    # No date override — compute full all-time metrics for each campaign
-    with ThreadPoolExecutor(max_workers=3) as ex:
-        futs = {ex.submit(campaign_metrics, c): c for c in period_camps}
-        for f in as_completed(futs):
-            try:
-                results.append(f.result())
-            except Exception as e:
-                c = futs[f]
-                results.append({**c, 'total_leads': 0, 'total_calls': 0,
-                                'total_emails': 0, 'meetings': 0,
-                                's1_created': 0, 'sdr_breakdown': [],
-                                'meeting_done': 0, 'meeting_noshow': 0,
-                                'sql_gen': 0, 'status_sdr_breakdown': [],
-                                'unique_leads_called': 0, 'unique_leads_emailed': 0,
-                                'calls_per_called_lead': 0, 'emails_per_emailed_lead': 0})
+    for cid in period_ids:
+        if cid in cached_by_id:
+            results.append(cached_by_id[cid])
+        else:
+            # Campaign in config but not yet synced — include with zero metrics
+            cfg = config_by_id[cid]
+            results.append({**cfg, 'total_leads': 0, 'total_calls': 0,
+                            'total_emails': 0, 'meetings': 0,
+                            's1_created': 0, 'sdr_breakdown': [],
+                            'meeting_done': 0, 'meeting_noshow': 0,
+                            'sql_gen': 0, 'status_sdr_breakdown': [],
+                            'unique_leads_called': 0, 'unique_leads_emailed': 0,
+                            'calls_per_called_lead': 0, 'emails_per_emailed_lead': 0})
 
     # Restore original campaign order
     order = {c['id']: i for i, c in enumerate(camps)}
