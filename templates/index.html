@@ -4167,6 +4167,11 @@ function drawSqlTable(rows) {
   showRptState('sql','table');
   document.getElementById('sqlCount').textContent = `Showing ${rows.length} lead${rows.length!==1?'s':''}`;
 
+  // Update KPI cards to reflect current filtered rows
+  document.getElementById('sqlTotal').textContent   = rows.length;
+  document.getElementById('sqlSellers').textContent = new Set(rows.map(r=>r.seller).filter(x=>x&&x!=='—')).size;
+  document.getElementById('sqlSources').textContent = new Set(rows.map(r=>r.source).filter(x=>x&&x!=='—')).size;
+
   const tbody = document.getElementById('sqlBody');
   tbody.innerHTML = rows.map(r => {
     const statusColor = (r.status||'').toLowerCase() === 'sql'
