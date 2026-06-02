@@ -964,10 +964,10 @@ tfoot td {
         <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
           <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Period</span>
           <div style="display:flex;gap:4px">
-            <button id="sql-7d"     class="chip"       onclick="setRptPeriod('sql','7d')">7D</button>
-            <button id="sql-30d"    class="chip active" onclick="setRptPeriod('sql','30d')">30D</button>
-            <button id="sql-qtd"    class="chip"       onclick="setRptPeriod('sql','qtd')">QTD</button>
-            <button id="sql-custom" class="chip"       onclick="setRptPeriod('sql','custom')">📅 Custom</button>
+            <button id="sql-all"    class="chip active" onclick="setRptPeriod('sql','all')">All</button>
+            <button id="sql-7d"     class="chip"        onclick="setRptPeriod('sql','7d')">Last 7 Days</button>
+            <button id="sql-30d"    class="chip"        onclick="setRptPeriod('sql','30d')">Last 30 Days</button>
+            <button id="sql-custom" class="chip"        onclick="setRptPeriod('sql','custom')">📅 Custom</button>
           </div>
           <div id="sqlCustomPicker" style="display:none;align-items:center;gap:6px">
             <input type="date" id="sqlCustomStart" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px" onchange="applyRptCustomDate('sql')">
@@ -1013,6 +1013,9 @@ tfoot td {
           <select id="sqlSourceFilter" onchange="filterRptTable('sql')" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
             <option value="">All Sources</option>
           </select>
+          <select id="sqlStatusFilter" onchange="filterRptTable('sql')" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
+            <option value="">All Lead Statuses</option>
+          </select>
           <span id="sqlCount" style="font-size:11.5px;color:var(--text-muted);margin-left:4px"></span>
         </div>
         <div class="table-wrap">
@@ -1021,6 +1024,7 @@ tfoot td {
               <tr>
                 <th onclick="sortRptTable('sql','seller')" id="sqlTh-seller">SQL Seller/Owner ↕</th>
                 <th onclick="sortRptTable('sql','date')" id="sqlTh-date">SQL Converted Date ↕</th>
+                <th onclick="sortRptTable('sql','status')" id="sqlTh-status">Lead Status ↕</th>
                 <th onclick="sortRptTable('sql','source')" id="sqlTh-source">SQL Source ↕</th>
                 <th onclick="sortRptTable('sql','follow_up_owner')" id="sqlTh-follow_up_owner">Follow Up Owner ↕</th>
                 <th onclick="sortRptTable('sql','name')" id="sqlTh-name">Lead Name ↕</th>
@@ -3695,7 +3699,7 @@ function closeSdrDetailModal(e) {
 
 const RPT = {
   mql:  { period:'30d', data:null, filtered:null, sortKey:'date', sortDir:-1, customStart:'', customEnd:'' },
-  sql:  { period:'30d', data:null, filtered:null, sortKey:'date', sortDir:-1, customStart:'', customEnd:'' },
+  sql:  { period:'all', data:null, filtered:null, sortKey:'date', sortDir:-1, customStart:'', customEnd:'' },
   s1r:  { period:'30d', data:null, filtered:null, sortKey:'date', sortDir:-1 },
 };
 
@@ -3923,8 +3927,9 @@ function rptDateLabel(period, section) {
 
 function setRptPeriod(section, period) {
   RPT[section].period = period;
-  // Update chip active states
-  ['7d','30d','qtd','custom'].forEach(p => {
+  // Update chip active states — mql/sql use 'all' instead of 'qtd'
+  const chips = ['mql','sql'].includes(section) ? ['all','7d','30d','custom'] : ['7d','30d','qtd','custom'];
+  chips.forEach(p => {
     const el = document.getElementById(`${section}-${p}`);
     if(el) el.classList.toggle('active', p===period);
   });
@@ -4048,11 +4053,13 @@ function applyRptSearch(section) {
   } else if(section==='sql') {
     const sellerF = document.getElementById('sqlSellerFilter')?.value || '';
     const sourceF = document.getElementById('sqlSourceFilter')?.value || '';
+    const statusF = document.getElementById('sqlStatusFilter')?.value || '';
     filtered = data.filter(r => {
-      const matchQ = !q || `${r.name} ${r.company} ${r.seller} ${r.source} ${r.follow_up_owner}`.toLowerCase().includes(q);
+      const matchQ      = !q       || `${r.name} ${r.company} ${r.seller} ${r.source} ${r.follow_up_owner} ${r.status}`.toLowerCase().includes(q);
       const matchSeller = !sellerF || r.seller === sellerF;
       const matchSource = !sourceF || r.source === sourceF;
-      return matchQ && matchSeller && matchSource;
+      const matchStatus = !statusF || r.status === statusF;
+      return matchQ && matchSeller && matchSource && matchStatus;
     });
   } else if(section==='s1r') {
     const sdrF      = document.getElementById('s1rSdrFilter')?.value || '';
@@ -4144,6 +4151,13 @@ function renderSql() {
   sourceSel.innerHTML = '<option value="">All Sources</option>' + sources.map(s=>`<option value="${s}">${s}</option>`).join('');
   if(sources.includes(prevSource)) sourceSel.value = prevSource;
 
+  // Populate Lead Status filter dropdown
+  const statusSel = document.getElementById('sqlStatusFilter');
+  const prevStatus = statusSel.value;
+  const statuses = [...new Set(data.map(r=>r.status).filter(x=>x&&x!=='—'))].sort();
+  statusSel.innerHTML = '<option value="">All Lead Statuses</option>' + statuses.map(s=>`<option value="${s}">${s}</option>`).join('');
+  if(statuses.includes(prevStatus)) statusSel.value = prevStatus;
+
   RPT.sql.filtered = [...data];
   applyRptSearch('sql');
 }
@@ -4154,7 +4168,11 @@ function drawSqlTable(rows) {
   document.getElementById('sqlCount').textContent = `Showing ${rows.length} lead${rows.length!==1?'s':''}`;
 
   const tbody = document.getElementById('sqlBody');
-  tbody.innerHTML = rows.map(r=>`
+  tbody.innerHTML = rows.map(r => {
+    const statusColor = (r.status||'').toLowerCase() === 'sql'
+      ? 'background:rgba(167,139,250,0.15);color:#A78BFA'
+      : 'background:rgba(99,102,241,0.15);color:#818CF8';
+    return `
     <tr onclick="window.open('${r.sf_url}','_blank')" title="Open in Salesforce" style="${r.sf_url?'cursor:pointer':''}">
       <td>
         <span style="display:inline-flex;align-items:center;gap:6px">
@@ -4162,18 +4180,20 @@ function drawSqlTable(rows) {
           ${r.seller}
         </span>
       </td>
-      <td style="color:var(--text-muted)">${r.date||'—'}</td>
+      <td style="color:var(--text-muted);white-space:nowrap">${r.date||'—'}</td>
+      <td><span class="badge" style="${statusColor}">${r.status||'—'}</span></td>
       <td><span class="badge" style="background:rgba(167,139,250,0.12);color:#A78BFA">${r.source}</span></td>
       <td style="color:var(--text-muted)">${r.follow_up_owner||'—'}</td>
       <td style="font-weight:600">
         ${r.sf_url?`<span style="color:var(--gold-light)">${r.name} <span style="font-size:10px;opacity:.6">↗</span></span>`:r.name}
       </td>
       <td style="color:var(--text-muted)">${r.company}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   document.getElementById('sqlFoot').innerHTML = `
-    <td colspan="6" style="color:var(--text-muted);font-size:11px;font-weight:600">
-      ${rows.length} SQL lead${rows.length!==1?'s':''} — click any row to open in Salesforce
+    <td colspan="7" style="color:var(--text-muted);font-size:11px;font-weight:600">
+      ${rows.length} lead${rows.length!==1?'s':''} with SQL_Converted_Date > Mar 31 2026 — click any row to open in Salesforce
     </td>`;
 }
 

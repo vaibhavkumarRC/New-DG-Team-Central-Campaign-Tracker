@@ -2633,13 +2633,18 @@ def api_mql_leads():
 
 @app.route('/api/sql-leads')
 def api_sql_leads():
-    """Return leads where Status = 'SQL', filtered by SQL_Converted_Date__c."""
-    period = request.args.get('period', '30d').strip()
+    """Return all leads where SQL_Converted_Date__c > 2026-03-31.
+    No current-status filter — leads that progressed beyond SQL still appear.
+    Period filter applies to SQL_Converted_Date__c.
+    """
+    period       = request.args.get('period', 'all').strip()
     custom_start = request.args.get('start', '').strip()
     custom_end   = request.args.get('end',   '').strip()
 
     if custom_start and custom_end:
         start, end = custom_start, custom_end
+    elif period == 'all':
+        start, end = '', ''
     else:
         start, end = period_dates(period)
 
@@ -2651,7 +2656,7 @@ def api_sql_leads():
          f"SQL_Seller_Owner__c, SQL_Converted_Date__c, SQL_Source__c, "
          f"Follow_Up_Owner__c "
          f"FROM Lead "
-         f"WHERE Status = 'SQL'"
+         f"WHERE SQL_Converted_Date__c > 2026-03-31"
          f"{dt} "
          f"ORDER BY SQL_Converted_Date__c DESC NULLS LAST LIMIT 2000")
 
@@ -2661,10 +2666,11 @@ def api_sql_leads():
     for r in records:
         lid = r.get('Id') or ''
         leads.append({
-            'id':      lid,
-            'name':    r.get('Name') or '—',
-            'title':   r.get('Title') or '—',
-            'company': r.get('Company') or '—',
+            'id':              lid,
+            'name':            r.get('Name')    or '—',
+            'title':           r.get('Title')   or '—',
+            'company':         r.get('Company') or '—',
+            'status':          r.get('Status')  or '—',
             'seller':          norm_sdr(r.get('SQL_Seller_Owner__c') or '—'),
             'date':            (r.get('SQL_Converted_Date__c') or '')[:10],
             'source':          r.get('SQL_Source__c') or '—',
