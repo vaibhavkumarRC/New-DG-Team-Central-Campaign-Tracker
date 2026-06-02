@@ -2586,47 +2586,91 @@ def api_meeting_leads():
 
 @app.route('/api/mql-leads')
 def api_mql_leads():
-    """Return leads where Status = 'MQL', filtered by Meeting_Generated_on__c."""
-    period = request.args.get('period', '30d').strip()
+    """Return all leads that were ever marked MQL after 2026-03-31.
+
+    Uses LeadHistory (Field = 'Status', NewValue = 'MQL') so leads that later
+    progressed to SQL/S1 still appear. Period filter applies to the date the
+    status was changed to MQL (LeadHistory.CreatedDate), not the current status.
+    Deduplicates by LeadId — keeps the earliest MQL date per lead.
+    """
+    period       = request.args.get('period', 'all').strip()
     custom_start = request.args.get('start', '').strip()
     custom_end   = request.args.get('end',   '').strip()
 
     if custom_start and custom_end:
         start, end = custom_start, custom_end
+    elif period == 'all':
+        start, end = '', ''
     else:
         start, end = period_dates(period)
 
+    # ── Step 1: LeadHistory — find when each lead was marked MQL ─────────────
     dt = ''
-    if start: dt += f" AND Meeting_Generated_on__c >= {start}"
-    if end:   dt += f" AND Meeting_Generated_on__c <= {end}"
+    if start: dt += f" AND CreatedDate >= {start}T00:00:00Z"
+    if end:   dt += f" AND CreatedDate <= {end}T23:59:59Z"
 
-    q = (f"SELECT Id, Name, Title, Company, Status, "
-         f"Meeting_Generated_by__c, Meeting_Generated_on__c, "
-         f"Meeting_Channel__c, Meeting_Type__c, Seller_Name__c, Meeting_Source__c, "
-         f"Follow_Up_Owner__c "
-         f"FROM Lead "
-         f"WHERE Status = 'MQL'"
-         f"{dt} "
-         f"ORDER BY Meeting_Generated_on__c DESC NULLS LAST LIMIT 2000")
+    hist_q = (
+        f"SELECT LeadId, CreatedDate FROM LeadHistory "
+        f"WHERE Field = 'Status' AND NewValue = 'MQL' "
+        f"AND CreatedDate > 2026-03-31T00:00:00Z"
+        f"{dt} "
+        f"ORDER BY CreatedDate ASC LIMIT 5000"
+    )
+    hist_result = soql(hist_q, paginate=False)
+    hist_records = (hist_result or {}).get('records', [])
 
-    result = soql(q)
-    records = result.get('records', []) if result else []
+    if not hist_records:
+        return jsonify({'leads': [], 'total': 0})
+
+    # Deduplicate: keep earliest MQL date per lead
+    mql_dates = {}
+    for h in hist_records:
+        lid  = h.get('LeadId') or ''
+        date = (h.get('CreatedDate') or '')[:10]
+        if lid and lid not in mql_dates:
+            mql_dates[lid] = date   # already ASC — first occurrence = earliest
+
+    lead_ids = list(mql_dates.keys())
+
+    # ── Step 2: Fetch full Lead details for those IDs (batched) ──────────────
+    lead_map = {}
+    for i in range(0, len(lead_ids), 200):
+        batch = lead_ids[i:i + 200]
+        ids_str = ','.join(f"'{lid}'" for lid in batch)
+        lead_q = (
+            f"SELECT Id, FirstName, LastName, Title, Company, Status, "
+            f"Meeting_Generated_by__c, Meeting_Generated_on__c, "
+            f"Meeting_Channel__c, Meeting_Type__c, Seller_Name__c, "
+            f"Meeting_Source__c, Follow_Up_Owner__c "
+            f"FROM Lead WHERE Id IN ({ids_str})"
+        )
+        res = soql(lead_q, paginate=False)
+        for r in (res or {}).get('records', []):
+            lead_map[r.get('Id')] = r
+
+    # ── Step 3: Build response — sorted by MQL date desc ─────────────────────
     leads = []
-    for r in records:
-        lid = r.get('Id') or ''
+    for lid in sorted(lead_ids, key=lambda x: mql_dates.get(x, ''), reverse=True):
+        r = lead_map.get(lid)
+        if not r:
+            continue
+        first = r.get('FirstName') or ''
+        last  = r.get('LastName')  or ''
         leads.append({
-            'id':           lid,
-            'name':         r.get('Name') or '—',
-            'title':        r.get('Title') or '—',
-            'company':      r.get('Company') or '—',
-            'generated_by': norm_sdr(r.get('Meeting_Generated_by__c') or '—'),
-            'date':         (r.get('Meeting_Generated_on__c') or '')[:10],
-            'channel':      r.get('Meeting_Channel__c') or '—',
-            'type':         r.get('Meeting_Type__c') or '—',
-            'seller':          r.get('Seller_Name__c') or '—',
-            'source':          r.get('Meeting_Source__c') or '—',
+            'id':            lid,
+            'name':          f"{first} {last}".strip() or '—',
+            'title':         r.get('Title')   or '—',
+            'company':       r.get('Company') or '—',
+            'status':        r.get('Status')  or '—',
+            'generated_by':  norm_sdr(r.get('Meeting_Generated_by__c') or '—'),
+            'date':          mql_dates[lid],   # date status was changed to MQL
+            'meeting_date':  (r.get('Meeting_Generated_on__c') or '')[:10],
+            'channel':       r.get('Meeting_Channel__c') or '—',
+            'type':          r.get('Meeting_Type__c')    or '—',
+            'seller':        r.get('Seller_Name__c')     or '—',
+            'source':        r.get('Meeting_Source__c')  or '—',
             'follow_up_owner': norm_sdr(r.get('Follow_Up_Owner__c') or '—'),
-            'sf_url':          f"{SF_BASE_URL}/lightning/r/Lead/{lid}/view" if lid else '',
+            'sf_url':        f"{SF_BASE_URL}/lightning/r/Lead/{lid}/view" if lid else '',
         })
     return jsonify({'leads': leads, 'total': len(leads)})
 
