@@ -2657,18 +2657,34 @@ def _zoom_extract_meeting_id(url):
     return m.group(1) if m else ''
 
 def _zoom_get_meeting(meeting_id):
-    """Fetch meeting details by numeric ID. Returns dict, or None on 404/error."""
+    """Fetch meeting details by numeric ID.
+    Returns (kind, data):
+      • ('ok', {...})    — meeting exists
+      • ('notfound', None) — 404: meeting ID is genuinely invalid / not in account
+      • ('error', None)  — transient (timeout / 429 / 5xx): do NOT cache as wrong
+    Retries transient errors a couple of times."""
+    import urllib.error as _uerr
     tok = _zoom_token()
     if not tok or not meeting_id:
-        return None
-    try:
-        req = _urllib_req.Request(
-            f"https://api.zoom.us/v2/meetings/{meeting_id}",
-            headers={'Authorization': f'Bearer {tok}'})
-        with _urllib_req.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read().decode())
-    except Exception:
-        return None   # 404 / invalid / not in this account
+        return ('error', None)
+    for attempt in range(3):
+        try:
+            req = _urllib_req.Request(
+                f"https://api.zoom.us/v2/meetings/{meeting_id}",
+                headers={'Authorization': f'Bearer {tok}'})
+            with _urllib_req.urlopen(req, timeout=15) as resp:
+                return ('ok', json.loads(resp.read().decode()))
+        except _uerr.HTTPError as he:
+            if he.code == 404:
+                return ('notfound', None)        # definitive: invalid meeting
+            if he.code in (429, 500, 502, 503, 504):
+                time.sleep(0.6 * (attempt + 1))  # transient — back off & retry
+                continue
+            return ('error', None)               # other HTTP error — treat transient
+        except Exception:
+            time.sleep(0.4 * (attempt + 1))      # timeout / network — retry
+            continue
+    return ('error', None)
 
 def _zoom_classify_link(url):
     """Classify a Zoom link → ('empty'|'conference'|'correct'|'wrong'|'pending', data).
@@ -2693,8 +2709,15 @@ def _zoom_classify_link(url):
         if mid in _zoom_meeting_cache:
             c = _zoom_meeting_cache[mid]
             return c['status'], c['data']
-    data   = _zoom_get_meeting(mid)
-    status = 'correct' if (data and data.get('id')) else 'wrong'
+    kind, data = _zoom_get_meeting(mid)
+    if kind == 'ok':
+        status = 'correct'
+    elif kind == 'notfound':
+        status = 'wrong'
+    else:
+        # Transient error — classify as wrong for THIS response but DON'T cache,
+        # so the next load retries instead of permanently mislabeling a real meeting.
+        return 'wrong', None
     with _zoom_meeting_lock:
         _zoom_meeting_cache[mid] = {'status': status, 'data': data}
     return status, data
@@ -2823,7 +2846,7 @@ def api_meeting_funnel():
             rec['zoom_raw_status'] = data.get('status')
             rec['zoom_duration']   = data.get('duration')
             rec['zoom_host']       = data.get('host_email')
-    with ThreadPoolExecutor(max_workers=10) as ex:
+    with ThreadPoolExecutor(max_workers=5) as ex:
         list(ex.map(_classify, meetings))
 
     return jsonify({
