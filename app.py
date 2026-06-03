@@ -2643,7 +2643,8 @@ def api_meeting_funnel():
         batch   = lead_ids[i:i + _BATCH_SIZE]
         ids_str = ','.join(f"'{lid}'" for lid in batch)
         lq = (f"SELECT Id, FirstName, LastName, Title, Company, "
-              f"Meeting_Generated_by__c, Zoom_Meeting_Link_URL__c, Seller_Name__c "
+              f"Meeting_Generated_by__c, Meeting_Generated_on__c, Meeting_Source__c, "
+              f"Zoom_Meeting_Link_URL__c, Seller_Name__c "
               f"FROM Lead WHERE Id IN ({ids_str})")
         res = soql(lq, paginate=False)
         for lr in (res or {}).get('records', []):
@@ -2669,6 +2670,7 @@ def api_meeting_funnel():
         who   = r.get('WhoId') or ''
 
         first = last = title = company = mtg_by = zoom = seller = ''
+        mtg_on = mtg_src = ''
         sf_url = ''
         if who in lead_map:
             ld      = lead_map[who]
@@ -2677,6 +2679,8 @@ def api_meeting_funnel():
             title   = ld.get('Title')     or ''
             company = ld.get('Company')   or ''
             mtg_by  = ld.get('Meeting_Generated_by__c')  or ''
+            mtg_on  = (ld.get('Meeting_Generated_on__c') or '')[:10]
+            mtg_src = ld.get('Meeting_Source__c')        or ''
             zoom    = ld.get('Zoom_Meeting_Link_URL__c') or ''
             seller  = ld.get('Seller_Name__c')           or ''
             sf_url  = f"{SF_BASE_URL}/lightning/r/Lead/{who}/view"
@@ -2688,6 +2692,9 @@ def api_meeting_funnel():
             acct    = cd.get('Account') or {}
             company = acct.get('Name', '') if isinstance(acct, dict) else ''
             sf_url  = f"{SF_BASE_URL}/lightning/r/Contact/{who}/view"
+
+        # ── Stage 2: "Updated on SFDC" requires ALL three Lead fields filled ──
+        is_updated = bool(mtg_on and mtg_by and mtg_src)
 
         meetings.append({
             'task_id':       r.get('Id') or '',
@@ -2701,8 +2708,11 @@ def api_meeting_funnel():
             'title':         title   or '—',
             'company':       company or '—',
             'meeting_by':    norm_sdr(mtg_by) if mtg_by else '—',
+            'meeting_on':    mtg_on,
+            'meeting_source':mtg_src or '—',
             'zoom_url':      zoom,
             'seller':        seller  or '—',
+            'is_updated':    is_updated,
             'sf_url':        sf_url,
         })
     return jsonify({'meetings': meetings, 'total': len(meetings)})

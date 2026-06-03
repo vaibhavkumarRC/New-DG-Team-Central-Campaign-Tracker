@@ -821,8 +821,8 @@ tfoot td {
       </div>
       <div style="font-size:11.5px;color:var(--text-dim);margin-bottom:18px">
         Tracks each meeting from the moment it's booked on Nooks → logged in Salesforce → linked → to its final outcome.
-        <span style="color:#34D399;font-weight:600">Stage 1 (Booked on Nooks) is live.</span>
-        <span style="color:#F59E0B;font-weight:600">Stages 2–3 &amp; outcomes pending data wiring.</span>
+        <span style="color:#34D399;font-weight:600">Stages 1–2 are live.</span>
+        <span style="color:#F59E0B;font-weight:600">Stage 3 &amp; outcomes pending data wiring.</span>
       </div>
 
       <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:20px;align-items:start">
@@ -839,19 +839,22 @@ tfoot td {
               <div class="funnel-bar" id="mgfBookedBar" style="width:100%;background:linear-gradient(90deg,#2563EB,#3B82F6)">100%</div>
             </div>
           </div>
-          <div class="funnel-conv" id="mgfConv1">↓ logged in Salesforce</div>
+          <div class="funnel-conv" id="mgfConv1">↓ updated in Salesforce</div>
 
           <!-- Stage 2 -->
-          <div class="funnel-item">
+          <div class="funnel-item" onclick="openMgfStage2Modal(true)" style="cursor:pointer" title="Click to see meetings updated in SFDC">
             <div class="funnel-meta">
-              <span class="funnel-label">📝 Updated on SFDC</span>
+              <span class="funnel-label">📝 Updated on SFDC <span style="font-size:10px;opacity:.6">↗</span></span>
               <span class="funnel-val" id="mgfUpdatedVal" style="color:#A78BFA">—</span>
             </div>
             <div class="funnel-track">
-              <div class="funnel-bar" id="mgfUpdatedBar" style="width:75%;background:linear-gradient(90deg,#7C3AED,#A78BFA)">—</div>
+              <div class="funnel-bar" id="mgfUpdatedBar" style="width:0%;background:linear-gradient(90deg,#7C3AED,#A78BFA)">—</div>
             </div>
           </div>
-          <div class="funnel-conv" id="mgfConv2">↓ Zoom link added</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin:5px 0 8px">
+            <span class="funnel-conv" id="mgfConv2" style="margin:0">↓ Zoom link added</span>
+            <span onclick="openMgfStage2Modal(false)" style="cursor:pointer;font-size:11px;color:#EF4444;font-weight:600" title="Click to see meetings NOT updated in SFDC">❌ Not updated: <span id="mgfNotUpdatedVal">—</span> <span style="font-size:9px;opacity:.7">↗</span></span>
+          </div>
 
           <!-- Stage 3 -->
           <div class="funnel-item">
@@ -1460,7 +1463,7 @@ tfoot td {
   <div class="modal-box" onclick="event.stopPropagation()" style="max-width:1100px">
     <div class="modal-hdr">
       <div>
-        <div class="modal-title">📞 Booked on Nooks — Lead Details</div>
+        <div class="modal-title" id="mgfModalTitle">📞 Booked on Nooks — Lead Details</div>
         <div class="modal-sub" id="mgfModalSub">Loading…</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
@@ -3918,28 +3921,72 @@ function applyMgfFilters() {
   const bookedBar = document.getElementById('mgfBookedBar');
   if (bookedBar) bookedBar.textContent = `${cold} Cold · ${conf} Conf`;
 
-  // ── Stages 2–3: pending data wiring (shown muted) ──
-  ['mgfUpdated','mgfLinked'].forEach(id => {
-    const v = document.getElementById(id + 'Val');
-    if (v) v.textContent = '—';
-    const b = document.getElementById(id + 'Bar');
-    if (b) { b.style.width = '0%'; b.textContent = ''; }
-  });
+  // ── Stage 2: Updated on SFDC (all three required fields filled) ──
+  const updated    = filtered.filter(m => m.is_updated).length;
+  const notUpdated = booked - updated;
+  const upPct      = booked ? Math.round(updated / booked * 100) : 0;
+  const updVal = document.getElementById('mgfUpdatedVal');
+  if (updVal) updVal.textContent = updated;
+  const updBar = document.getElementById('mgfUpdatedBar');
+  if (updBar) { updBar.style.width = (booked ? (updated / booked * 100) : 0) + '%'; updBar.textContent = upPct ? upPct + '%' : ''; }
+  const notUpdVal = document.getElementById('mgfNotUpdatedVal');
+  if (notUpdVal) notUpdVal.textContent = notUpdated;
+  const conv1 = document.getElementById('mgfConv1');
+  if (conv1) conv1.textContent = `↓ ${upPct}% updated in Salesforce`;
+
+  // ── Stage 3 & outcomes: pending data wiring (shown muted) ──
+  const linkedVal = document.getElementById('mgfLinkedVal');
+  if (linkedVal) linkedVal.textContent = '—';
+  const linkedBar = document.getElementById('mgfLinkedBar');
+  if (linkedBar) { linkedBar.style.width = '0%'; linkedBar.textContent = ''; }
   ['mgfDoneVal','mgfUpcomingVal','mgfInvalidVal','mgfDoneRate'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = '—';
   });
 }
 
-// ── Stage 1 modal: list of booked leads (respects current funnel filters) ──
+// ── Generic funnel modal: renders a lead list with configurable columns ──
 let _mgfModalRows = [];
+let _mgfModalCols = [];
+
+const MGF_STAGE1_COLS = [
+  { label: 'First Name',           key: 'first_name', type: 'bold'  },
+  { label: 'Last Name',            key: 'last_name',  type: 'link'  },
+  { label: 'Title',                key: 'title'  },
+  { label: 'Company',              key: 'company' },
+  { label: 'Meeting Generated By', key: 'meeting_by' },
+  { label: 'Zoom Link',            key: 'zoom_url',   type: 'zoom'  },
+  { label: 'Seller Name',          key: 'seller' },
+];
+const MGF_STAGE2_COLS = [
+  { label: 'First Name', key: 'first_name', type: 'bold' },
+  { label: 'Last Name',  key: 'last_name',  type: 'link' },
+  { label: 'Title',      key: 'title'   },
+  { label: 'Company',    key: 'company' },
+];
 
 function openMgfStage1Modal() {
-  _mgfModalRows = mgfFilteredData();
+  openMgfModal('📞 Booked on Nooks — Lead Details', mgfFilteredData(), MGF_STAGE1_COLS,
+               n => `${n} meeting${n !== 1 ? 's' : ''} booked on Nooks`);
+}
+
+function openMgfStage2Modal(updated) {
+  const rows  = mgfFilteredData().filter(m => !!m.is_updated === updated);
+  const title = updated ? '✅ Updated in SFDC — Lead Details'
+                        : '❌ Not Updated in SFDC — Lead Details';
+  const sub   = updated
+    ? n => `${n} meeting${n !== 1 ? 's' : ''} with Meeting Generated On + By + Source all filled`
+    : n => `${n} meeting${n !== 1 ? 's' : ''} missing one or more required SFDC fields`;
+  openMgfModal(title, rows, MGF_STAGE2_COLS, sub);
+}
+
+function openMgfModal(title, rows, cols, subFn) {
+  _mgfModalRows = rows;
+  _mgfModalCols = cols;
   document.getElementById('mgfOverlay').classList.add('open');
+  document.getElementById('mgfModalTitle').textContent = title;
   const s = document.getElementById('mgfModalSearch'); if (s) s.value = '';
-  document.getElementById('mgfModalSub').textContent =
-    `${_mgfModalRows.length} meeting${_mgfModalRows.length !== 1 ? 's' : ''} booked on Nooks`;
+  document.getElementById('mgfModalSub').textContent = subFn ? subFn(rows.length) : `${rows.length} leads`;
   renderMgfModalTable();
 }
 
@@ -3950,28 +3997,32 @@ function closeMgfModal(e) {
 
 function renderMgfModalTable() {
   const qstr = (document.getElementById('mgfModalSearch')?.value || '').toLowerCase();
+  const cols = _mgfModalCols;
   let rows = _mgfModalRows;
-  if (qstr) {
-    rows = rows.filter(r =>
-      `${r.first_name} ${r.last_name} ${r.company} ${r.title} ${r.seller} ${r.meeting_by}`.toLowerCase().includes(qstr));
-  }
+  if (qstr) rows = rows.filter(r => cols.map(c => r[c.key] || '').join(' ').toLowerCase().includes(qstr));
+
   const wrap = document.getElementById('mgfModalTableWrap');
   if (!rows.length) {
-    wrap.innerHTML = '<div class="empty" style="padding:40px"><div class="empty-icon">📞</div>No booked leads found.</div>';
+    wrap.innerHTML = '<div class="empty" style="padding:40px"><div class="empty-icon">📋</div>No leads found.</div>';
     return;
   }
   const esc = s => (s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'));
+  const cell = (r, c) => {
+    const v = r[c.key];
+    if (c.type === 'zoom')
+      return v ? `<a href="${esc(v)}" target="_blank" onclick="event.stopPropagation()" style="color:#3B82F6;font-size:11px;text-decoration:none;white-space:nowrap">🔗 Join</a>`
+               : '<span style="color:var(--text-dim);font-size:11px">—</span>';
+    if (c.type === 'link')
+      return r.sf_url ? `<span style="color:var(--gold-light);font-weight:600">${esc(v || '—')} <span style="font-size:10px;opacity:.6">↗</span></span>` : `<span style="font-weight:600">${esc(v || '—')}</span>`;
+    if (c.type === 'bold')
+      return `<span style="font-weight:600;color:var(--text)">${esc(v || '—')}</span>`;
+    return `<span style="color:var(--text-muted);font-size:11px">${esc(v || '—')}</span>`;
+  };
   wrap.innerHTML = `
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead>
         <tr style="border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card-bg)">
-          <th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">First Name</th>
-          <th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">Last Name</th>
-          <th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">Title</th>
-          <th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">Company</th>
-          <th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">Meeting Generated By</th>
-          <th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">Zoom Link</th>
-          <th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">Seller Name</th>
+          ${cols.map(c => `<th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">${c.label}</th>`).join('')}
         </tr>
       </thead>
       <tbody>
@@ -3981,17 +4032,7 @@ function renderMgfModalTable() {
               style="${r.sf_url ? 'cursor:pointer;' : ''}border-bottom:1px solid var(--border)"
               onmouseover="this.style.background='rgba(255,255,255,0.03)'"
               onmouseout="this.style.background=''">
-            <td style="padding:8px 10px;font-weight:600;color:var(--text)">${esc(r.first_name)}</td>
-            <td style="padding:8px 10px;font-weight:600">
-              ${r.sf_url ? `<span style="color:var(--gold-light)">${esc(r.last_name)} <span style="font-size:10px;opacity:.6">↗</span></span>` : esc(r.last_name)}
-            </td>
-            <td style="padding:8px 10px;color:var(--text-muted);font-size:11px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.title)}</td>
-            <td style="padding:8px 10px;color:var(--text-muted);font-size:11px">${esc(r.company)}</td>
-            <td style="padding:8px 10px;color:var(--text-muted)">${esc(r.meeting_by)}</td>
-            <td style="padding:8px 10px">
-              ${r.zoom_url ? `<a href="${esc(r.zoom_url)}" target="_blank" onclick="event.stopPropagation()" style="color:#3B82F6;font-size:11px;text-decoration:none;white-space:nowrap">🔗 Join</a>` : '<span style="color:var(--text-dim);font-size:11px">—</span>'}
-            </td>
-            <td style="padding:8px 10px;color:var(--text-muted);font-size:11px">${esc(r.seller)}</td>
+            ${cols.map(c => `<td style="padding:8px 10px">${cell(r, c)}</td>`).join('')}
           </tr>`).join('')}
       </tbody>
     </table>`;
