@@ -2960,11 +2960,6 @@ function openModal(id) {
       <div class="modal-kpi"><div class="modal-kpi-val" style="color:var(--red)">${fmt(c.meeting_noshow||0)}</div><div class="modal-kpi-lbl">No Show</div></div>
     </div>
     <div class="modal-kpi-row">
-      <div class="modal-kpi"><div class="modal-kpi-val" style="color:#A78BFA">${fmt(c.sql_gen||0)}</div><div class="modal-kpi-lbl">SQL Generated</div></div>
-      <div class="modal-kpi"><div class="modal-kpi-val" style="color:#F472B6">${fmt(c.s1_created)}</div><div class="modal-kpi-lbl">S1 Created</div></div>
-      <div class="modal-kpi"></div>
-    </div>
-    <div class="modal-kpi-row">
       <div class="modal-kpi">
         <div class="modal-kpi-val" style="font-size:15px;color:var(--gold)">${c.start_date?fmtDay(c.start_date):'—'}</div>
         <div class="modal-kpi-lbl">📅 Start Date</div>
@@ -2973,7 +2968,7 @@ function openModal(id) {
         <div class="modal-kpi-val" style="font-size:15px;color:var(--text-muted)">${c.end_date?fmtDay(c.end_date):'—'}</div>
         <div class="modal-kpi-lbl">🏁 End Date</div>
       </div>
-      <div class="modal-kpi"></div>
+      <div class="modal-kpi"><div class="modal-kpi-val" style="color:#F472B6">${fmt(c.s1_created)}</div><div class="modal-kpi-lbl">S1 Created</div></div>
     </div>
 
     <div class="modal-section">
