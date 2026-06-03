@@ -830,9 +830,9 @@ tfoot td {
         <!-- LEFT: Descending funnel bars -->
         <div class="chart-card" style="padding:24px 28px">
           <!-- Stage 1 -->
-          <div class="funnel-item">
+          <div class="funnel-item" onclick="openMgfStage1Modal()" style="cursor:pointer" title="Click to see all booked leads">
             <div class="funnel-meta">
-              <span class="funnel-label">📞 Booked on Nooks</span>
+              <span class="funnel-label">📞 Booked on Nooks <span style="font-size:10px;opacity:.6">↗</span></span>
               <span class="funnel-val" id="mgfBookedVal" style="color:#3B82F6">—</span>
             </div>
             <div class="funnel-track">
@@ -1451,6 +1451,25 @@ tfoot td {
           Fetching leads from Salesforce…
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── MEETING FUNNEL STAGE 1 (Booked on Nooks) MODAL ── -->
+<div class="modal-overlay" id="mgfOverlay" onclick="closeMgfModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:1100px">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title">📞 Booked on Nooks — Lead Details</div>
+        <div class="modal-sub" id="mgfModalSub">Loading…</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+        <input class="search-box" id="mgfModalSearch" type="search" placeholder="Search name / company…" style="max-width:220px;margin:0" oninput="renderMgfModalTable()">
+        <button class="modal-close" onclick="closeMgfModal()">×</button>
+      </div>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <div id="mgfModalTableWrap" style="overflow-x:auto"></div>
     </div>
   </div>
 </div>
@@ -3873,19 +3892,22 @@ function mgfPeriodBounds() {
   return { start, end };
 }
 
-function applyMgfFilters() {
+function mgfFilteredData() {
   const data  = MGF.data || [];
   const sdrF  = document.getElementById('mgfSdrFilter')?.value  || '';
   const typeF = document.getElementById('mgfTypeFilter')?.value || '';
   const { start, end } = mgfPeriodBounds();
-
-  const filtered = data.filter(m => {
+  return data.filter(m => {
     if (start && m.date < start) return false;
     if (end   && m.date > end)   return false;
     if (sdrF  && m.sdr  !== sdrF) return false;
     if (typeF && m.type !== typeF) return false;
     return true;
   });
+}
+
+function applyMgfFilters() {
+  const filtered = mgfFilteredData();
 
   // ── Stage 1: Booked on Nooks ──
   const booked = filtered.length;
@@ -3907,6 +3929,72 @@ function applyMgfFilters() {
     const el = document.getElementById(id);
     if (el) el.textContent = '—';
   });
+}
+
+// ── Stage 1 modal: list of booked leads (respects current funnel filters) ──
+let _mgfModalRows = [];
+
+function openMgfStage1Modal() {
+  _mgfModalRows = mgfFilteredData();
+  document.getElementById('mgfOverlay').classList.add('open');
+  const s = document.getElementById('mgfModalSearch'); if (s) s.value = '';
+  document.getElementById('mgfModalSub').textContent =
+    `${_mgfModalRows.length} meeting${_mgfModalRows.length !== 1 ? 's' : ''} booked on Nooks`;
+  renderMgfModalTable();
+}
+
+function closeMgfModal(e) {
+  if (e && e.target !== document.getElementById('mgfOverlay')) return;
+  document.getElementById('mgfOverlay').classList.remove('open');
+}
+
+function renderMgfModalTable() {
+  const qstr = (document.getElementById('mgfModalSearch')?.value || '').toLowerCase();
+  let rows = _mgfModalRows;
+  if (qstr) {
+    rows = rows.filter(r =>
+      `${r.first_name} ${r.last_name} ${r.company} ${r.title} ${r.seller} ${r.meeting_by}`.toLowerCase().includes(qstr));
+  }
+  const wrap = document.getElementById('mgfModalTableWrap');
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="empty" style="padding:40px"><div class="empty-icon">📞</div>No booked leads found.</div>';
+    return;
+  }
+  const esc = s => (s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'));
+  wrap.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card-bg)">
+          <th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">First Name</th>
+          <th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">Last Name</th>
+          <th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">Title</th>
+          <th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">Company</th>
+          <th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">Meeting Generated By</th>
+          <th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">Zoom Link</th>
+          <th style="text-align:left;padding:9px 10px;color:var(--text-muted);font-size:11px;font-weight:700;white-space:nowrap">Seller Name</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr onclick="${r.sf_url ? `window.open('${r.sf_url}','_blank')` : ''}"
+              title="${r.sf_url ? 'Open in Salesforce' : ''}"
+              style="${r.sf_url ? 'cursor:pointer;' : ''}border-bottom:1px solid var(--border)"
+              onmouseover="this.style.background='rgba(255,255,255,0.03)'"
+              onmouseout="this.style.background=''">
+            <td style="padding:8px 10px;font-weight:600;color:var(--text)">${esc(r.first_name)}</td>
+            <td style="padding:8px 10px;font-weight:600">
+              ${r.sf_url ? `<span style="color:var(--gold-light)">${esc(r.last_name)} <span style="font-size:10px;opacity:.6">↗</span></span>` : esc(r.last_name)}
+            </td>
+            <td style="padding:8px 10px;color:var(--text-muted);font-size:11px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.title)}</td>
+            <td style="padding:8px 10px;color:var(--text-muted);font-size:11px">${esc(r.company)}</td>
+            <td style="padding:8px 10px;color:var(--text-muted)">${esc(r.meeting_by)}</td>
+            <td style="padding:8px 10px">
+              ${r.zoom_url ? `<a href="${esc(r.zoom_url)}" target="_blank" onclick="event.stopPropagation()" style="color:#3B82F6;font-size:11px;text-decoration:none;white-space:nowrap">🔗 Join</a>` : '<span style="color:var(--text-dim);font-size:11px">—</span>'}
+            </td>
+            <td style="padding:8px 10px;color:var(--text-muted);font-size:11px">${esc(r.seller)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
 }
 
 // ── Total Meeting Generated by SDRs ──────────────────────────────────────────

@@ -2632,19 +2632,78 @@ def api_meeting_funnel():
     )
     result  = soql(q)
     records = result.get('records', []) if result else []
+
+    # Collect the WhoIds (a Task's Who can be a Lead [00Q] or a Contact [003]).
+    lead_ids    = [r.get('WhoId') for r in records if (r.get('WhoId') or '').startswith('00Q')]
+    contact_ids = [r.get('WhoId') for r in records if (r.get('WhoId') or '').startswith('003')]
+
+    # ── Enrich Leads (full set of fields) ──
+    lead_map = {}
+    for i in range(0, len(lead_ids), _BATCH_SIZE):
+        batch   = lead_ids[i:i + _BATCH_SIZE]
+        ids_str = ','.join(f"'{lid}'" for lid in batch)
+        lq = (f"SELECT Id, FirstName, LastName, Title, Company, "
+              f"Meeting_Generated_by__c, Zoom_Meeting_Link_URL__c, Seller_Name__c "
+              f"FROM Lead WHERE Id IN ({ids_str})")
+        res = soql(lq, paginate=False)
+        for lr in (res or {}).get('records', []):
+            lead_map[lr.get('Id')] = lr
+
+    # ── Enrich Contacts (only the fields a Contact has) ──
+    contact_map = {}
+    for i in range(0, len(contact_ids), _BATCH_SIZE):
+        batch   = contact_ids[i:i + _BATCH_SIZE]
+        ids_str = ','.join(f"'{cid}'" for cid in batch)
+        cq = (f"SELECT Id, FirstName, LastName, Title, Account.Name "
+              f"FROM Contact WHERE Id IN ({ids_str})")
+        res = soql(cq, paginate=False)
+        for cr in (res or {}).get('records', []):
+            contact_map[cr.get('Id')] = cr
+
     meetings = []
     for r in records:
         disp  = r.get('CallDisposition') or ''
         mtype = 'Conference' if disp == 'Meeting Generated- Conference' else 'Cold'
         owner = r.get('Owner') or {}
         sdr   = owner.get('Name', '') if isinstance(owner, dict) else ''
+        who   = r.get('WhoId') or ''
+
+        first = last = title = company = mtg_by = zoom = seller = ''
+        sf_url = ''
+        if who in lead_map:
+            ld      = lead_map[who]
+            first   = ld.get('FirstName') or ''
+            last    = ld.get('LastName')  or ''
+            title   = ld.get('Title')     or ''
+            company = ld.get('Company')   or ''
+            mtg_by  = ld.get('Meeting_Generated_by__c')  or ''
+            zoom    = ld.get('Zoom_Meeting_Link_URL__c') or ''
+            seller  = ld.get('Seller_Name__c')           or ''
+            sf_url  = f"{SF_BASE_URL}/lightning/r/Lead/{who}/view"
+        elif who in contact_map:
+            cd      = contact_map[who]
+            first   = cd.get('FirstName') or ''
+            last    = cd.get('LastName')  or ''
+            title   = cd.get('Title')     or ''
+            acct    = cd.get('Account') or {}
+            company = acct.get('Name', '') if isinstance(acct, dict) else ''
+            sf_url  = f"{SF_BASE_URL}/lightning/r/Contact/{who}/view"
+
         meetings.append({
-            'task_id':     r.get('Id') or '',
-            'sdr':         norm_sdr(sdr or '—'),
-            'type':        mtype,
-            'disposition': disp,
-            'date':        (r.get('ActivityDate') or '')[:10],
-            'lead_id':     r.get('WhoId') or '',
+            'task_id':       r.get('Id') or '',
+            'sdr':           norm_sdr(sdr or '—'),
+            'type':          mtype,
+            'disposition':   disp,
+            'date':          (r.get('ActivityDate') or '')[:10],
+            'lead_id':       who,
+            'first_name':    first   or '—',
+            'last_name':     last    or '—',
+            'title':         title   or '—',
+            'company':       company or '—',
+            'meeting_by':    norm_sdr(mtg_by) if mtg_by else '—',
+            'zoom_url':      zoom,
+            'seller':        seller  or '—',
+            'sf_url':        sf_url,
         })
     return jsonify({'meetings': meetings, 'total': len(meetings)})
 
