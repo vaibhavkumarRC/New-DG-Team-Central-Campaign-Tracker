@@ -867,18 +867,22 @@ tfoot td {
             </div>
           </div>
           <!-- Stage 3 link-quality split (clickable) -->
-          <div style="display:flex;gap:8px;margin-top:10px">
-            <span onclick="openMgfStage3Modal('correct')" style="cursor:pointer;flex:1;text-align:center;background:rgba(52,211,153,0.10);border:1px solid rgba(52,211,153,0.3);border-radius:8px;padding:8px 6px" title="Valid, resolvable Zoom meeting">
+          <div style="display:flex;gap:7px;margin-top:10px">
+            <span onclick="openMgfStage3Modal('correct')" style="cursor:pointer;flex:1;text-align:center;background:rgba(52,211,153,0.10);border:1px solid rgba(52,211,153,0.3);border-radius:8px;padding:8px 4px" title="Valid, resolvable Zoom meeting">
               <div style="font-size:18px;font-weight:800;color:#34D399" id="mgfZoomCorrectVal">—</div>
-              <div style="font-size:9.5px;color:var(--text-muted);font-weight:600">✅ Correct ↗</div>
+              <div style="font-size:9px;color:var(--text-muted);font-weight:600">✅ Correct ↗</div>
             </span>
-            <span onclick="openMgfStage3Modal('wrong')" style="cursor:pointer;flex:1;text-align:center;background:rgba(239,68,68,0.10);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:8px 6px" title="Link filled but not a valid Zoom meeting">
+            <span onclick="openMgfStage3Modal('conference')" style="cursor:pointer;flex:1;text-align:center;background:rgba(168,139,250,0.10);border:1px solid rgba(168,139,250,0.3);border-radius:8px;padding:8px 4px" title="Marked as 'Conference Meeting'">
+              <div style="font-size:18px;font-weight:800;color:#A78BFA" id="mgfZoomConferenceVal">—</div>
+              <div style="font-size:9px;color:var(--text-muted);font-weight:600">🎤 Conference ↗</div>
+            </span>
+            <span onclick="openMgfStage3Modal('wrong')" style="cursor:pointer;flex:1;text-align:center;background:rgba(239,68,68,0.10);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:8px 4px" title="Link filled but not a valid Zoom meeting">
               <div style="font-size:18px;font-weight:800;color:#EF4444" id="mgfZoomWrongVal">—</div>
-              <div style="font-size:9.5px;color:var(--text-muted);font-weight:600">⚠️ Wrong ↗</div>
+              <div style="font-size:9px;color:var(--text-muted);font-weight:600">⚠️ Wrong ↗</div>
             </span>
-            <span onclick="openMgfStage3Modal('empty')" style="cursor:pointer;flex:1;text-align:center;background:rgba(156,163,175,0.10);border:1px solid rgba(156,163,175,0.3);border-radius:8px;padding:8px 6px" title="Zoom link field is empty">
+            <span onclick="openMgfStage3Modal('empty')" style="cursor:pointer;flex:1;text-align:center;background:rgba(156,163,175,0.10);border:1px solid rgba(156,163,175,0.3);border-radius:8px;padding:8px 4px" title="Zoom link field is empty">
               <div style="font-size:18px;font-weight:800;color:#9CA3AF" id="mgfZoomEmptyVal">—</div>
-              <div style="font-size:9.5px;color:var(--text-muted);font-weight:600">⬜ Empty ↗</div>
+              <div style="font-size:9px;color:var(--text-muted);font-weight:600">⬜ Empty ↗</div>
             </span>
           </div>
           <div id="mgfZoomPendingNote" style="display:none;font-size:10.5px;color:#F59E0B;margin-top:6px">⏳ <span id="mgfZoomPendingVal">0</span> link(s) awaiting Zoom validation (add Zoom env vars on Railway).</div>
@@ -3950,25 +3954,27 @@ function applyMgfFilters() {
   const conv1 = document.getElementById('mgfConv1');
   if (conv1) conv1.textContent = `↓ ${upPct}% updated in Salesforce`;
 
-  // ── Stage 3: Zoom link quality (correct / wrong / empty) ──
-  const correct = filtered.filter(m => m.zoom_status === 'correct').length;
-  const wrong   = filtered.filter(m => m.zoom_status === 'wrong').length;
-  const pending = filtered.filter(m => m.zoom_status === 'pending').length;
-  const empty   = filtered.filter(m => !m.zoom_status || m.zoom_status === 'empty').length;
-  const linked  = correct + wrong + pending;           // non-empty links
+  // ── Stage 3: Zoom link quality (correct / conference / wrong / empty) ──
+  const correct    = filtered.filter(m => m.zoom_status === 'correct').length;
+  const conference = filtered.filter(m => m.zoom_status === 'conference').length;
+  const wrong      = filtered.filter(m => m.zoom_status === 'wrong').length;
+  const pending    = filtered.filter(m => m.zoom_status === 'pending').length;
+  const empty      = filtered.filter(m => !m.zoom_status || m.zoom_status === 'empty').length;
+  const linked  = correct + conference + wrong + pending;   // non-empty
   const lpct    = booked ? Math.round(linked / booked * 100) : 0;
   const linkedVal = document.getElementById('mgfLinkedVal');
   if (linkedVal) linkedVal.textContent = linked;
   const linkedBar = document.getElementById('mgfLinkedBar');
   if (linkedBar) { linkedBar.style.width = (booked ? (linked / booked * 100) : 0) + '%'; linkedBar.textContent = lpct ? lpct + '%' : ''; }
   const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-  setTxt('mgfZoomCorrectVal', pending ? '…' : correct);
-  setTxt('mgfZoomWrongVal',   pending ? '…' : wrong);
-  setTxt('mgfZoomEmptyVal',   empty);
+  setTxt('mgfZoomCorrectVal',    pending ? '…' : correct);
+  setTxt('mgfZoomConferenceVal', conference);
+  setTxt('mgfZoomWrongVal',      pending ? '…' : wrong);
+  setTxt('mgfZoomEmptyVal',      empty);
   const pendNote = document.getElementById('mgfZoomPendingNote');
   if (pendNote) { pendNote.style.display = pending ? 'block' : 'none'; setTxt('mgfZoomPendingVal', pending); }
   const conv2 = document.getElementById('mgfConv2');
-  if (conv2) conv2.textContent = `↓ ${lpct}% have a Zoom link`;
+  if (conv2) conv2.textContent = `↓ ${lpct}% filled the Zoom field`;
 
   // ── Outcomes (Done / Upcoming / Invalid): pending data wiring ──
   ['mgfDoneVal','mgfUpcomingVal','mgfInvalidVal','mgfDoneRate'].forEach(id => {
@@ -3996,28 +4002,32 @@ const MGF_STAGE2_COLS = [
   { label: 'Title',      key: 'title'   },
   { label: 'Company',    key: 'company' },
 ];
-const MGF_STAGE3_COLS = [
+const MGF_STAGE3_COLS = [   // Correct links: show clickable Zoom join link
   { label: 'First Name', key: 'first_name', type: 'bold' },
   { label: 'Last Name',  key: 'last_name',  type: 'link' },
   { label: 'Title',      key: 'title'   },
   { label: 'Company',    key: 'company' },
   { label: 'Zoom Link',  key: 'zoom_url', type: 'zoom' },
 ];
+const MGF_WRONG_COLS = [    // Wrong links: show the raw bad value they entered
+  { label: 'First Name',    key: 'first_name', type: 'bold' },
+  { label: 'Last Name',     key: 'last_name',  type: 'link' },
+  { label: 'Title',         key: 'title'   },
+  { label: 'Company',       key: 'company' },
+  { label: 'Entered Value', key: 'zoom_url' },
+];
 
 function openMgfStage3Modal(kind) {
-  const rows = mgfFilteredData().filter(m => {
-    const st = m.zoom_status || 'empty';
-    if (kind === 'correct') return st === 'correct';
-    if (kind === 'wrong')   return st === 'wrong';
-    if (kind === 'empty')   return st === 'empty';
-    return false;
-  });
+  const rows = mgfFilteredData().filter(m => (m.zoom_status || 'empty') === kind);
   const titles = {
-    correct: '✅ Correct Zoom Link — Lead Details',
-    wrong:   '⚠️ Wrong Zoom Link — Lead Details',
-    empty:   '⬜ Empty Zoom Link — Lead Details',
+    correct:    '✅ Correct Zoom Link — Lead Details',
+    conference: '🎤 Conference Meetings — Lead Details',
+    wrong:      '⚠️ Wrong Zoom Link — Lead Details',
+    empty:      '⬜ Empty Zoom Link — Lead Details',
   };
-  const cols = kind === 'empty' ? MGF_STAGE2_COLS : MGF_STAGE3_COLS;
+  const cols = kind === 'correct' ? MGF_STAGE3_COLS
+             : kind === 'wrong'   ? MGF_WRONG_COLS
+             : MGF_STAGE2_COLS;   // conference / empty: name + company only
   openMgfModal(titles[kind], rows, cols, n => `${n} lead${n !== 1 ? 's' : ''}`);
 }
 

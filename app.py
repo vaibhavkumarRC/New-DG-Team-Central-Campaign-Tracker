@@ -2671,14 +2671,19 @@ def _zoom_get_meeting(meeting_id):
         return None   # 404 / invalid / not in this account
 
 def _zoom_classify_link(url):
-    """Classify a Zoom link → ('empty'|'correct'|'wrong'|'pending', meeting_data).
-      • empty   — field blank
-      • wrong   — filled but no parseable meeting ID, or ID doesn't resolve
-      • correct — meeting ID resolves to a real meeting in the account
-      • pending — Zoom not configured yet (creds missing); can't validate
+    """Classify a Zoom link → ('empty'|'conference'|'correct'|'wrong'|'pending', data).
+      • empty      — field blank
+      • conference — field is the literal 'Conference Meeting' (no Zoom link expected)
+      • wrong      — filled but no parseable meeting ID, or ID doesn't resolve
+      • correct    — meeting ID resolves to a real meeting in the account
+      • pending    — Zoom not configured yet (creds missing); can't validate
     Results cached per meeting_id."""
     if not url or not str(url).strip():
         return 'empty', None
+    low = str(url).strip().lower()
+    # SDRs mark conference bookings by typing "Conference Meeting" in this field.
+    if 'conference' in low and 'zoom.us' not in low:
+        return 'conference', None
     mid = _zoom_extract_meeting_id(url)
     if not mid:
         return 'wrong', None
