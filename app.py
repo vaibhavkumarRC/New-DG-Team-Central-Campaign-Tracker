@@ -2604,6 +2604,51 @@ def api_meeting_leads():
     return jsonify({'leads': leads, 'total': len(leads)})
 
 
+# ── Meeting Generation Funnel — Stage 1: Booked on Nooks ─────────────────────
+
+@app.route('/api/meeting-funnel')
+def api_meeting_funnel():
+    """Stage 1 of the Meeting Generation Funnel: meetings booked on Nooks.
+
+    Source: SFDC Task records logged by Nooks.
+      • Subject starts with '[Nooks Call]'
+      • CallDisposition (Call Result) is a booking disposition
+      • ActivityDate (Due Date) = the day the meeting was generated
+      • Owner.Name (Assigned To) = the SDR who generated the meeting
+    Nooks went live 2026-04-15, so only tasks on/after that date are considered.
+
+    Meeting type:
+      • 'Meeting Generated- Conference'                       → Conference
+      • 'Answered - Booked Meeting' / 'Meeting Generated- Cold' → Cold
+    """
+    q = (
+        "SELECT Id, Subject, CallDisposition, ActivityDate, Owner.Name, WhoId "
+        "FROM Task "
+        "WHERE Subject LIKE '[Nooks Call]%' "
+        "AND CallDisposition IN ('Answered - Booked Meeting',"
+        "'Meeting Generated- Cold','Meeting Generated- Conference') "
+        "AND ActivityDate >= 2026-04-15 "
+        "ORDER BY ActivityDate DESC LIMIT 5000"
+    )
+    result  = soql(q)
+    records = result.get('records', []) if result else []
+    meetings = []
+    for r in records:
+        disp  = r.get('CallDisposition') or ''
+        mtype = 'Conference' if disp == 'Meeting Generated- Conference' else 'Cold'
+        owner = r.get('Owner') or {}
+        sdr   = owner.get('Name', '') if isinstance(owner, dict) else ''
+        meetings.append({
+            'task_id':     r.get('Id') or '',
+            'sdr':         norm_sdr(sdr or '—'),
+            'type':        mtype,
+            'disposition': disp,
+            'date':        (r.get('ActivityDate') or '')[:10],
+            'lead_id':     r.get('WhoId') or '',
+        })
+    return jsonify({'meetings': meetings, 'total': len(meetings)})
+
+
 # ── SDR Reporting 2026 – MQL / SQL ───────────────────────────────────────────
 
 @app.route('/api/mql-leads')

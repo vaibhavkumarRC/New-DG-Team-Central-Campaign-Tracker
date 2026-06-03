@@ -797,26 +797,32 @@ tfoot td {
       <div class="section-hdr" style="flex-wrap:wrap;gap:12px;margin-bottom:6px">
         <div class="section-title" style="font-size:16px">📊 Meeting Generation Funnel</div>
         <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
-          <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Period</span>
+          <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Meeting Generated</span>
           <div style="display:flex;gap:4px">
-            <button id="mgf-all"    class="chip active" onclick="setMgfPeriod('all')">All</button>
             <button id="mgf-7d"     class="chip"        onclick="setMgfPeriod('7d')">Last 7 Days</button>
             <button id="mgf-30d"    class="chip"        onclick="setMgfPeriod('30d')">Last 30 Days</button>
+            <button id="mgf-qtd"    class="chip active" onclick="setMgfPeriod('qtd')">QTD</button>
             <button id="mgf-custom" class="chip"        onclick="setMgfPeriod('custom')">📅 Custom</button>
           </div>
           <div id="mgfCustomPicker" style="display:none;align-items:center;gap:6px">
-            <input type="date" id="mgfCustomStart" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px" onchange="loadMgf()">
+            <input type="date" id="mgfCustomStart" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px" onchange="applyMgfFilters()">
             <span style="color:var(--text-muted);font-size:12px">→</span>
-            <input type="date" id="mgfCustomEnd"   style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px" onchange="loadMgf()">
+            <input type="date" id="mgfCustomEnd"   style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px" onchange="applyMgfFilters()">
           </div>
-          <select id="mgfSdrFilter" onchange="loadMgf()" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
+          <select id="mgfSdrFilter" onchange="applyMgfFilters()" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
             <option value="">All SDRs</option>
+          </select>
+          <select id="mgfTypeFilter" onchange="applyMgfFilters()" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
+            <option value="">All Meeting Types</option>
+            <option value="Cold">Cold</option>
+            <option value="Conference">Conference</option>
           </select>
         </div>
       </div>
       <div style="font-size:11.5px;color:var(--text-dim);margin-bottom:18px">
         Tracks each meeting from the moment it's booked on Nooks → logged in Salesforce → linked → to its final outcome.
-        <span style="color:#F59E0B;font-weight:600">⚠ Skeleton preview — data wiring pending.</span>
+        <span style="color:#34D399;font-weight:600">Stage 1 (Booked on Nooks) is live.</span>
+        <span style="color:#F59E0B;font-weight:600">Stages 2–3 &amp; outcomes pending data wiring.</span>
       </div>
 
       <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:20px;align-items:start">
@@ -3817,24 +3823,90 @@ const RPT = {
   s1r:  { period:'30d', data:null, filtered:null, sortKey:'date', sortDir:-1 },
 };
 
-// ── Meeting Generation Funnel (skeleton — data wiring pending) ────────────────
-const MGF = { period: 'all', customStart: '', customEnd: '', loaded: false };
+// ── Meeting Generation Funnel ─────────────────────────────────────────────────
+// Stage 1 (Booked on Nooks) is live. Stages 2–3 & outcomes pending data sources.
+const MGF = { data: null, period: 'qtd', customStart: '', customEnd: '' };
 
 function setMgfPeriod(period) {
   MGF.period = period;
-  ['all','7d','30d','custom'].forEach(p => {
+  ['7d','30d','qtd','custom'].forEach(p => {
     const el = document.getElementById(`mgf-${p}`);
     if (el) el.classList.toggle('active', p === period);
   });
   const picker = document.getElementById('mgfCustomPicker');
   if (picker) picker.style.display = period === 'custom' ? 'flex' : 'none';
-  if (period !== 'custom') loadMgf();
+  if (period !== 'custom') applyMgfFilters();
 }
 
 function loadMgf() {
-  // Placeholder — wiring to Nooks dispositions + SFDC fields + Zoom MCP comes next.
-  // The skeleton stays visible with em-dash values until data sources are defined.
-  MGF.loaded = true;
+  if (MGF.data) { applyMgfFilters(); return; }
+  fetch('/api/meeting-funnel')
+    .then(r => r.json())
+    .then(d => {
+      MGF.data = d.meetings || [];
+      populateMgfSdrFilter();
+      applyMgfFilters();
+    })
+    .catch(() => {});
+}
+
+function populateMgfSdrFilter() {
+  const sel = document.getElementById('mgfSdrFilter');
+  if (!sel) return;
+  const prev = sel.value;
+  const sdrs = [...new Set((MGF.data || []).map(m => m.sdr).filter(x => x && x !== '—'))].sort();
+  sel.innerHTML = '<option value="">All SDRs</option>' + sdrs.map(s => `<option value="${s}">${s}</option>`).join('');
+  if (sdrs.includes(prev)) sel.value = prev;
+}
+
+function mgfPeriodBounds() {
+  const today = new Date();
+  const toYMD = d => d.toISOString().slice(0, 10);
+  let start = '', end = toYMD(today);
+  if (MGF.period === '7d')      { const s = new Date(today); s.setDate(s.getDate() - 7);  start = toYMD(s); }
+  else if (MGF.period === '30d'){ const s = new Date(today); s.setDate(s.getDate() - 30); start = toYMD(s); }
+  else if (MGF.period === 'qtd'){ const qm = Math.floor(today.getMonth() / 3) * 3; start = toYMD(new Date(today.getFullYear(), qm, 1)); }
+  else if (MGF.period === 'custom') {
+    start = document.getElementById('mgfCustomStart')?.value || '';
+    end   = document.getElementById('mgfCustomEnd')?.value   || end;
+  }
+  return { start, end };
+}
+
+function applyMgfFilters() {
+  const data  = MGF.data || [];
+  const sdrF  = document.getElementById('mgfSdrFilter')?.value  || '';
+  const typeF = document.getElementById('mgfTypeFilter')?.value || '';
+  const { start, end } = mgfPeriodBounds();
+
+  const filtered = data.filter(m => {
+    if (start && m.date < start) return false;
+    if (end   && m.date > end)   return false;
+    if (sdrF  && m.sdr  !== sdrF) return false;
+    if (typeF && m.type !== typeF) return false;
+    return true;
+  });
+
+  // ── Stage 1: Booked on Nooks ──
+  const booked = filtered.length;
+  const cold   = filtered.filter(m => m.type === 'Cold').length;
+  const conf   = filtered.filter(m => m.type === 'Conference').length;
+  const bookedEl = document.getElementById('mgfBookedVal');
+  if (bookedEl) bookedEl.textContent = booked;
+  const bookedBar = document.getElementById('mgfBookedBar');
+  if (bookedBar) bookedBar.textContent = `${cold} Cold · ${conf} Conf`;
+
+  // ── Stages 2–3: pending data wiring (shown muted) ──
+  ['mgfUpdated','mgfLinked'].forEach(id => {
+    const v = document.getElementById(id + 'Val');
+    if (v) v.textContent = '—';
+    const b = document.getElementById(id + 'Bar');
+    if (b) { b.style.width = '0%'; b.textContent = ''; }
+  });
+  ['mgfDoneVal','mgfUpcomingVal','mgfInvalidVal','mgfDoneRate'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '—';
+  });
 }
 
 // ── Total Meeting Generated by SDRs ──────────────────────────────────────────
@@ -4098,6 +4170,7 @@ function renderReportingTab() {
     const el = document.getElementById(`${sec}DateRange`);
     if(el) el.textContent = rptDateLabel(RPT[sec].period, sec);
   });
+  if(!MGF.data) loadMgf();
   if(!MTG.data) fetchMtgLeads();
   if(!RPT.mql.data) fetchRptSection('mql');
   if(!RPT.sql.data) fetchRptSection('sql');
