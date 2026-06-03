@@ -2839,6 +2839,13 @@ def _zoom_meeting_outcome(meeting_id, start_time, cache):
     # Completed meetings never change — serve from cache.
     c = cache.get(meeting_id)
     if c and c.get('outcome') == 'done':
+        # Self-heal: backfill participants if they were cached empty (e.g. before
+        # the list-participants scope was granted).
+        if not c.get('participants'):
+            parts = _zoom_participants(meeting_id)
+            if parts:
+                c['participants'] = parts
+                cache[meeting_id] = c
         return c
 
     # Basic meeting info (topic/host/scheduled) from the in-memory validation cache.
