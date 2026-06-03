@@ -2055,12 +2055,15 @@ def api_meetings_leads():
 
 @app.route('/api/status-leads')
 def api_status_leads():
-    """Return leads filtered by Meeting_Status__c. ?status=done|noshow|sql [&sdr=] [&segment=]"""
-    status       = request.args.get('status',   '').strip()
-    sdr          = request.args.get('sdr',      '').strip()
-    segment      = request.args.get('segment',  '').strip()
-    pod_team     = request.args.get('pod_team', '').strip()
-    # camp_start / camp_end: filter WHICH campaigns are included by their start_date
+    """Return leads filtered by Meeting_Status__c. ?status=done|noshow|sql [&sdr=] [&segment=]
+
+    Uses the same frozen ledger IDs that the dashboard card counts use, so the
+    modal always matches the card number exactly.
+    """
+    status        = request.args.get('status',   '').strip()
+    sdr           = request.args.get('sdr',      '').strip()
+    segment       = request.args.get('segment',  '').strip()
+    pod_team      = request.args.get('pod_team', '').strip()
     camp_period_start = request.args.get('camp_start', '').strip() or None
     camp_period_end   = request.args.get('camp_end',   '').strip() or None
 
@@ -2078,33 +2081,46 @@ def api_status_leads():
         sfdc_name  = SFDC_NAME_MAP_REVERSE.get(sdr, sdr)
         sdr_clause = f" AND Meeting_Generated_by__c = '{esc(sfdc_name)}'"
 
-    camps_cfg   = load_campaigns()
+    # ── Collect frozen lead IDs from ledger (same source as the card counts) ──
+    camps_cfg = load_campaigns()
     if segment:
         camps_cfg = [c for c in camps_cfg if (c.get('segment') or '').strip() == segment]
     if pod_team:
         camps_cfg = [c for c in camps_cfg if (c.get('pod_team') or '').strip() == pod_team]
-    # Filter by campaign start_date to match the dashboard period filter
     if camp_period_start:
         camps_cfg = [c for c in camps_cfg if (c.get('start_date') or '') >= camp_period_start]
     if camp_period_end:
         camps_cfg = [c for c in camps_cfg if (c.get('start_date') or '') <= camp_period_end]
-    all_records = []
+
+    ledger = load_ledger()
+    all_lead_ids = []
+    seen = set()
     for camp_cfg in camps_cfg:
         cname = camp_cfg.get('name', '').strip()
         if not cname:
             continue
-        start = (camp_cfg.get('start_date') or '').strip()
-        end   = (camp_cfg.get('end_date')   or '').strip()
-        dt = ''
-        if start: dt += f" AND Meeting_Generated_on__c >= {start}"
-        if end:   dt += f" AND Meeting_Generated_on__c <= {end}"
+        entry    = ledger.get(cname, {})
+        lead_ids = entry.get('lead_ids', []) if isinstance(entry, dict) else []
+        for lid in lead_ids:
+            if lid not in seen:
+                seen.add(lid)
+                all_lead_ids.append(lid)
+
+    if not all_lead_ids:
+        return jsonify({'leads': [], 'total': 0})
+
+    # ── Query those IDs with the status filter (batched, no date restriction) ─
+    all_records = []
+    for i in range(0, len(all_lead_ids), _BATCH_SIZE):
+        batch   = all_lead_ids[i:i + _BATCH_SIZE]
+        ids_str = ','.join(f"'{lid}'" for lid in batch)
         q = (f"SELECT Id, Name, Title, Company, Campaign__c, "
              f"Meeting_Generated_by__c, Meeting_Generated_on__c, Meeting_Status__c "
              f"FROM Lead "
-             f"WHERE Campaign__c = '{esc(cname)}' "
-             f"AND {status_clause}{sdr_clause}{dt} "
+             f"WHERE Id IN ({ids_str}) "
+             f"AND {status_clause}{sdr_clause} "
              f"ORDER BY Meeting_Generated_on__c DESC NULLS LAST LIMIT 500")
-        res = soql(q)
+        res = soql(q, paginate=False)
         if res and res.get('records'):
             all_records.extend(res['records'])
 
