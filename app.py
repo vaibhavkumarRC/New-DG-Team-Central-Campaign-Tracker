@@ -2722,6 +2722,200 @@ def _zoom_classify_link(url):
         _zoom_meeting_cache[mid] = {'status': status, 'data': data}
     return status, data
 
+# ── Zoom outcome helpers (Done / Upcoming / Did-not-happen + AI summary) ──────
+import urllib.error as _uerr2
+
+ZOOM_OUTCOMES_FILE = os.path.join(DATA_DIR, 'zoom_outcomes.json')
+_zoom_outcomes_lock = threading.Lock()
+
+def _load_outcomes_cache():
+    if os.path.exists(ZOOM_OUTCOMES_FILE):
+        try:
+            with open(ZOOM_OUTCOMES_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def _save_outcomes_cache(cache):
+    try:
+        with open(ZOOM_OUTCOMES_FILE, 'w') as f:
+            json.dump(cache, f)
+    except Exception as e:
+        print(f'[Zoom] outcomes cache save error: {e}')
+
+def _zoom_get(url, timeout=15):
+    """GET a Zoom API/url with the S2S bearer token. Returns parsed JSON or None."""
+    tok = _zoom_token()
+    if not tok:
+        return None
+    try:
+        req = _urllib_req.Request(url, headers={'Authorization': f'Bearer {tok}'})
+        with _urllib_req.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode())
+    except Exception:
+        return None
+
+def _zoom_past_meeting(meeting_id):
+    """GET /past_meetings/{id} — returns dict if the meeting actually occurred, else None."""
+    return _zoom_get(f"https://api.zoom.us/v2/past_meetings/{meeting_id}")
+
+def _zoom_recording_assets(meeting_id):
+    """Return {'transcript':bool,'summary_url':..,'next_steps_url':..,'duration':int}."""
+    d = _zoom_get(f"https://api.zoom.us/v2/meetings/{meeting_id}/recordings")
+    out = {'transcript': False, 'summary_url': None, 'next_steps_url': None,
+           'duration': (d or {}).get('duration')}
+    for f in (d or {}).get('recording_files', []):
+        rt = f.get('recording_type')
+        if rt == 'audio_transcript':       out['transcript']     = True
+        elif rt == 'summary':              out['summary_url']    = f.get('download_url')
+        elif rt == 'summary_next_steps':   out['next_steps_url'] = f.get('download_url')
+    return out
+
+def _zoom_download(url):
+    """Download a Zoom recording file (summary/next_steps) → parsed JSON or {'_text':..}."""
+    if not url:
+        return None
+    tok = _zoom_token()
+    try:
+        req = _urllib_req.Request(url, headers={'Authorization': f'Bearer {tok}'})
+        with _urllib_req.urlopen(req, timeout=20) as resp:
+            raw = resp.read().decode('utf-8', 'ignore')
+        try:
+            return json.loads(raw)
+        except Exception:
+            return {'_text': raw}
+    except Exception:
+        return None
+
+def _zoom_participants(meeting_id):
+    """GET past-meeting participants. Returns list of names ([] if no scope/none)."""
+    d = _zoom_get(f"https://api.zoom.us/v2/past_meetings/{meeting_id}/participants?page_size=300")
+    names = []
+    for p in (d or {}).get('participants', []):
+        nm = p.get('name') or p.get('user_name')
+        if nm and nm not in names:
+            names.append(nm)
+    return names
+
+def _parse_summary(j):
+    if not j:
+        return ''
+    if isinstance(j, dict):
+        return (j.get('overall_summary') or j.get('summary') or j.get('_text') or '').strip()
+    return str(j).strip()
+
+def _parse_next_steps(j):
+    if not j:
+        return ''
+    if isinstance(j, dict):
+        for k in ('next_steps', 'summary_next_steps', 'items'):
+            v = j.get(k)
+            if isinstance(v, list) and v:
+                parts = []
+                for it in v:
+                    if isinstance(it, str):
+                        parts.append(it)
+                    elif isinstance(it, dict):
+                        parts.append(it.get('text') or it.get('label') or it.get('description') or '')
+                return '\n'.join([p for p in parts if p]).strip()
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+        return (j.get('_text') or '').strip()
+    return str(j).strip()
+
+def _zoom_meeting_outcome(meeting_id, start_time, cache):
+    """Classify a single correct meeting → done / upcoming / didnt_happen,
+    fetching AI summary + next steps + participants for completed meetings.
+    'done' results are cached permanently; others are recomputed each call."""
+    now = datetime.utcnow()
+    st  = None
+    if start_time:
+        try:
+            st = datetime.fromisoformat(str(start_time).replace('Z', '').replace('+00:00', ''))
+        except Exception:
+            st = None
+
+    # Completed meetings never change — serve from cache.
+    c = cache.get(meeting_id)
+    if c and c.get('outcome') == 'done':
+        return c
+
+    # Basic meeting info (topic/host/scheduled) from the in-memory validation cache.
+    meeting = None
+    with _zoom_meeting_lock:
+        mc = _zoom_meeting_cache.get(meeting_id)
+        if mc:
+            meeting = mc.get('data')
+    if meeting is None:
+        meeting = _zoom_get_meeting(meeting_id)[1]
+    meeting = meeting or {}
+    topic = meeting.get('topic') or ''
+    host  = meeting.get('host_email') or ''
+    sched = meeting.get('start_time') or start_time or ''
+
+    # Upcoming?
+    if st and st > now:
+        return {'outcome': 'upcoming', 'topic': topic, 'host': host, 'scheduled': sched}
+
+    # Past → did it actually occur?
+    pm = _zoom_past_meeting(meeting_id)
+    occurred = bool(pm and (pm.get('duration') or 0) >= 1)
+    if occurred:
+        assets  = _zoom_recording_assets(meeting_id)
+        summary = _parse_summary(_zoom_download(assets.get('summary_url')))
+        nexts   = _parse_next_steps(_zoom_download(assets.get('next_steps_url')))
+        parts   = _zoom_participants(meeting_id)
+        result = {
+            'outcome':      'done',
+            'topic':        pm.get('topic') or topic,
+            'host':         host,
+            'scheduled':    sched,
+            'duration':     pm.get('duration'),
+            'transcript':   assets.get('transcript', False),
+            'summary':      summary,
+            'next_steps':   nexts,
+            'participants': parts,
+            'fetched_at':   now.isoformat(),
+        }
+        cache[meeting_id] = result
+        return result
+
+    return {'outcome': 'didnt_happen', 'topic': topic, 'host': host, 'scheduled': sched}
+
+
+@app.route('/api/meeting-outcomes', methods=['POST'])
+def api_meeting_outcomes():
+    """Classify outcomes for the funnel's 'correct' meetings.
+    Body: {"items": [{"lead_id":..,"meeting_id":..,"start_time":..}, ...]}
+    Returns {"configured":bool, "outcomes": {lead_id: {...}}}.
+    Heavy Zoom calls are cached (completed meetings stored permanently)."""
+    if not _zoom_configured():
+        return jsonify({'configured': False, 'outcomes': {}})
+    body  = request.get_json(silent=True) or {}
+    items = body.get('items', [])
+    cache = _load_outcomes_cache()
+    results = {}
+    lock = threading.Lock()
+
+    def _work(it):
+        lead_id = it.get('lead_id')
+        mid     = it.get('meeting_id')
+        st      = it.get('start_time')
+        if not mid or not lead_id:
+            return
+        try:
+            res = _zoom_meeting_outcome(mid, st, cache)
+        except Exception as e:
+            res = {'outcome': 'unknown', 'error': str(e)}
+        with lock:
+            results[lead_id] = res
+
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        list(ex.map(_work, items))
+    _save_outcomes_cache(cache)
+    return jsonify({'configured': True, 'outcomes': results})
+
 
 # ── Meeting Generation Funnel — Stage 1: Booked on Nooks ─────────────────────
 
@@ -2840,6 +3034,7 @@ def api_meeting_funnel():
     def _classify(rec):
         status, data = _zoom_classify_link(rec.get('zoom_url'))
         rec['zoom_status'] = status
+        rec['zoom_meeting_id'] = _zoom_extract_meeting_id(rec.get('zoom_url')) if status in ('correct', 'wrong') else ''
         if data:
             rec['zoom_topic']      = data.get('topic')
             rec['zoom_start']      = data.get('start_time')
