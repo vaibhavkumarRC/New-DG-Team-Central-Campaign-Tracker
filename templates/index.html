@@ -821,8 +821,8 @@ tfoot td {
       </div>
       <div style="font-size:11.5px;color:var(--text-dim);margin-bottom:18px">
         Tracks each meeting from the moment it's booked on Nooks → logged in Salesforce → linked → to its final outcome.
-        <span style="color:#34D399;font-weight:600">Stages 1–2 are live.</span>
-        <span style="color:#F59E0B;font-weight:600">Stage 3 &amp; outcomes pending data wiring.</span>
+        <span style="color:#34D399;font-weight:600">Stages 1–3 are live.</span>
+        <span style="color:#F59E0B;font-weight:600">Outcomes (Done / Upcoming / Invalid) pending.</span>
       </div>
 
       <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:20px;align-items:start">
@@ -863,9 +863,25 @@ tfoot td {
               <span class="funnel-val" id="mgfLinkedVal" style="color:#F59E0B">—</span>
             </div>
             <div class="funnel-track">
-              <div class="funnel-bar" id="mgfLinkedBar" style="width:55%;background:linear-gradient(90deg,#D97706,#F59E0B)">—</div>
+              <div class="funnel-bar" id="mgfLinkedBar" style="width:0%;background:linear-gradient(90deg,#D97706,#F59E0B)">—</div>
             </div>
           </div>
+          <!-- Stage 3 link-quality split (clickable) -->
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <span onclick="openMgfStage3Modal('correct')" style="cursor:pointer;flex:1;text-align:center;background:rgba(52,211,153,0.10);border:1px solid rgba(52,211,153,0.3);border-radius:8px;padding:8px 6px" title="Valid, resolvable Zoom meeting">
+              <div style="font-size:18px;font-weight:800;color:#34D399" id="mgfZoomCorrectVal">—</div>
+              <div style="font-size:9.5px;color:var(--text-muted);font-weight:600">✅ Correct ↗</div>
+            </span>
+            <span onclick="openMgfStage3Modal('wrong')" style="cursor:pointer;flex:1;text-align:center;background:rgba(239,68,68,0.10);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:8px 6px" title="Link filled but not a valid Zoom meeting">
+              <div style="font-size:18px;font-weight:800;color:#EF4444" id="mgfZoomWrongVal">—</div>
+              <div style="font-size:9.5px;color:var(--text-muted);font-weight:600">⚠️ Wrong ↗</div>
+            </span>
+            <span onclick="openMgfStage3Modal('empty')" style="cursor:pointer;flex:1;text-align:center;background:rgba(156,163,175,0.10);border:1px solid rgba(156,163,175,0.3);border-radius:8px;padding:8px 6px" title="Zoom link field is empty">
+              <div style="font-size:18px;font-weight:800;color:#9CA3AF" id="mgfZoomEmptyVal">—</div>
+              <div style="font-size:9.5px;color:var(--text-muted);font-weight:600">⬜ Empty ↗</div>
+            </span>
+          </div>
+          <div id="mgfZoomPendingNote" style="display:none;font-size:10.5px;color:#F59E0B;margin-top:6px">⏳ <span id="mgfZoomPendingVal">0</span> link(s) awaiting Zoom validation (add Zoom env vars on Railway).</div>
         </div>
 
         <!-- RIGHT: Outcome breakdown -->
@@ -3934,11 +3950,27 @@ function applyMgfFilters() {
   const conv1 = document.getElementById('mgfConv1');
   if (conv1) conv1.textContent = `↓ ${upPct}% updated in Salesforce`;
 
-  // ── Stage 3 & outcomes: pending data wiring (shown muted) ──
+  // ── Stage 3: Zoom link quality (correct / wrong / empty) ──
+  const correct = filtered.filter(m => m.zoom_status === 'correct').length;
+  const wrong   = filtered.filter(m => m.zoom_status === 'wrong').length;
+  const pending = filtered.filter(m => m.zoom_status === 'pending').length;
+  const empty   = filtered.filter(m => !m.zoom_status || m.zoom_status === 'empty').length;
+  const linked  = correct + wrong + pending;           // non-empty links
+  const lpct    = booked ? Math.round(linked / booked * 100) : 0;
   const linkedVal = document.getElementById('mgfLinkedVal');
-  if (linkedVal) linkedVal.textContent = '—';
+  if (linkedVal) linkedVal.textContent = linked;
   const linkedBar = document.getElementById('mgfLinkedBar');
-  if (linkedBar) { linkedBar.style.width = '0%'; linkedBar.textContent = ''; }
+  if (linkedBar) { linkedBar.style.width = (booked ? (linked / booked * 100) : 0) + '%'; linkedBar.textContent = lpct ? lpct + '%' : ''; }
+  const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  setTxt('mgfZoomCorrectVal', pending ? '…' : correct);
+  setTxt('mgfZoomWrongVal',   pending ? '…' : wrong);
+  setTxt('mgfZoomEmptyVal',   empty);
+  const pendNote = document.getElementById('mgfZoomPendingNote');
+  if (pendNote) { pendNote.style.display = pending ? 'block' : 'none'; setTxt('mgfZoomPendingVal', pending); }
+  const conv2 = document.getElementById('mgfConv2');
+  if (conv2) conv2.textContent = `↓ ${lpct}% have a Zoom link`;
+
+  // ── Outcomes (Done / Upcoming / Invalid): pending data wiring ──
   ['mgfDoneVal','mgfUpcomingVal','mgfInvalidVal','mgfDoneRate'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = '—';
@@ -3964,6 +3996,30 @@ const MGF_STAGE2_COLS = [
   { label: 'Title',      key: 'title'   },
   { label: 'Company',    key: 'company' },
 ];
+const MGF_STAGE3_COLS = [
+  { label: 'First Name', key: 'first_name', type: 'bold' },
+  { label: 'Last Name',  key: 'last_name',  type: 'link' },
+  { label: 'Title',      key: 'title'   },
+  { label: 'Company',    key: 'company' },
+  { label: 'Zoom Link',  key: 'zoom_url', type: 'zoom' },
+];
+
+function openMgfStage3Modal(kind) {
+  const rows = mgfFilteredData().filter(m => {
+    const st = m.zoom_status || 'empty';
+    if (kind === 'correct') return st === 'correct';
+    if (kind === 'wrong')   return st === 'wrong';
+    if (kind === 'empty')   return st === 'empty';
+    return false;
+  });
+  const titles = {
+    correct: '✅ Correct Zoom Link — Lead Details',
+    wrong:   '⚠️ Wrong Zoom Link — Lead Details',
+    empty:   '⬜ Empty Zoom Link — Lead Details',
+  };
+  const cols = kind === 'empty' ? MGF_STAGE2_COLS : MGF_STAGE3_COLS;
+  openMgfModal(titles[kind], rows, cols, n => `${n} lead${n !== 1 ? 's' : ''}`);
+}
 
 function openMgfStage1Modal() {
   openMgfModal('📞 Booked on Nooks — Lead Details', mgfFilteredData(), MGF_STAGE1_COLS,

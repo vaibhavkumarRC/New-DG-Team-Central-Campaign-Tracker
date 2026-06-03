@@ -2604,6 +2604,97 @@ def api_meeting_leads():
     return jsonify({'leads': leads, 'total': len(leads)})
 
 
+# ── Zoom Server-to-Server integration ────────────────────────────────────────
+import base64 as _b64
+import re as _re_zoom
+
+ZOOM_ACCOUNT_ID    = os.environ.get('ZOOM_ACCOUNT_ID', '')
+ZOOM_CLIENT_ID     = os.environ.get('ZOOM_CLIENT_ID', '')
+ZOOM_CLIENT_SECRET = os.environ.get('ZOOM_CLIENT_SECRET', '')
+
+_zoom_token_cache   = {'token': None, 'expires_at': 0}
+_zoom_token_lock    = threading.Lock()
+_zoom_meeting_cache = {}        # meeting_id → {'status': 'correct'|'wrong', 'data': {...}}
+_zoom_meeting_lock  = threading.Lock()
+
+def _zoom_configured():
+    return bool(ZOOM_ACCOUNT_ID and ZOOM_CLIENT_ID and ZOOM_CLIENT_SECRET)
+
+def _zoom_token():
+    """Return a cached Zoom S2S access token, refreshing when near expiry."""
+    if not _zoom_configured():
+        return None
+    with _zoom_token_lock:
+        now = time.time()
+        if _zoom_token_cache['token'] and now < _zoom_token_cache['expires_at'] - 60:
+            return _zoom_token_cache['token']
+        try:
+            auth = _b64.b64encode(f"{ZOOM_CLIENT_ID}:{ZOOM_CLIENT_SECRET}".encode()).decode()
+            url  = ("https://zoom.us/oauth/token?grant_type=account_credentials"
+                    f"&account_id={ZOOM_ACCOUNT_ID}")
+            req  = _urllib_req.Request(url, method='POST',
+                       headers={'Authorization': f'Basic {auth}'})
+            with _urllib_req.urlopen(req, timeout=15) as resp:
+                d = json.loads(resp.read().decode())
+            tok = d.get('access_token')
+            if tok:
+                _zoom_token_cache['token']      = tok
+                _zoom_token_cache['expires_at'] = now + int(d.get('expires_in', 3600))
+                return tok
+            print(f'[Zoom] token response had no access_token: {d}')
+        except Exception as e:
+            print(f'[Zoom] token error: {e}')
+        return None
+
+def _zoom_extract_meeting_id(url):
+    """Extract the numeric Zoom meeting ID from a join URL. '' if none found."""
+    if not url:
+        return ''
+    m = _re_zoom.search(r'/(?:j|w|wc/join)/(\d{9,12})', url)
+    if m:
+        return m.group(1)
+    m = _re_zoom.search(r'(\d{9,12})', url.replace(' ', ''))
+    return m.group(1) if m else ''
+
+def _zoom_get_meeting(meeting_id):
+    """Fetch meeting details by numeric ID. Returns dict, or None on 404/error."""
+    tok = _zoom_token()
+    if not tok or not meeting_id:
+        return None
+    try:
+        req = _urllib_req.Request(
+            f"https://api.zoom.us/v2/meetings/{meeting_id}",
+            headers={'Authorization': f'Bearer {tok}'})
+        with _urllib_req.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode())
+    except Exception:
+        return None   # 404 / invalid / not in this account
+
+def _zoom_classify_link(url):
+    """Classify a Zoom link → ('empty'|'correct'|'wrong'|'pending', meeting_data).
+      • empty   — field blank
+      • wrong   — filled but no parseable meeting ID, or ID doesn't resolve
+      • correct — meeting ID resolves to a real meeting in the account
+      • pending — Zoom not configured yet (creds missing); can't validate
+    Results cached per meeting_id."""
+    if not url or not str(url).strip():
+        return 'empty', None
+    mid = _zoom_extract_meeting_id(url)
+    if not mid:
+        return 'wrong', None
+    if not _zoom_configured():
+        return 'pending', None
+    with _zoom_meeting_lock:
+        if mid in _zoom_meeting_cache:
+            c = _zoom_meeting_cache[mid]
+            return c['status'], c['data']
+    data   = _zoom_get_meeting(mid)
+    status = 'correct' if (data and data.get('id')) else 'wrong'
+    with _zoom_meeting_lock:
+        _zoom_meeting_cache[mid] = {'status': status, 'data': data}
+    return status, data
+
+
 # ── Meeting Generation Funnel — Stage 1: Booked on Nooks ─────────────────────
 
 @app.route('/api/meeting-funnel')
@@ -2715,7 +2806,26 @@ def api_meeting_funnel():
             'is_updated':    is_updated,
             'sf_url':        sf_url,
         })
-    return jsonify({'meetings': meetings, 'total': len(meetings)})
+
+    # ── Stage 3: classify each Zoom link (correct / wrong / empty) ──
+    # Parallelised; per-meeting results are cached so repeat loads are instant.
+    def _classify(rec):
+        status, data = _zoom_classify_link(rec.get('zoom_url'))
+        rec['zoom_status'] = status
+        if data:
+            rec['zoom_topic']      = data.get('topic')
+            rec['zoom_start']      = data.get('start_time')
+            rec['zoom_raw_status'] = data.get('status')
+            rec['zoom_duration']   = data.get('duration')
+            rec['zoom_host']       = data.get('host_email')
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        list(ex.map(_classify, meetings))
+
+    return jsonify({
+        'meetings':        meetings,
+        'total':           len(meetings),
+        'zoom_configured': _zoom_configured(),
+    })
 
 
 # ── SDR Reporting 2026 – MQL / SQL ───────────────────────────────────────────
