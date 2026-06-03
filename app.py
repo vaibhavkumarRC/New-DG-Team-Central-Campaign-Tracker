@@ -1152,14 +1152,20 @@ def sync():
         print(f'[cache] save error: {e}')
 
 def bg_loop():
-    """Auto-sync once daily at 05:00 IST (23:30 UTC)."""
+    """Auto-sync twice daily: 05:00 IST (23:30 UTC) and 17:00 IST (11:30 UTC)."""
+    # Sync times in UTC hours/minutes
+    SYNC_TIMES = [(23, 30), (11, 30)]   # 05:00 IST, 17:00 IST
     while True:
         now_utc = datetime.utcnow()
-        # 05:00 IST = 23:30 UTC previous day
-        target = now_utc.replace(hour=23, minute=30, second=0, microsecond=0)
-        if now_utc >= target:
-            target = target.replace(day=target.day + 1)
-        seconds_until = (target - now_utc).total_seconds()
+        # Find the next upcoming sync time
+        candidates = []
+        for h, m in SYNC_TIMES:
+            t = now_utc.replace(hour=h, minute=m, second=0, microsecond=0)
+            if t <= now_utc:
+                t = t.replace(day=t.day + 1)
+            candidates.append(t)
+        next_sync = min(candidates)
+        seconds_until = (next_sync - now_utc).total_seconds()
         time.sleep(seconds_until)
         sync()
 
