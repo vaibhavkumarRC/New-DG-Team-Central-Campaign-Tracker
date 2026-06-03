@@ -792,6 +792,127 @@ tfoot td {
   <!-- SDR REPORTING 2026 -->
   <div id="tab-reporting" class="tab-panel">
 
+    <!-- ── MEETING GENERATION FUNNEL SECTION ── -->
+    <div style="margin-bottom:36px">
+      <div class="section-hdr" style="flex-wrap:wrap;gap:12px;margin-bottom:6px">
+        <div class="section-title" style="font-size:16px">📊 Meeting Generation Funnel</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
+          <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Period</span>
+          <div style="display:flex;gap:4px">
+            <button id="mgf-all"    class="chip active" onclick="setMgfPeriod('all')">All</button>
+            <button id="mgf-7d"     class="chip"        onclick="setMgfPeriod('7d')">Last 7 Days</button>
+            <button id="mgf-30d"    class="chip"        onclick="setMgfPeriod('30d')">Last 30 Days</button>
+            <button id="mgf-custom" class="chip"        onclick="setMgfPeriod('custom')">📅 Custom</button>
+          </div>
+          <div id="mgfCustomPicker" style="display:none;align-items:center;gap:6px">
+            <input type="date" id="mgfCustomStart" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px" onchange="loadMgf()">
+            <span style="color:var(--text-muted);font-size:12px">→</span>
+            <input type="date" id="mgfCustomEnd"   style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px" onchange="loadMgf()">
+          </div>
+          <select id="mgfSdrFilter" onchange="loadMgf()" style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">
+            <option value="">All SDRs</option>
+          </select>
+        </div>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-dim);margin-bottom:18px">
+        Tracks each meeting from the moment it's booked on Nooks → logged in Salesforce → linked → to its final outcome.
+        <span style="color:#F59E0B;font-weight:600">⚠ Skeleton preview — data wiring pending.</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:20px;align-items:start">
+
+        <!-- LEFT: Descending funnel bars -->
+        <div class="chart-card" style="padding:24px 28px">
+          <!-- Stage 1 -->
+          <div class="funnel-item">
+            <div class="funnel-meta">
+              <span class="funnel-label">📞 Booked on Nooks</span>
+              <span class="funnel-val" id="mgfBookedVal" style="color:#3B82F6">—</span>
+            </div>
+            <div class="funnel-track">
+              <div class="funnel-bar" id="mgfBookedBar" style="width:100%;background:linear-gradient(90deg,#2563EB,#3B82F6)">100%</div>
+            </div>
+          </div>
+          <div class="funnel-conv" id="mgfConv1">↓ logged in Salesforce</div>
+
+          <!-- Stage 2 -->
+          <div class="funnel-item">
+            <div class="funnel-meta">
+              <span class="funnel-label">📝 Updated on SFDC</span>
+              <span class="funnel-val" id="mgfUpdatedVal" style="color:#A78BFA">—</span>
+            </div>
+            <div class="funnel-track">
+              <div class="funnel-bar" id="mgfUpdatedBar" style="width:75%;background:linear-gradient(90deg,#7C3AED,#A78BFA)">—</div>
+            </div>
+          </div>
+          <div class="funnel-conv" id="mgfConv2">↓ Zoom link added</div>
+
+          <!-- Stage 3 -->
+          <div class="funnel-item">
+            <div class="funnel-meta">
+              <span class="funnel-label">🔗 Zoom Link Added</span>
+              <span class="funnel-val" id="mgfLinkedVal" style="color:#F59E0B">—</span>
+            </div>
+            <div class="funnel-track">
+              <div class="funnel-bar" id="mgfLinkedBar" style="width:55%;background:linear-gradient(90deg,#D97706,#F59E0B)">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Outcome breakdown -->
+        <div class="chart-card" style="padding:24px 28px;display:flex;flex-direction:column;gap:14px">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Meeting Outcomes <span style="font-weight:500;text-transform:none;color:var(--text-dim)">(of linked meetings)</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+            <div style="background:rgba(52,211,153,0.10);border:1px solid rgba(52,211,153,0.3);border-radius:10px;padding:14px 12px;text-align:center">
+              <div style="font-size:24px">✅</div>
+              <div id="mgfDoneVal" style="font-size:24px;font-weight:800;color:#34D399">—</div>
+              <div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-top:2px">Meetings Done</div>
+            </div>
+            <div style="background:rgba(59,130,246,0.10);border:1px solid rgba(59,130,246,0.3);border-radius:10px;padding:14px 12px;text-align:center">
+              <div style="font-size:24px">📅</div>
+              <div id="mgfUpcomingVal" style="font-size:24px;font-weight:800;color:#3B82F6">—</div>
+              <div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-top:2px">Upcoming</div>
+            </div>
+            <div style="background:rgba(239,68,68,0.10);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:14px 12px;text-align:center">
+              <div style="font-size:24px">❌</div>
+              <div id="mgfInvalidVal" style="font-size:24px;font-weight:800;color:#EF4444">—</div>
+              <div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-top:2px">Invalid Link</div>
+            </div>
+          </div>
+          <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:2px">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Booked → Done Rate</div>
+            <div id="mgfDoneRate" style="font-size:34px;font-weight:900;color:var(--gold)">—</div>
+            <div style="font-size:11px;color:var(--text-dim);line-height:1.5;margin-top:6px">
+              % of meetings booked on Nooks that actually got done (verified via Zoom).
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Meetings Done — with summaries (collapsible table) -->
+      <div style="margin-top:20px">
+        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px">✅ Completed Meetings &amp; Summaries</div>
+        <div id="mgfDoneTableWrap" style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border)">
+                <th style="text-align:left;padding:8px 10px;color:var(--text-muted);font-size:11px;font-weight:700">Lead</th>
+                <th style="text-align:left;padding:8px 10px;color:var(--text-muted);font-size:11px;font-weight:700">Company</th>
+                <th style="text-align:left;padding:8px 10px;color:var(--text-muted);font-size:11px;font-weight:700">SDR</th>
+                <th style="text-align:left;padding:8px 10px;color:var(--text-muted);font-size:11px;font-weight:700">Meeting Date</th>
+                <th style="text-align:left;padding:8px 10px;color:var(--text-muted);font-size:11px;font-weight:700">Duration</th>
+                <th style="text-align:left;padding:8px 10px;color:var(--text-muted);font-size:11px;font-weight:700">Summary</th>
+              </tr>
+            </thead>
+            <tbody id="mgfDoneBody">
+              <tr><td colspan="6" style="text-align:center;padding:28px;color:var(--text-dim);font-size:12px">Summaries will appear here once Zoom data is wired up.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <!-- ── END MEETING GENERATION FUNNEL SECTION ── -->
+
     <!-- ── TOTAL MEETINGS GENERATED BY SDRs SECTION ── -->
     <div style="margin-bottom:32px">
       <div class="section-hdr" style="flex-wrap:wrap;gap:12px;margin-bottom:18px">
@@ -3695,6 +3816,26 @@ const RPT = {
   sql:  { period:'all', data:null, filtered:null, sortKey:'date', sortDir:-1, customStart:'', customEnd:'' },
   s1r:  { period:'30d', data:null, filtered:null, sortKey:'date', sortDir:-1 },
 };
+
+// ── Meeting Generation Funnel (skeleton — data wiring pending) ────────────────
+const MGF = { period: 'all', customStart: '', customEnd: '', loaded: false };
+
+function setMgfPeriod(period) {
+  MGF.period = period;
+  ['all','7d','30d','custom'].forEach(p => {
+    const el = document.getElementById(`mgf-${p}`);
+    if (el) el.classList.toggle('active', p === period);
+  });
+  const picker = document.getElementById('mgfCustomPicker');
+  if (picker) picker.style.display = period === 'custom' ? 'flex' : 'none';
+  if (period !== 'custom') loadMgf();
+}
+
+function loadMgf() {
+  // Placeholder — wiring to Nooks dispositions + SFDC fields + Zoom MCP comes next.
+  // The skeleton stays visible with em-dash values until data sources are defined.
+  MGF.loaded = true;
+}
 
 // ── Total Meeting Generated by SDRs ──────────────────────────────────────────
 const MTG = { data: null, filtered: null, sortKey: 'generated_on', sortDir: -1, period: 'all', customStart: '', customEnd: '' };
