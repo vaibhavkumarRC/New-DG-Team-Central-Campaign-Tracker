@@ -848,8 +848,60 @@ def campaign_metrics(c, start_override=None, end_override=None):
     else:
         sf_meeting_records = []
 
+    # ── Step 2b: Nooks-booked meetings (count even if the SFDC lead isn't updated)
+    # A meeting is "generated" the moment an SDR logs a booking disposition on a
+    # [Nooks Call] task. We fold those leads into the meeting ledger too, so the
+    # dashboard's Meetings Generated reflects Nooks bookings immediately — even
+    # before the SDR fills Meeting_Generated_on__c on the lead.
+    # (The Meeting Generation Funnel is unaffected — it reads Nooks tasks directly.)
+    nooks_meeting_records = []
+    if frozen_lead_ids:
+        BOOK_DISP = ("'Answered - Booked Meeting','Meeting Generated- Cold',"
+                     "'Meeting Generated- Conference'")
+        already   = {r.get('Id') for r in sf_meeting_records}
+        nooks_who = {}   # WhoId -> (booking_date, sdr_name)
+        for i in range(0, len(frozen_lead_ids), _BATCH_SIZE):
+            batch   = frozen_lead_ids[i:i + _BATCH_SIZE]
+            ids_str = ','.join(f"'{x}'" for x in batch)
+            tq = (f"SELECT WhoId, ActivityDate, Owner.Name FROM Task "
+                  f"WHERE WhoId IN ({ids_str}) "
+                  f"AND Subject LIKE '[Nooks Call]%' "
+                  f"AND CallDisposition IN ({BOOK_DISP}) "
+                  f"AND ActivityDate >= 2026-04-15 "
+                  f"ORDER BY ActivityDate ASC LIMIT 5000")
+            tres = soql(tq, paginate=False)
+            for r in (tres or {}).get('records', []):
+                wid = r.get('WhoId')
+                if not wid or wid in already or wid in nooks_who:
+                    continue   # already an SFDC meeting, or already captured
+                owner = r.get('Owner') or {}
+                nooks_who[wid] = ((r.get('ActivityDate') or '')[:10],
+                                  owner.get('Name', '') if isinstance(owner, dict) else '')
+        # Fetch name/title/company for the Nooks-only leads (those not already
+        # counted via Meeting_Generated_on__c).
+        need   = list(nooks_who.keys())
+        detail = {}
+        for i in range(0, len(need), _BATCH_SIZE):
+            batch   = need[i:i + _BATCH_SIZE]
+            ids_str = ','.join(f"'{x}'" for x in batch)
+            dres = soql(f"SELECT Id, Name, Title, Company FROM Lead WHERE Id IN ({ids_str})",
+                        paginate=False)
+            for r in (dres or {}).get('records', []):
+                detail[r.get('Id')] = r
+        for wid, (bdate, bsdr) in nooks_who.items():
+            ld = detail.get(wid, {})
+            nooks_meeting_records.append({
+                'Id': wid,
+                'Meeting_Generated_on__c': bdate,
+                'Meeting_Generated_by__c': bsdr,
+                'Name':    ld.get('Name'),
+                'Title':   ld.get('Title'),
+                'Company': ld.get('Company'),
+            })
+
     # ── Step 3: merge meetings into ledger & compute frozen meeting totals ────
-    frozen_meetings = merge_meetings_into_ledger(c['id'], sf_meeting_records)
+    # SFDC-logged meetings first (authoritative date), then Nooks-booked extras.
+    frozen_meetings = merge_meetings_into_ledger(c['id'], sf_meeting_records + nooks_meeting_records)
     total_meetings, sdr_bk = meetings_from_ledger(frozen_meetings, start or None, end or None)
 
     # ── Step 4: calls / emails / other queries using frozen Lead IDs ─────────
