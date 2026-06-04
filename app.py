@@ -1055,12 +1055,25 @@ def build_sdr_stats(enriched, sdr_opp_stats=None):
 # ── Sync ──────────────────────────────────────────────────────────────────────
 
 def sync():
+    """Run the sync and ALWAYS report status to Slack — even on a fatal crash,
+    in which case the full traceback (file + line) is sent for debugging."""
     if cache['is_syncing']:
         return
     cache['is_syncing']     = True
     cache['sync_progress']  = 0
     cache['errors']         = []
+    cache['fatal_error']    = None
+    try:
+        _run_sync()
+    except Exception:
+        import traceback
+        tb = traceback.format_exc()
+        cache['fatal_error'] = tb
+        cache['is_syncing']  = False
+        print('[sync] FATAL ERROR:\n' + tb)
+    _notify_slack_sync()
 
+def _run_sync():
     # Auto-complete campaigns whose end date has passed before syncing metrics
     auto_complete_campaigns()
 
@@ -1081,7 +1094,10 @@ def sync():
                 results.append(f.result())
             except Exception as e:
                 c = futs[f]
-                cache['errors'].append(f"{c['name']}: {e}")
+                import traceback as _tb
+                tb_lines = _tb.format_exc().strip().splitlines()
+                loc = next((l.strip() for l in reversed(tb_lines) if l.strip().startswith('File ')), '')
+                cache['errors'].append(f"{c['name']}: {type(e).__name__}: {e} [{loc}]")
                 results.append({**c, 'total_leads': 0, 'total_calls': 0,
                                 'total_emails': 0, 'meetings': 0,
                                 's1_created': 0, 'sdr_breakdown': [],
@@ -1151,11 +1167,9 @@ def sync():
     except Exception as e:
         print(f'[cache] save error: {e}')
 
-    # Notify Slack with the sync status (no-op if SLACK_WEBHOOK_URL isn't set)
-    _notify_slack_sync()
-
 def _notify_slack_sync():
     """Post a sync-status summary to Slack via an incoming webhook.
+    On a fatal crash, sends the full traceback (file + line) for debugging.
     Set SLACK_WEBHOOK_URL on Railway to enable; silently skips otherwise."""
     url = os.environ.get('SLACK_WEBHOOK_URL', '').strip()
     if not url:
@@ -1163,25 +1177,43 @@ def _notify_slack_sync():
     totals = cache.get('totals', {})
     camps  = cache.get('campaigns', [])
     errors = cache.get('errors', [])
-    calls  = sum(c.get('total_calls', 0)  or 0 for c in camps)
-    emails = sum(c.get('total_emails', 0) or 0 for c in camps)
+    fatal  = cache.get('fatal_error')
     ist    = datetime.utcnow() + timedelta(hours=5, minutes=30)
     ts     = ist.strftime('%d %b %Y, %I:%M %p IST')
-    status = '✅ Dashboard sync successful' if not errors else f'⚠️ Dashboard sync completed with {len(errors)} error(s)'
-    lines = [
-        f"*{status}*",
-        f"🕒 {ts}",
-        f"📊 Campaigns synced: *{len(camps)}*",
-        f"📞 Calls: *{calls:,}*    ✉️ Emails: *{emails:,}*",
-        f"🤝 Meetings Done: *{totals.get('meeting_done', 0)}*    🚫 No-Show: *{totals.get('meeting_noshow', 0)}*",
-        f"💎 SQL: *{totals.get('sql_gen', 0)}*    🏆 S1: *{totals.get('s1', 0)}*",
-    ]
-    if errors:
-        lines.append(f"❗ e.g. {str(errors[0])[:220]}")
+
+    if fatal:
+        # Sync crashed entirely — send the full traceback so it can be fixed.
+        text = (
+            f"*❌ Dashboard sync FAILED*\n"
+            f"🕒 {ts}\n"
+            f"The sync crashed before finishing. Full error (copy this to Claude):\n"
+            f"```{fatal[-2800:]}```"
+        )
+    else:
+        calls  = sum(c.get('total_calls', 0)  or 0 for c in camps)
+        emails = sum(c.get('total_emails', 0) or 0 for c in camps)
+        status = ('✅ Dashboard sync successful' if not errors
+                  else f'⚠️ Dashboard sync completed with {len(errors)} error(s)')
+        lines = [
+            f"*{status}*",
+            f"🕒 {ts}",
+            f"📊 Campaigns synced: *{len(camps)}*",
+            f"📞 Calls: *{calls:,}*    ✉️ Emails: *{emails:,}*",
+            f"🤝 Meetings Done: *{totals.get('meeting_done', 0)}*    🚫 No-Show: *{totals.get('meeting_noshow', 0)}*",
+            f"💎 SQL: *{totals.get('sql_gen', 0)}*    🏆 S1: *{totals.get('s1', 0)}*",
+        ]
+        if errors:
+            lines.append(f"*⚠️ {len(errors)} campaign error(s)* (copy to Claude to fix):")
+            for e in errors[:8]:
+                lines.append(f"• {str(e)[:350]}")
+            if len(errors) > 8:
+                lines.append(f"…and {len(errors) - 8} more")
+        text = '\n'.join(lines)
+
     try:
         req = _urllib_req.Request(
             url, method='POST',
-            data=json.dumps({'text': '\n'.join(lines)}).encode(),
+            data=json.dumps({'text': text}).encode(),
             headers={'Content-Type': 'application/json'})
         _urllib_req.urlopen(req, timeout=15)
     except Exception as e:
