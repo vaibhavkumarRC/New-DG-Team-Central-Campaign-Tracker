@@ -1184,7 +1184,7 @@ def _notify_slack_sync():
     if fatal:
         # Sync crashed entirely — send the full traceback so it can be fixed.
         text = (
-            f"*❌ Dashboard sync FAILED*\n"
+            f"*❌ Campaign Dashboard sync FAILED*\n"
             f"🕒 {ts}\n"
             f"The sync crashed before finishing. Full error (copy this to Claude):\n"
             f"```{fatal[-2800:]}```"
@@ -1192,8 +1192,8 @@ def _notify_slack_sync():
     else:
         calls  = sum(c.get('total_calls', 0)  or 0 for c in camps)
         emails = sum(c.get('total_emails', 0) or 0 for c in camps)
-        status = ('✅ Dashboard sync successful' if not errors
-                  else f'⚠️ Dashboard sync completed with {len(errors)} error(s)')
+        status = ('✅ Campaign Dashboard sync successful' if not errors
+                  else f'⚠️ Campaign Dashboard sync completed with {len(errors)} error(s)')
         lines = [
             f"*{status}*",
             f"🕒 {ts}",
