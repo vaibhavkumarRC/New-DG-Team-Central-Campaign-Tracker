@@ -1151,6 +1151,42 @@ def sync():
     except Exception as e:
         print(f'[cache] save error: {e}')
 
+    # Notify Slack with the sync status (no-op if SLACK_WEBHOOK_URL isn't set)
+    _notify_slack_sync()
+
+def _notify_slack_sync():
+    """Post a sync-status summary to Slack via an incoming webhook.
+    Set SLACK_WEBHOOK_URL on Railway to enable; silently skips otherwise."""
+    url = os.environ.get('SLACK_WEBHOOK_URL', '').strip()
+    if not url:
+        return
+    totals = cache.get('totals', {})
+    camps  = cache.get('campaigns', [])
+    errors = cache.get('errors', [])
+    calls  = sum(c.get('total_calls', 0)  or 0 for c in camps)
+    emails = sum(c.get('total_emails', 0) or 0 for c in camps)
+    ist    = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    ts     = ist.strftime('%d %b %Y, %I:%M %p IST')
+    status = '✅ Dashboard sync successful' if not errors else f'⚠️ Dashboard sync completed with {len(errors)} error(s)'
+    lines = [
+        f"*{status}*",
+        f"🕒 {ts}",
+        f"📊 Campaigns synced: *{len(camps)}*",
+        f"📞 Calls: *{calls:,}*    ✉️ Emails: *{emails:,}*",
+        f"🤝 Meetings Done: *{totals.get('meeting_done', 0)}*    🚫 No-Show: *{totals.get('meeting_noshow', 0)}*",
+        f"💎 SQL: *{totals.get('sql_gen', 0)}*    🏆 S1: *{totals.get('s1', 0)}*",
+    ]
+    if errors:
+        lines.append(f"❗ e.g. {str(errors[0])[:220]}")
+    try:
+        req = _urllib_req.Request(
+            url, method='POST',
+            data=json.dumps({'text': '\n'.join(lines)}).encode(),
+            headers={'Content-Type': 'application/json'})
+        _urllib_req.urlopen(req, timeout=15)
+    except Exception as e:
+        print(f'[slack] webhook error: {e}')
+
 def bg_loop():
     """Auto-sync twice daily: 05:00 IST (23:30 UTC) and 17:00 IST (11:30 UTC)."""
     # Sync times in UTC hours/minutes
