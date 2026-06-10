@@ -3071,7 +3071,9 @@ function renderManage() {
       </div>
       <div class="manage-item-actions admin-only">
         <button class="btn-sync" id="sync-btn-${c.id}" onclick="event.stopPropagation();syncCampaign('${c.id}')">🔄 Sync</button>
-        ${c.status !== 'Completed' ? `<button class="btn btn-complete btn-sm" onclick="event.stopPropagation();markComplete('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">✓ Mark Complete</button>` : ''}
+        ${c.status === 'Completed'
+          ? `<button class="btn btn-complete btn-sm" disabled title="Already completed${c.end_date?' on '+fmtDay(c.end_date):''}" style="opacity:.5;cursor:default;">✓ Completed</button>`
+          : `<button class="btn btn-complete btn-sm" onclick="event.stopPropagation();markComplete('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">✓ Mark Complete</button>`}
         <button class="btn btn-edit btn-sm" onclick="event.stopPropagation();openEditModal('${c.id}')">✏️ Edit</button>
         <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteCampaign('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">Remove</button>
       </div>
