@@ -948,9 +948,14 @@ def campaign_metrics(c, start_override=None, end_override=None):
         call_subj  = "Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%'"
         email_subj = "Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%'"
 
-        done_filter   = ("Meeting_Status__c IN ('Meeting Done-Nurture',"
-                         "'Meeting Done- Not Interested','Meeting Done-Unqualified')")
-        noshow_filter = "Meeting_Status__c = 'Meeting No Show'"
+        # Meeting Done / No-Show are tied to THIS campaign's meeting window:
+        # only count leads whose Meeting_Generated_on__c falls inside the
+        # campaign's start–end dates. Otherwise a recycled lead's old meeting
+        # (from a previous campaign) leaks into this campaign's counts.
+        done_filter   = ("(Meeting_Status__c IN ('Meeting Done-Nurture',"
+                         "'Meeting Done- Not Interested','Meeting Done-Unqualified')"
+                         f"{dt_mtg})")
+        noshow_filter = f"(Meeting_Status__c = 'Meeting No Show'{dt_mtg})"
         sql_filter    = "Status = 'SQL'"
         stssdr_filter = (done_filter + " OR " + noshow_filter)
 
@@ -2263,17 +2268,20 @@ def api_status_leads():
 
     ledger = load_ledger()
     all_lead_ids = []
-    seen = set()
+    lead_windows = {}   # lid → [(camp_start, camp_end), ...] meeting windows
     for camp_cfg in camps_cfg:
         # The ledger is keyed by campaign ID (see merge_leads_into_ledger);
         # fall back to name for any legacy name-keyed entries.
         entry    = ledger.get(str(camp_cfg.get('id') or '')) \
                    or ledger.get((camp_cfg.get('name') or '').strip()) or {}
         lead_ids = entry.get('lead_ids', []) if isinstance(entry, dict) else []
+        win = ((camp_cfg.get('start_date') or '').strip(),
+               (camp_cfg.get('end_date') or '').strip())
         for lid in lead_ids:
-            if lid not in seen:
-                seen.add(lid)
+            if lid not in lead_windows:
+                lead_windows[lid] = []
                 all_lead_ids.append(lid)
+            lead_windows[lid].append(win)
 
     if not all_lead_ids:
         return jsonify({'leads': [], 'total': 0})
@@ -2297,6 +2305,17 @@ def api_status_leads():
     leads = []
     for r in all_records:
         lid = r.get('Id') or ''
+        # Done/No-Show must mirror the card counts: the lead's
+        # Meeting_Generated_on__c has to fall inside the meeting window of at
+        # least one campaign whose ledger contains it. (SQL is status-only.)
+        if status in ('done', 'noshow'):
+            d    = (r.get('Meeting_Generated_on__c') or '')[:10]
+            wins = lead_windows.get(lid, [])
+            if wins and not any(
+                (not s or (d and d >= s)) and (not e or (d and d <= e))
+                for s, e in wins
+            ):
+                continue
         leads.append({
             'name':    r.get('Name') or '—',
             'title':   r.get('Title') or '—',
