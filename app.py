@@ -175,6 +175,19 @@ def meetings_leads_from_ledger(meetings, start=None, end=None):
 # SOQL IN-clause helper — batches large ID lists to stay within query limits
 _BATCH_SIZE = 500
 
+# Nooks dispositions whose Outcome is "Connect" or "Meeting" in Nooks's
+# disposition→outcome mapping (logged on the Task CallDisposition field).
+# A call with any of these counts as a live connect.
+CONNECT_DISPOSITIONS = (
+    "'Answered - Booked Meeting','Answered - Follow Up Required',"
+    "'Answered - No Longer with Company','Answered - Wrong Person, Gave Referral',"
+    "'Answered - Wrong Person, No Referral','Busy - Call Later','Connected','DNC',"
+    "'Meeting','Meeting Generated- Cold','Meeting Generated- Conference',"
+    "'Not Interested','Objection: Already Have Solution','Objection: Asked to Send Info',"
+    "'Objection: Not A Priority','Prospect Disconnected','Retired','Strong Follow up',"
+    "'Wrong Number'"
+)
+
 def _count_tasks_for_ids(lead_ids, subject_filter, dt_task):
     """Count Tasks matching subject_filter for a list of lead IDs.
     Batches into groups of _BATCH_SIZE to avoid SOQL length limits.
@@ -959,8 +972,13 @@ def campaign_metrics(c, start_override=None, end_override=None):
         sql_filter    = "Status = 'SQL'"
         stssdr_filter = (done_filter + " OR " + noshow_filter)
 
+        # Connects = Nooks calls whose disposition outcome is Connect/Meeting
+        connect_subj = (f"Subject LIKE '[Nooks Call]%' "
+                        f"AND CallDisposition IN ({CONNECT_DISPOSITIONS})")
+
         with ThreadPoolExecutor(max_workers=8) as ex:
             f_calls   = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, call_subj,  dt_task)
+            f_connects= ex.submit(_count_tasks_for_ids,        frozen_lead_ids, connect_subj, dt_task)
             f_emails  = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, email_subj, dt_task)
             f_ucalled = ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, call_subj,  dt_task)
             f_uemailed= ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, email_subj, dt_task)
@@ -979,6 +997,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
                                        f"WHERE Campaign__c = '{n}' AND IsConverted = true)")
 
         total_calls          = f_calls.result()
+        total_connects       = f_connects.result()
         total_emails         = f_emails.result()
         unique_leads_called  = f_ucalled.result()
         unique_leads_emailed = f_uemailed.result()
@@ -990,7 +1009,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
         if not has_manual_s1:
             results['s1'] = f_s1.result()
     else:
-        total_calls = total_emails = unique_leads_called = unique_leads_emailed = 0
+        total_calls = total_connects = total_emails = unique_leads_called = unique_leads_emailed = 0
 
     total_leads = len(frozen_lead_ids)  # use frozen count so it never shrinks
 
@@ -1023,6 +1042,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
         **c,
         'total_leads':              total_leads,
         'total_calls':              total_calls,
+        'total_connects':           total_connects,
         'total_emails':             total_emails,
         'unique_leads_called':      unique_leads_called,
         'unique_leads_emailed':     unique_leads_emailed,
@@ -1229,6 +1249,7 @@ def _run_sync():
         old = old_by_id.get(r['id'], {})
         if r.get('total_calls', 0) == 0 and old.get('total_calls', 0) > 0:
             r['total_calls']           = old['total_calls']
+            r['total_connects']        = old.get('total_connects', 0)
             r['unique_leads_called']   = old.get('unique_leads_called', 0)
             r['calls_per_called_lead'] = old.get('calls_per_called_lead', 0)
         if r.get('total_emails', 0) == 0 and old.get('total_emails', 0) > 0:
