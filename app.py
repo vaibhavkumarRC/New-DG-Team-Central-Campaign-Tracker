@@ -188,6 +188,10 @@ CONNECT_DISPOSITIONS = (
     "'Wrong Number'"
 )
 
+# A connect counts as a "conversation" when the call lasted at least this long
+# (mirrors Nooks's default Conversation Threshold of 60 seconds).
+CONVERSATION_THRESHOLD_SECS = 60
+
 def _count_tasks_for_ids(lead_ids, subject_filter, dt_task):
     """Count Tasks matching subject_filter for a list of lead IDs.
     Batches into groups of _BATCH_SIZE to avoid SOQL length limits.
@@ -975,10 +979,16 @@ def campaign_metrics(c, start_override=None, end_override=None):
         # Connects = Nooks calls whose disposition outcome is Connect/Meeting
         connect_subj = (f"Subject LIKE '[Nooks Call]%' "
                         f"AND CallDisposition IN ({CONNECT_DISPOSITIONS})")
+        # Conversations = connects that lasted ≥ CONVERSATION_THRESHOLD_SECS.
+        # Nooks logs total call time in the standard CallDurationInSeconds field;
+        # requiring a connect disposition excludes long rings/voicemails.
+        convo_subj   = (connect_subj +
+                        f" AND CallDurationInSeconds >= {CONVERSATION_THRESHOLD_SECS}")
 
         with ThreadPoolExecutor(max_workers=8) as ex:
             f_calls   = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, call_subj,  dt_task)
             f_connects= ex.submit(_count_tasks_for_ids,        frozen_lead_ids, connect_subj, dt_task)
+            f_convos  = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, convo_subj, dt_task)
             f_emails  = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, email_subj, dt_task)
             f_ucalled = ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, call_subj,  dt_task)
             f_uemailed= ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, email_subj, dt_task)
@@ -998,6 +1008,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
 
         total_calls          = f_calls.result()
         total_connects       = f_connects.result()
+        total_conversations  = f_convos.result()
         total_emails         = f_emails.result()
         unique_leads_called  = f_ucalled.result()
         unique_leads_emailed = f_uemailed.result()
@@ -1009,7 +1020,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
         if not has_manual_s1:
             results['s1'] = f_s1.result()
     else:
-        total_calls = total_connects = total_emails = unique_leads_called = unique_leads_emailed = 0
+        total_calls = total_connects = total_conversations = total_emails = unique_leads_called = unique_leads_emailed = 0
 
     total_leads = len(frozen_lead_ids)  # use frozen count so it never shrinks
 
@@ -1043,6 +1054,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
         'total_leads':              total_leads,
         'total_calls':              total_calls,
         'total_connects':           total_connects,
+        'total_conversations':      total_conversations,
         'total_emails':             total_emails,
         'unique_leads_called':      unique_leads_called,
         'unique_leads_emailed':     unique_leads_emailed,
@@ -1250,6 +1262,7 @@ def _run_sync():
         if r.get('total_calls', 0) == 0 and old.get('total_calls', 0) > 0:
             r['total_calls']           = old['total_calls']
             r['total_connects']        = old.get('total_connects', 0)
+            r['total_conversations']   = old.get('total_conversations', 0)
             r['unique_leads_called']   = old.get('unique_leads_called', 0)
             r['calls_per_called_lead'] = old.get('calls_per_called_lead', 0)
         if r.get('total_emails', 0) == 0 and old.get('total_emails', 0) > 0:

@@ -2317,6 +2317,7 @@ function renderDashboard() {
   const totalLeads    = sum(cps,'total_leads');
   const totalCalls    = sum(cps,'total_calls');
   const totalConnects = sum(cps,'total_connects');
+  const totalConvos   = sum(cps,'total_conversations');
   const totalEmails   = sum(cps,'total_emails');
   const totalMeetings = sum(cps,'meetings');
   const activeCamps   = cps.filter(c=>c.status==='Active').length;
@@ -2365,6 +2366,7 @@ function renderDashboard() {
     {label:'Total Leads',    value:fmt(totalLeads),       sub:'in pipeline',                                        icon:'👤', color:'var(--blue)'},
     {label:'Calls Made',     value:fmt(totalCalls),       sub:pct(totalCalls,totalLeads)+' coverage',               icon:'📞', color:'var(--purple)'},
     {label:'Total Connects', value:fmt(totalConnects),    sub:pct(totalConnects,totalCalls)+' connect rate',        icon:'🤝', color:'var(--green)'},
+    {label:'Conversations',  value:fmt(totalConvos),      sub:pct(totalConvos,totalConnects)+' of connects',        icon:'💬', color:'var(--blue, #60A5FA)'},
     {label:'Emails Sent',    value:fmt(totalEmails),      sub:pct(totalEmails,totalLeads)+' coverage',              icon:'📧', color:'var(--amber)'},
     {label:'Mtgs Generated', value:fmt(totalMeetings),    sub:'Click to see leads',                                 icon:'🤝', color:'var(--green)',  clickable:true, onclick:meetingsOnClick},
     {label:'Mtgs Done',      value:fmt(totalMtgDone),     sub:'Click to see leads',                                 icon:'✅', color:'#34D399',        clickable:true, onclick:mtgDoneOnClick},
