@@ -2259,10 +2259,10 @@ def api_status_leads():
     all_lead_ids = []
     seen = set()
     for camp_cfg in camps_cfg:
-        cname = camp_cfg.get('name', '').strip()
-        if not cname:
-            continue
-        entry    = ledger.get(cname, {})
+        # The ledger is keyed by campaign ID (see merge_leads_into_ledger);
+        # fall back to name for any legacy name-keyed entries.
+        entry    = ledger.get(str(camp_cfg.get('id') or '')) \
+                   or ledger.get((camp_cfg.get('name') or '').strip()) or {}
         lead_ids = entry.get('lead_ids', []) if isinstance(entry, dict) else []
         for lid in lead_ids:
             if lid not in seen:
