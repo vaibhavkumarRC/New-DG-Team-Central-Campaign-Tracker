@@ -80,12 +80,24 @@ def merge_leads_into_ledger(campaign_id, lead_ids):
             save_ledger(ledger)
         return entry['lead_ids']
 
-def merge_meetings_into_ledger(campaign_id, sf_records):
+def merge_meetings_into_ledger(campaign_id, sf_records, start=None, end=None):
     """Add newly discovered meeting leads into the ledger. Never removes entries.
     sf_records: list of SFDC Lead records with Id, Meeting_Generated_on__c,
     Meeting_Generated_by__c, Name, Title, Company fields.
+
+    start/end (campaign window, YYYY-MM-DD): when given, an existing entry whose
+    stored date falls OUTSIDE the window may be upgraded by an incoming record
+    whose date is INSIDE it. This heals recycled leads whose stale
+    Meeting_Generated_on__c (from a previous campaign) got frozen into this
+    campaign's ledger and would otherwise hide a fresh booking.
+
     Returns the meetings dict {lead_id → {date,sdr,name,title,company,sf_url}}.
     """
+    def _in_win(d):
+        if not d: return False
+        if start and d < start: return False
+        if end and d > end: return False
+        return True
     with _ledger_lock:
         ledger   = load_ledger()
         entry    = _get_or_create_entry(ledger, campaign_id)
@@ -93,10 +105,22 @@ def merge_meetings_into_ledger(campaign_id, sf_records):
         changed  = False
         for rec in sf_records:
             lid = rec.get('Id')
-            if not lid or lid in meetings:
-                continue  # already attributed — never overwrite
+            if not lid:
+                continue
+            new_date = (rec.get('Meeting_Generated_on__c') or '')[:10]
+            if lid in meetings:
+                # Already attributed — never remove. Only upgrade a stale
+                # (out-of-window) date with an in-window one.
+                old_date = meetings[lid].get('date', '')
+                if (start or end) and _in_win(new_date) and not _in_win(old_date):
+                    meetings[lid]['date'] = new_date
+                    new_sdr = norm_sdr(rec.get('Meeting_Generated_by__c') or '')
+                    if new_sdr:
+                        meetings[lid]['sdr'] = new_sdr
+                    changed = True
+                continue
             meetings[lid] = {
-                'date':    (rec.get('Meeting_Generated_on__c') or '')[:10],
+                'date':    new_date,
                 'sdr':     norm_sdr(rec.get('Meeting_Generated_by__c') or ''),
                 'name':    rec.get('Name')    or '—',
                 'title':   rec.get('Title')   or '—',
@@ -854,11 +878,21 @@ def campaign_metrics(c, start_override=None, end_override=None):
     # dashboard's Meetings Generated reflects Nooks bookings immediately — even
     # before the SDR fills Meeting_Generated_on__c on the lead.
     # (The Meeting Generation Funnel is unaffected — it reads Nooks tasks directly.)
+    # Stale-date guard: a Meeting_Generated_on__c BEFORE this campaign's start
+    # belongs to a previous campaign (recycled lead). Those records must not
+    # block a fresh Nooks booking on the same lead (dedupe below) nor occupy the
+    # lead's slot in this campaign's meeting ledger (Step 3).
+    if start:
+        fresh_sf_meetings = [r for r in sf_meeting_records
+                             if (r.get('Meeting_Generated_on__c') or '')[:10] >= start]
+    else:
+        fresh_sf_meetings = sf_meeting_records
+
     nooks_meeting_records = []
     if frozen_lead_ids:
         BOOK_DISP = ("'Answered - Booked Meeting','Meeting Generated- Cold',"
                      "'Meeting Generated- Conference'")
-        already   = {r.get('Id') for r in sf_meeting_records}
+        already   = {r.get('Id') for r in fresh_sf_meetings}
         nooks_who = {}   # WhoId -> (booking_date, sdr_name)
         for i in range(0, len(frozen_lead_ids), _BATCH_SIZE):
             batch   = frozen_lead_ids[i:i + _BATCH_SIZE]
@@ -901,7 +935,10 @@ def campaign_metrics(c, start_override=None, end_override=None):
 
     # ── Step 3: merge meetings into ledger & compute frozen meeting totals ────
     # SFDC-logged meetings first (authoritative date), then Nooks-booked extras.
-    frozen_meetings = merge_meetings_into_ledger(c['id'], sf_meeting_records + nooks_meeting_records)
+    # Only in-window SFDC records are merged; the window also lets the ledger
+    # upgrade stale dates frozen in by recycled leads (see merge_meetings_into_ledger).
+    frozen_meetings = merge_meetings_into_ledger(
+        c['id'], fresh_sf_meetings + nooks_meeting_records, start or None, end or None)
     total_meetings, sdr_bk = meetings_from_ledger(frozen_meetings, start or None, end or None)
 
     # ── Step 4: calls / emails / other queries using frozen Lead IDs ─────────
