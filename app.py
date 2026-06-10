@@ -1249,9 +1249,15 @@ def _run_sync():
     cache['is_syncing']    = False
     cache['sync_progress'] = 100
 
+    persist_cache()
+
+def persist_cache():
+    """Write the in-memory campaign cache to disk so single-campaign syncs and
+    cache patches survive app restarts/deploys (otherwise cards revert to the
+    last full-sync snapshot after every Railway deploy)."""
     try:
         with open(CACHE_FILE, 'w') as f:
-            json.dump({'campaigns': results, 'sdr_stats': cache['sdr_stats'],
+            json.dump({'campaigns': cache['campaigns'], 'sdr_stats': cache['sdr_stats'],
                        'totals': cache['totals'], 'last_sync': cache['last_sync']}, f)
     except Exception as e:
         print(f'[cache] save error: {e}')
@@ -2669,6 +2675,7 @@ def api_camp_sync(cid):
         cache['campaigns'].append(updated)
     # Invalidate period caches so they reflect the new data
     period_cache.clear()
+    persist_cache()  # survive restarts/deploys
     return jsonify(updated)
 
 @app.route('/api/campaigns/<cid>/complete', methods=['POST'])
@@ -2687,6 +2694,7 @@ def api_camp_complete(cid):
                 if cc.get('id') == cid:
                     cc['status']   = 'Completed'
                     cc['end_date'] = today_ist
+            persist_cache()
             return jsonify(camps[i])
     return jsonify({'error': 'Not found'}), 404
 
