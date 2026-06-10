@@ -2634,6 +2634,25 @@ def api_camp_sync(cid):
     period_cache.clear()
     return jsonify(updated)
 
+@app.route('/api/campaigns/<cid>/complete', methods=['POST'])
+@require_admin
+def api_camp_complete(cid):
+    """One-click: mark a campaign Completed and stamp today's date (IST) as its end_date."""
+    today_ist = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%Y-%m-%d')
+    camps = load_campaigns()
+    for i, c in enumerate(camps):
+        if c['id'] == cid:
+            c['status']   = 'Completed'
+            c['end_date'] = today_ist
+            save_campaigns(camps)
+            # Patch in-memory cache too
+            for cc in cache['campaigns']:
+                if cc.get('id') == cid:
+                    cc['status']   = 'Completed'
+                    cc['end_date'] = today_ist
+            return jsonify(camps[i])
+    return jsonify({'error': 'Not found'}), 404
+
 @app.route('/api/campaigns/bulk-status', methods=['POST'])
 @require_admin
 def api_camps_bulk_status():

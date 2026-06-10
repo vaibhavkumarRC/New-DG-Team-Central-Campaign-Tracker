@@ -2,4 +2,11 @@ venv/
 __pycache__/
 *.pyc
 data_cache.json
+campaigns.json
 .env
+*.key
+*.pem
+*.crt
+*.xlsx
+.~lock*
+node_modules/

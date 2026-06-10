@@ -489,6 +489,12 @@ tfoot td {
   border:1px solid rgba(212,175,55,0.25);
 }
 .btn-edit:hover { background:rgba(212,175,55,0.22); border-color:var(--gold-dark); }
+.btn-complete {
+  background: rgba(34,197,94,0.12); color:#4ADE80;
+  border:1px solid rgba(34,197,94,0.3); border-radius:8px;
+  padding:4px 10px; font-size:11px; cursor:pointer; white-space:nowrap; transition:background .15s;
+}
+.btn-complete:hover { background:rgba(34,197,94,0.22); border-color:rgba(34,197,94,0.5); }
 
 /* ── SDR CARD EXTRA STATS ── */
 .sdr-stat-val.blue  { color:var(--blue); }
@@ -1881,6 +1887,15 @@ async function deleteCampaign(id, name) {
   await fetchData();
 }
 
+async function markComplete(id, name) {
+  if(!confirm(`Mark "${name}" as Complete?\nIts status becomes Completed and today's date is set as the end date.`)) return;
+  const res = await fetch(`/api/campaigns/${id}/complete`,{method:'POST', headers: authHeaders()});
+  if(!res.ok){ showToast('⚠️ Could not mark complete'); return; }
+  const c = await res.json();
+  showToast(`✓ "${name}" marked Complete (end date ${fmtDay(c.end_date)})`);
+  await fetchData();
+}
+
 // ── SYNC STATUS ──────────────────────────────────────────────────────────────
 function updateSyncStatus() {
   const dot   = q('syncDot');
@@ -3056,6 +3071,7 @@ function renderManage() {
       </div>
       <div class="manage-item-actions admin-only">
         <button class="btn-sync" id="sync-btn-${c.id}" onclick="event.stopPropagation();syncCampaign('${c.id}')">🔄 Sync</button>
+        ${c.status !== 'Completed' ? `<button class="btn btn-complete btn-sm" onclick="event.stopPropagation();markComplete('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">✓ Mark Complete</button>` : ''}
         <button class="btn btn-edit btn-sm" onclick="event.stopPropagation();openEditModal('${c.id}')">✏️ Edit</button>
         <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteCampaign('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">Remove</button>
       </div>
