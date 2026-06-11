@@ -2933,14 +2933,25 @@ function renderSDR() {
   if(!sdrs.length){ q('sdrEmpty').style.display='block'; q('sdrGrid').innerHTML=''; return; }
   q('sdrEmpty').style.display='none';
 
-  q('sdrGrid').innerHTML = sdrs.map((s,i)=>{
+  // Meeting-derived numbers come from the live SFDC meeting-leads data so the
+  // cards always match the SDR Performance Table above (All view). Falls back
+  // to campaign-ledger stats only until the live data finishes loading.
+  const live = sdrpLiveStats() || {};
+  const liveRank = s => (live[s.name] ? live[s.name].meetings : (s.meetings || 0));
+  const sortedSdrs = [...sdrs].sort((a, b) => liveRank(b) - liveRank(a));
+
+  q('sdrGrid').innerHTML = sortedSdrs.map((s,i)=>{
+    const lv = live[s.name] || null;
+    const mGen    = lv ? lv.meetings : (s.meetings || 0);
+    const mDone   = lv ? lv.done     : ((s.meeting_done||0) + (s.sql_gen||0));
+    const mNoShow = lv ? lv.noshow   : (s.meeting_noshow || 0);
+    const mSql    = lv ? lv.sql      : (s.sql_gen || 0);
+    const mS1     = lv ? lv.s1       : (s.s1_count || 0);
+
     const tgt = SDR_TARGETS[s.name] || null;
-    // Meeting Done (for target) = nurture/not-interested + sql
-    const mtgDoneTotal = (s.meeting_done||0) + (s.sql_gen||0);
+    const mtgDoneTotal = mDone;
     const mtgDoneTgt   = tgt ? tgt.meeting_done : null;
     const s1Tgt        = tgt ? tgt.s1 : null;
-    const mtgDonePct   = mtgDoneTgt ? Math.min(100,(mtgDoneTotal/mtgDoneTgt*100)) : null;
-    const s1Pct        = s1Tgt ? Math.min(100,((s.s1_from_camps||s.sql_gen||0)/s1Tgt*100)) : null;
 
     function targetBar(achieved, target, color) {
       if(!target) return '';
@@ -2970,22 +2981,22 @@ function renderSDR() {
         <div style="margin-left:auto;font-size:11px;color:var(--text-dim)">#${i+1}</div>
       </div>
 
-      <!-- Meeting funnel stats -->
+      <!-- Meeting funnel stats (live SFDC — matches the SDR Performance Table) -->
       <div class="sdr-stats-row" style="gap:10px;margin-bottom:10px">
         <div class="sdr-stat">
-          <div class="sdr-stat-val" style="color:var(--green);font-size:17px">${fmt(s.meetings)}</div>
+          <div class="sdr-stat-val" style="color:var(--green);font-size:17px">${fmt(mGen)}</div>
           <div class="sdr-stat-lbl">Mtg Gen</div>
         </div>
         <div class="sdr-stat">
-          <div class="sdr-stat-val" style="color:#34D399;font-size:17px">${fmt((s.meeting_done||0)+(s.sql_gen||0))}</div>
+          <div class="sdr-stat-val" style="color:#34D399;font-size:17px">${fmt(mDone)}</div>
           <div class="sdr-stat-lbl">Mtg Done</div>
         </div>
         <div class="sdr-stat">
-          <div class="sdr-stat-val" style="color:var(--red);font-size:17px">${fmt(s.meeting_noshow||0)}</div>
+          <div class="sdr-stat-val" style="color:var(--red);font-size:17px">${fmt(mNoShow)}</div>
           <div class="sdr-stat-lbl">No Show</div>
         </div>
         <div class="sdr-stat">
-          <div class="sdr-stat-val" style="color:#A78BFA;font-size:17px">${fmt(s.sql_gen||0)}</div>
+          <div class="sdr-stat-val" style="color:#A78BFA;font-size:17px">${fmt(mSql)}</div>
           <div class="sdr-stat-lbl">SQL</div>
         </div>
       </div>
@@ -3005,7 +3016,7 @@ function renderSDR() {
           <div class="sdr-stat-lbl">Leads</div>
         </div>
         <div class="sdr-stat">
-          <div class="sdr-stat-val" style="color:#F472B6;font-size:15px">${fmt(s.s1_count||0)}</div>
+          <div class="sdr-stat-val" style="color:#F472B6;font-size:15px">${fmt(mS1)}</div>
           <div class="sdr-stat-lbl">S1</div>
         </div>
       </div>
@@ -3013,10 +3024,10 @@ function renderSDR() {
       ${tgt ? `
       <div style="border-top:1px solid var(--border);padding-top:12px;margin-bottom:4px">
         <div style="font-size:10px;font-weight:700;color:var(--text-dim);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">Target Progress</div>
-        <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">Meeting Done (Done+SQL)</div>
+        <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">Meeting Done</div>
         ${targetBar(mtgDoneTotal, mtgDoneTgt, '#34D399')}
         <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">S1 Created</div>
-        ${targetBar(s.s1_count||0, s1Tgt, '#F472B6')}
+        ${targetBar(mS1, s1Tgt, '#F472B6')}
         <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">NPV Generated</div>
         ${(()=>{
           const npvAchieved = s.npv_generated || 0;
@@ -4366,7 +4377,12 @@ function initSdrPerf() {
   SDRP.fetching = true;
   fetch('/api/meeting-leads')
     .then(r => r.json())
-    .then(d => { MTG.data = d.leads || []; populateSdrpFilters(); renderSdrPerfTable(); })
+    .then(d => {
+      MTG.data = d.leads || [];
+      populateSdrpFilters();
+      renderSdrPerfTable();
+      renderSDR();  // re-render SDR cards with live numbers (no loop: data is now set)
+    })
     .catch(() => {
       const w = document.getElementById('sdrpTableWrap');
       if (w) w.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:12px">Failed to load SDR performance data.</div>';
@@ -4482,6 +4498,23 @@ function sdrpDateBounds() {
 
 const SDRP_IS_DONE = r => (r.status || '').startsWith('Meeting Done');
 const SDRP_IS_S1   = r => r.lead_status === 'S1 Converted';
+
+// All-time per-SDR stats from the live meeting-leads data (unfiltered) — the
+// SDR cards read these so they always match the performance table's All view.
+function sdrpLiveStats() {
+  if (!MTG.data) return null;
+  const m = {};
+  (MTG.data || []).forEach(r => {
+    const n = r.generated_by || '—';
+    if (!m[n]) m[n] = { meetings: 0, done: 0, noshow: 0, sql: 0, s1: 0 };
+    m[n].meetings += 1;
+    if (SDRP_IS_DONE(r))                  m[n].done   += 1;
+    if (r.status === 'Meeting No Show')   m[n].noshow += 1;
+    if (r.lead_status === 'SQL')          m[n].sql    += 1;
+    if (SDRP_IS_S1(r))                    m[n].s1     += 1;
+  });
+  return m;
+}
 
 function sdrpFilteredRows() {
   const [ds, de] = sdrpDateBounds();
