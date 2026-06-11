@@ -2802,7 +2802,7 @@ def api_segments_add():
 def api_meeting_leads():
     """Return all leads where Meeting_Generated_on__c is set and > 2026-03-31."""
     q = (
-        "SELECT Id, FirstName, LastName, Title, Company, "
+        "SELECT Id, FirstName, LastName, Title, Company, Status, "
         "Meeting_Status__c, Meeting_Generated_on__c, Meeting_Scheduled_On__c, "
         "Meeting_Generated_by__c, Meeting_Source__c, Meeting_Channel__c, "
         "Meeting_Type__c, Zoom_Meeting_Link_URL__c, Seller_Name__c "
@@ -2828,6 +2828,7 @@ def api_meeting_leads():
             'title':        r.get('Title')                    or '—',
             'company':      r.get('Company')                  or '—',
             'status':       r.get('Meeting_Status__c')        or '—',
+            'lead_status':  r.get('Status')                   or '—',
             'generated_on': (r.get('Meeting_Generated_on__c') or '')[:10],
             'scheduled_on': (r.get('Meeting_Scheduled_On__c') or '')[:10],
             'generated_by': norm_sdr(r.get('Meeting_Generated_by__c') or '—'),
