@@ -4152,7 +4152,13 @@ function renderMgfCompleted() {
     wrap.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:12px">No completed meetings for the current filters.</div>';
     return;
   }
-  wrap.innerHTML = rows.map(m => {
+  // Collapsed by default: show the 2 most recent, expand on demand
+  const COLLAPSED_N = 2;
+  const expanded = !!MGF.doneExpanded;
+  const visible  = expanded ? rows : rows.slice(0, COLLAPSED_N);
+  const hidden   = rows.length - COLLAPSED_N;
+
+  wrap.innerHTML = visible.map(m => {
     const date = (m.scheduled || m.zoom_start || '').slice(0, 10);
     const dur  = m.occurred_dur ? `${m.occurred_dur} min` : '';
     const parts = m.participants || [];
@@ -4174,7 +4180,19 @@ function renderMgfCompleted() {
       ${nexts ? `<div style="font-size:12px;color:var(--text);line-height:1.55;margin-bottom:8px"><span style="font-weight:700;color:var(--text-muted)">Next Steps:</span> ${esc(nexts).replace(/\n/g, '<br>')}</div>` : ''}
       ${parts.length ? `<div style="font-size:11px;color:var(--text-dim)"><span style="font-weight:700">Participants:</span> ${parts.map(p => esc(p)).join(', ')}</div>` : ''}
     </div>`;
-  }).join('');
+  }).join('') +
+  (rows.length > COLLAPSED_N
+    ? `<div style="text-align:center;margin-top:4px">
+         <button onclick="toggleMgfDoneExpand()" style="background:rgba(212,175,55,0.1);color:var(--gold);border:1px solid rgba(212,175,55,0.3);border-radius:8px;padding:7px 18px;font-size:12px;cursor:pointer">
+           ${expanded ? '▲ Show less' : `▼ Show more (${hidden} more meeting${hidden !== 1 ? 's' : ''})`}
+         </button>
+       </div>`
+    : '');
+}
+
+function toggleMgfDoneExpand() {
+  MGF.doneExpanded = !MGF.doneExpanded;
+  renderMgfCompleted();
 }
 
 function openMgfStage1Modal() {
