@@ -4489,7 +4489,7 @@ function drawMtgTable(rows) {
   document.getElementById('mtgTableWrap').style.display = 'block';
 
   const tbody = document.getElementById('mtgBody');
-  tbody.innerHTML = rows.map(r => `
+  tbody.innerHTML = tblVisibleRows('mtg', rows).map(r => `
     <tr onclick="${r.sf_url ? `window.open('${r.sf_url}','_blank')` : ''}"
         title="${r.sf_url ? 'Open in Salesforce' : ''}"
         style="${r.sf_url ? 'cursor:pointer;' : ''}border-bottom:1px solid var(--border)"
@@ -4522,12 +4522,36 @@ function drawMtgTable(rows) {
           : '<span style="color:var(--text-dim);font-size:11px">—</span>'}
       </td>
       <td style="padding:8px 10px;color:var(--text-muted);font-size:11px">${escHtml(r.seller)}</td>
-    </tr>`).join('');
+    </tr>`).join('') + tblExpandBtnRow('mtg', rows.length);
 }
 
 function escHtml(s) {
   if (!s || s === '—') return s || '—';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Collapsible tables: show top N rows + "Show more" toggle ─────────────────
+const TBL_COLLAPSED_N = 5;
+const TBL_EXPAND = { mtg: false, mql: false, sql: false };
+
+function tblVisibleRows(section, rows) {
+  return TBL_EXPAND[section] ? rows : rows.slice(0, TBL_COLLAPSED_N);
+}
+
+function tblExpandBtnRow(section, total) {
+  if (total <= TBL_COLLAPSED_N) return '';
+  const expanded = TBL_EXPAND[section];
+  const hidden = total - TBL_COLLAPSED_N;
+  return `<tr><td colspan="99" style="text-align:center;padding:10px;border-bottom:none">
+    <button onclick="toggleTblExpand('${section}')" style="background:rgba(212,175,55,0.1);color:var(--gold);border:1px solid rgba(212,175,55,0.3);border-radius:8px;padding:7px 18px;font-size:12px;cursor:pointer">
+      ${expanded ? '▲ Show less' : `▼ Show more (${hidden} more)`}
+    </button></td></tr>`;
+}
+
+function toggleTblExpand(section) {
+  TBL_EXPAND[section] = !TBL_EXPAND[section];
+  if (section === 'mtg') applyMtgFilters();
+  else applyRptSearch(section);
 }
 
 function rptDateLabel(period, section) {
@@ -4732,7 +4756,7 @@ function drawMqlTable(rows) {
   document.getElementById('mqlCount').textContent = `Showing ${rows.length} lead${rows.length!==1?'s':''}`;
 
   const tbody = document.getElementById('mqlBody');
-  tbody.innerHTML = rows.map(r=>`
+  tbody.innerHTML = tblVisibleRows('mql', rows).map(r=>`
     <tr onclick="window.open('${r.sf_url}','_blank')" title="Open in Salesforce" style="${r.sf_url?'cursor:pointer':''}">
       <td>
         <span style="display:inline-flex;align-items:center;gap:6px">
@@ -4750,7 +4774,7 @@ function drawMqlTable(rows) {
         ${r.sf_url?`<span style="color:var(--gold-light)">${r.name} <span style="font-size:10px;opacity:.6">↗</span></span>`:r.name}
       </td>
       <td style="color:var(--text-muted)">${r.company}</td>
-    </tr>`).join('');
+    </tr>`).join('') + tblExpandBtnRow('mql', rows.length);
 
   document.getElementById('mqlFoot').innerHTML = `
     <td colspan="9" style="color:var(--text-muted);font-size:11px;font-weight:600">
@@ -4801,7 +4825,7 @@ function drawSqlTable(rows) {
   document.getElementById('sqlSources').textContent = new Set(rows.map(r=>r.source).filter(x=>x&&x!=='—')).size;
 
   const tbody = document.getElementById('sqlBody');
-  tbody.innerHTML = rows.map(r => {
+  tbody.innerHTML = tblVisibleRows('sql', rows).map(r => {
     const statusColor = (r.status||'').toLowerCase() === 'sql'
       ? 'background:rgba(167,139,250,0.15);color:#A78BFA'
       : 'background:rgba(99,102,241,0.15);color:#818CF8';
@@ -4822,7 +4846,7 @@ function drawSqlTable(rows) {
       </td>
       <td style="color:var(--text-muted)">${r.company}</td>
     </tr>`;
-  }).join('');
+  }).join('') + tblExpandBtnRow('sql', rows.length);
 
   document.getElementById('sqlFoot').innerHTML = `
     <td colspan="7" style="color:var(--text-muted);font-size:11px;font-weight:600">
