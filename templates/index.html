@@ -791,10 +791,11 @@ tfoot td {
         <div style="font-size:13px;font-weight:700;color:var(--text)">🏆 SDR Performance Table</div>
         <span id="sdrpCount" style="font-size:11px;color:var(--text-muted)"></span>
         <div style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <span style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.5px">PERIOD</span>
+          <span style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.5px">PERIOD <span style="color:var(--text-dim);font-weight:600;text-transform:none;letter-spacing:0">(Meeting Generated On)</span></span>
           <button id="sdrpP-all"    class="chip active" onclick="setSdrpPeriod('all')">All</button>
           <button id="sdrpP-7d"     class="chip"        onclick="setSdrpPeriod('7d')">Last 7 Days</button>
           <button id="sdrpP-30d"    class="chip"        onclick="setSdrpPeriod('30d')">Last 30 Days</button>
+          <button id="sdrpP-qtd"    class="chip"        onclick="setSdrpPeriod('qtd')">QTD</button>
           <button id="sdrpP-custom" class="chip"        onclick="setSdrpPeriod('custom')">📅 Custom</button>
           <input type="date" id="sdrpCustomStart" onchange="renderSdrPerfTable()" style="display:none;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:11px">
           <input type="date" id="sdrpCustomEnd"   onchange="renderSdrPerfTable()" style="display:none;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:11px">
@@ -4473,7 +4474,7 @@ function clearSdrpFilters() {
 
 function setSdrpPeriod(p) {
   SDRP.period = p;
-  ['all','7d','30d','custom'].forEach(x => {
+  ['all','7d','30d','qtd','custom'].forEach(x => {
     const b = document.getElementById(`sdrpP-${x}`);
     if (b) b.classList.toggle('active', x === p);
   });
@@ -4489,6 +4490,7 @@ function sdrpDateBounds() {
   const toYMD = d => d.toISOString().slice(0, 10);
   if (SDRP.period === '7d')  { const s = new Date(today); s.setDate(s.getDate() - 7);  return [toYMD(s), toYMD(today)]; }
   if (SDRP.period === '30d') { const s = new Date(today); s.setDate(s.getDate() - 30); return [toYMD(s), toYMD(today)]; }
+  if (SDRP.period === 'qtd') { const q = Math.floor(today.getMonth() / 3); const s = new Date(today.getFullYear(), q * 3, 1); return [toYMD(s), toYMD(today)]; }
   if (SDRP.period === 'custom') {
     return [document.getElementById('sdrpCustomStart')?.value || '',
             document.getElementById('sdrpCustomEnd')?.value   || ''];
