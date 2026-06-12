@@ -969,8 +969,11 @@ def campaign_metrics(c, start_override=None, end_override=None):
         # only count leads whose Meeting_Generated_on__c falls inside the
         # campaign's start–end dates. Otherwise a recycled lead's old meeting
         # (from a previous campaign) leaks into this campaign's counts.
-        done_filter   = ("(Meeting_Status__c IN ('Meeting Done-Nurture',"
-                         "'Meeting Done- Not Interested','Meeting Done-Unqualified')"
+        # "Meeting Done" = ANY completed-meeting status (incl. Meeting Done-SQL),
+        # OR the lead reached S1 (its meeting must have happened). Matches the SDR
+        # Performance table definition so all "Meeting Done" numbers agree.
+        done_filter   = ("((Meeting_Status__c LIKE 'Meeting Done%'"
+                         " OR Status = 'S1 Converted')"
                          f"{dt_mtg})")
         noshow_filter = f"(Meeting_Status__c = 'Meeting No Show'{dt_mtg})"
         sql_filter    = "Status = 'SQL'"
@@ -2276,7 +2279,7 @@ def api_status_leads():
     camp_period_end   = request.args.get('camp_end',   '').strip() or None
 
     STATUS_FILTERS = {
-        'done':   "Meeting_Status__c IN ('Meeting Done-Nurture', 'Meeting Done- Not Interested', 'Meeting Done-Unqualified')",
+        'done':   "(Meeting_Status__c LIKE 'Meeting Done%' OR Status = 'S1 Converted')",
         'noshow': "Meeting_Status__c = 'Meeting No Show'",
         'sql':    "Status = 'SQL'",
     }
