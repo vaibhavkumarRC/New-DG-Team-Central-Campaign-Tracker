@@ -4498,7 +4498,11 @@ function sdrpDateBounds() {
   return ['', ''];
 }
 
-const SDRP_IS_DONE = r => (r.status || '').startsWith('Meeting Done');
+// A meeting counts as Done if its Meeting_Status says so, OR the lead reached
+// S1 (Status = 'S1 Converted') — because a lead can't convert to S1 without a
+// completed meeting. This catches leads whose Meeting_Status stayed
+// "Meeting Scheduled" after being converted to a contact at S1.
+const SDRP_IS_DONE = r => (r.status || '').startsWith('Meeting Done') || r.lead_status === 'S1 Converted';
 const SDRP_IS_S1   = r => r.lead_status === 'S1 Converted';
 
 // All-time per-SDR stats from the live meeting-leads data (unfiltered) — the
