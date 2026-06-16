@@ -969,6 +969,9 @@ def campaign_metrics(c, start_override=None, end_override=None):
         # "Skipped: Outplay…" tasks contain neither and are excluded.
         li_sent_subj = "Subject LIKE '%CONNECTION_REQUEST_SENT%'"
         li_acc_subj  = "Subject LIKE '%CONNECTION_REQUEST_ACCEPTED%'"
+        # LinkedIn messaging (after a connection is accepted).
+        li_msg_subj   = "Subject LIKE '%HeyReach - MESSAGE_SENT%'"
+        li_reply_subj = "Subject LIKE '%HeyReach - MESSAGE_REPLY_RECEIVED%'"
 
         # Meeting Done / No-Show are tied to THIS campaign's meeting window:
         # only count leads whose Meeting_Generated_on__c falls inside the
@@ -1000,6 +1003,8 @@ def campaign_metrics(c, start_override=None, end_override=None):
             f_emails  = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, email_subj, dt_task)
             f_lisent  = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, li_sent_subj, dt_task)
             f_liacc   = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, li_acc_subj,  dt_task)
+            f_limsg   = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, li_msg_subj,   dt_task)
+            f_lireply = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, li_reply_subj, dt_task)
             f_ucalled = ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, call_subj,  dt_task)
             f_uemailed= ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, email_subj, dt_task)
 
@@ -1022,6 +1027,8 @@ def campaign_metrics(c, start_override=None, end_override=None):
         total_emails         = f_emails.result()
         li_sent              = f_lisent.result()
         li_accepted          = f_liacc.result()
+        li_msg_sent          = f_limsg.result()
+        li_msg_reply         = f_lireply.result()
         unique_leads_called  = f_ucalled.result()
         unique_leads_emailed = f_uemailed.result()
         results['meeting_done']   = f_done.result()   # int
@@ -1033,7 +1040,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
             results['s1'] = f_s1.result()
     else:
         total_calls = total_connects = total_conversations = total_emails = unique_leads_called = unique_leads_emailed = 0
-        li_sent = li_accepted = 0
+        li_sent = li_accepted = li_msg_sent = li_msg_reply = 0
 
     total_leads = len(frozen_lead_ids)  # use frozen count so it never shrinks
 
@@ -1071,6 +1078,8 @@ def campaign_metrics(c, start_override=None, end_override=None):
         'total_emails':             total_emails,
         'li_sent':                  li_sent,
         'li_accepted':              li_accepted,
+        'li_msg_sent':              li_msg_sent,
+        'li_msg_reply':             li_msg_reply,
         'unique_leads_called':      unique_leads_called,
         'unique_leads_emailed':     unique_leads_emailed,
         'calls_per_called_lead':    calls_per_called_lead,
@@ -2770,9 +2779,19 @@ def api_emails_trend():
     return _activity_trend("Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%'")
 
 
-# LinkedIn (HeyReach) connection-request subjects, shared by trend + leads routes.
-LI_SENT_SUBJ = "Subject LIKE '%CONNECTION_REQUEST_SENT%'"
-LI_ACC_SUBJ  = "Subject LIKE '%CONNECTION_REQUEST_ACCEPTED%'"
+# LinkedIn (HeyReach) Task subjects, shared by trend + leads routes.
+LI_SENT_SUBJ  = "Subject LIKE '%CONNECTION_REQUEST_SENT%'"
+LI_ACC_SUBJ   = "Subject LIKE '%CONNECTION_REQUEST_ACCEPTED%'"
+LI_MSG_SUBJ   = "Subject LIKE '%HeyReach - MESSAGE_SENT%'"
+LI_REPLY_SUBJ = "Subject LIKE '%HeyReach - MESSAGE_REPLY_RECEIVED%'"
+
+# type → subject filter, used by the trend + leads routes.
+LI_SUBJ_BY_TYPE = {
+    'sent':      LI_SENT_SUBJ,
+    'accepted':  LI_ACC_SUBJ,
+    'msg_sent':  LI_MSG_SUBJ,
+    'msg_reply': LI_REPLY_SUBJ,
+}
 
 
 @app.route('/api/linkedin-sent-trend', methods=['POST'])
@@ -2785,6 +2804,16 @@ def api_linkedin_accepted_trend():
     return _activity_trend(LI_ACC_SUBJ)
 
 
+@app.route('/api/linkedin-msg-sent-trend', methods=['POST'])
+def api_linkedin_msg_sent_trend():
+    return _activity_trend(LI_MSG_SUBJ)
+
+
+@app.route('/api/linkedin-msg-reply-trend', methods=['POST'])
+def api_linkedin_msg_reply_trend():
+    return _activity_trend(LI_REPLY_SUBJ)
+
+
 @app.route('/api/linkedin-leads', methods=['POST'])
 def api_linkedin_leads():
     """Lead-level rows behind a LinkedIn card, for the given campaign set + date
@@ -2795,7 +2824,7 @@ def api_linkedin_leads():
     ids   = body.get('campaign_ids') or []
     start = (body.get('start') or '').strip()
     end   = (body.get('end')   or '').strip()
-    subj  = LI_ACC_SUBJ if typ == 'accepted' else LI_SENT_SUBJ
+    subj  = LI_SUBJ_BY_TYPE.get(typ, LI_SENT_SUBJ)
 
     dt = ''
     if start: dt += f" AND ActivityDate >= {start}"
@@ -2814,7 +2843,7 @@ def api_linkedin_leads():
     for i in range(0, len(lead_ids), _BATCH_SIZE):
         batch   = lead_ids[i:i + _BATCH_SIZE]
         ids_str = ','.join(f"'{x}'" for x in batch)
-        q = (f"SELECT WhoId, Subject, ActivityDate FROM Task "
+        q = (f"SELECT WhoId, Subject, Description, ActivityDate FROM Task "
              f"WHERE ({subj}) AND WhoId IN ({ids_str}) AND ActivityDate != null{dt} "
              f"ORDER BY ActivityDate DESC LIMIT 2000")
         res = soql(q, paginate=False)
@@ -2841,6 +2870,7 @@ def api_linkedin_leads():
             'company':  ld.get('Company')   or '—',
             'campaign': ld.get('Campaign__c') or '—',
             'subject':  t.get('Subject')    or '—',
+            'content':  t.get('Description') or '',
             'date':     (t.get('ActivityDate') or '')[:10],
             'sf_url':   f"{SF_BASE_URL}/lightning/r/Lead/{wid}/view" if wid else '',
         })
