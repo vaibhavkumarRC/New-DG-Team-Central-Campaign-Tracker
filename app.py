@@ -2687,6 +2687,69 @@ def api_nooks_call_detail():
     })
 
 
+@app.route('/api/calls-trend', methods=['POST'])
+def api_calls_trend():
+    """Daily call counts for the 'Calls Made' card drill-down.
+
+    Reconciles with the card by construction: the frontend sends the exact set
+    of campaign IDs currently summed into the card (after SDR/segment/POD
+    filtering) plus the active period window (if any). For each campaign we count
+    call Tasks grouped by ActivityDate over that campaign's frozen Lead IDs —
+    same lead universe, same subject filter, same date window as
+    campaign_metrics — then sum per campaign (matching sum(cps,'total_calls')).
+    """
+    body     = request.get_json(silent=True) or {}
+    ids      = body.get('campaign_ids') or []
+    p_start  = (body.get('start') or '').strip()   # active period window (optional)
+    p_end    = (body.get('end')   or '').strip()
+
+    camps_by_id = {c['id']: c for c in load_campaigns()}
+    ledger      = load_ledger()
+    call_subj   = "Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%'"
+
+    def count_campaign(cid):
+        c = camps_by_id.get(cid)
+        if not c:
+            return {}
+        # Active period window overrides the campaign's own dates (mirrors the
+        # start_override/end_override path in campaign_metrics).
+        start = p_start or (c.get('start_date') or '').strip()
+        end   = p_end   or (c.get('end_date')   or '').strip()
+        dt = ''
+        if start: dt += f" AND ActivityDate >= {start}"
+        if end:   dt += f" AND ActivityDate <= {end}"
+        lead_ids = (ledger.get(cid) or {}).get('lead_ids') or []
+        local = {}
+        for i in range(0, len(lead_ids), _BATCH_SIZE):
+            batch   = lead_ids[i:i + _BATCH_SIZE]
+            ids_str = ','.join(f"'{x}'" for x in batch)
+            q = (f"SELECT ActivityDate, COUNT(Id) ct FROM Task "
+                 f"WHERE ({call_subj}) AND WhoId IN ({ids_str}) "
+                 f"AND ActivityDate != null{dt} "
+                 f"GROUP BY ActivityDate")
+            res = soql(q, paginate=False)
+            for r in (res or {}).get('records', []):
+                d = (r.get('ActivityDate') or '')[:10]
+                if d:
+                    local[d] = local.get(d, 0) + (r.get('ct') or r.get('expr0') or 0)
+        return local
+
+    day_counts = {}
+    work = [cid for cid in ids if (ledger.get(cid) or {}).get('lead_ids')]
+    if work:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            for local in ex.map(count_campaign, work):
+                for d, n in local.items():
+                    day_counts[d] = day_counts.get(d, 0) + n
+
+    series = [{'date': d, 'calls': day_counts[d]} for d in sorted(day_counts)]
+    return jsonify({
+        'series':    series,
+        'total':     sum(day_counts.values()),
+        'campaigns': len(work),
+    })
+
+
 @app.route('/api/campaigns/<cid>', methods=['PUT'])
 @require_admin
 def api_camps_update(cid):
