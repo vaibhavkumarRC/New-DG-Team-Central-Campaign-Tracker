@@ -1524,7 +1524,7 @@ tfoot td {
   <div class="modal-box" onclick="event.stopPropagation()" style="max-width:920px">
     <div class="modal-hdr">
       <div>
-        <div class="modal-title">📞 Calls Made — Daily Trend</div>
+        <div class="modal-title" id="callsTrendTitle">📞 Calls Made — Daily Trend</div>
         <div class="modal-sub" id="callsTrendSub">Loading…</div>
       </div>
       <button class="modal-close" onclick="closeCallsTrendModal()" style="margin-left:auto">×</button>
@@ -2429,16 +2429,16 @@ function renderDashboard() {
   const sqlOnClick       = `openStatusLeadsModal('sql','${_sdr}','${_seg}','${_pod}','${_pStart}','${_pEnd}')`;
   const s1OnClick        = `openS1Modal('${_sdr}','${_seg}','${_pod}')`;
 
-  // Calls Made drill-down: stash the EXACT filtered campaign set + active period
-  // window so the trend chart reconciles with this card's number by construction.
+  // Calls/Emails trend drill-down: stash the EXACT filtered campaign set + active
+  // period window so each trend chart reconciles with its card by construction.
   const _filtBits = [];
   if(S.dashSegmentFilter !== 'All') _filtBits.push(S.dashSegmentFilter);
   if(S.dashPodFilter !== 'All')     _filtBits.push(S.dashPodFilter);
   if(S.dashSdrFilter !== 'All')     _filtBits.push(S.dashSdrFilter); else _filtBits.push('All SDRs');
-  S.callsTrendCtx = {
+  S.trendCtx = {
     campaign_ids: cps.map(c => c.id),
     start: _pStart, end: _pEnd,
-    total: totalCalls,
+    totals: { calls: totalCalls, emails: totalEmails },
     label: _filtBits.join(' · '),
     period: (S.timePeriod === 'all') ? 'All time' : S.timePeriod.toUpperCase(),
   };
@@ -2446,10 +2446,10 @@ function renderDashboard() {
   const kpis = [
     {label:'Campaigns',      value:cps.length,           sub:`${activeCamps} active`,                              icon:'🎯', color:'var(--gold)'},
     {label:'Total Leads',    value:fmt(totalLeads),       sub:'in pipeline',                                        icon:'👤', color:'var(--blue)'},
-    {label:'Calls Made',     value:fmt(totalCalls),       sub:pct(totalCalls,totalLeads)+' coverage · click for daily trend', icon:'📞', color:'var(--purple)', clickable:true, onclick:'openCallsTrendModal()'},
+    {label:'Calls Made',     value:fmt(totalCalls),       sub:pct(totalCalls,totalLeads)+' coverage · click for daily trend', icon:'📞', color:'var(--purple)', clickable:true, onclick:"openTrendModal('calls')"},
     {label:'Total Connects', value:fmt(totalConnects),    sub:pct(totalConnects,totalCalls)+' connect rate',        icon:'🤝', color:'var(--green)'},
     {label:'Conversations',  value:fmt(totalConvos),      sub:pct(totalConvos,totalConnects)+' of connects',        icon:'💬', color:'var(--blue, #60A5FA)'},
-    {label:'Emails Sent',    value:fmt(totalEmails),      sub:pct(totalEmails,totalLeads)+' coverage',              icon:'📧', color:'var(--amber)'},
+    {label:'Emails Sent',    value:fmt(totalEmails),      sub:pct(totalEmails,totalLeads)+' coverage · click for daily trend', icon:'📧', color:'var(--amber)', clickable:true, onclick:"openTrendModal('emails')"},
     {label:'Mtgs Generated', value:fmt(totalMeetings),    sub:'Click to see leads',                                 icon:'🤝', color:'var(--green)',  clickable:true, onclick:meetingsOnClick},
     {label:'Mtgs Done',      value:fmt(totalMtgDone),     sub:'Click to see leads',                                 icon:'✅', color:'#34D399',        clickable:true, onclick:mtgDoneOnClick},
   ];
@@ -2722,10 +2722,38 @@ function closeCallsTrendModal(e){
 
 // Reusable: fetch the daily call trend for a set of campaigns and draw a line
 // chart into an existing <canvas>. Used by the embedded chart in the Nooks modal.
-async function drawCallTrendInto(canvasId, campaignIds, start, end, loadingElId){
-  const fmtD = s => { try { return new Date(s+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); } catch { return s; } };
+// Metric config shared by the dashboard trend modal and the embedded charts.
+const TREND_META = {
+  calls:  {endpoint:'/api/calls-trend',  title:'📞 Calls Made — Daily Trend',  noun:'calls',  color:'#A78BFA', fill:'rgba(167,139,250,0.12)'},
+  emails: {endpoint:'/api/emails-trend', title:'📧 Emails Sent — Daily Trend', noun:'emails', color:'#F59E0B', fill:'rgba(245,158,11,0.12)'},
+};
+const _trendFmtD = s => { try { return new Date(s+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); } catch { return s; } };
+
+function _trendLineConfig(series, color, fill){
+  return {
+    type:'line',
+    data:{ labels:series.map(p=>_trendFmtD(p.date)), datasets:[{
+      label:'Count', data:series.map(p=>p.count),
+      borderColor:color, backgroundColor:fill,
+      fill:true, tension:0.3, pointRadius:3, pointHoverRadius:5, pointBackgroundColor:color,
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{backgroundColor:'rgba(12,26,43,0.95)', titleColor:'#ECF2F9', bodyColor:'#7B9EC2', borderColor:'#1A3352', borderWidth:1} },
+      scales:{
+        x:{ grid:{color:'rgba(26,51,82,0.6)'}, ticks:{color:'#D0DEF0',font:{size:10},maxRotation:60,minRotation:0,autoSkip:true,maxTicksLimit:14} },
+        y:{ beginAtZero:true, grid:{color:'rgba(26,51,82,0.6)'}, ticks:{color:'#D0DEF0',font:{size:11},precision:0} },
+      }
+    }
+  };
+}
+
+// Reusable: fetch the daily trend for a metric and draw a line chart into an
+// existing <canvas>. Used by the embedded chart in the Nooks modal.
+async function drawTrendInto(canvasId, metric, campaignIds, start, end, loadingElId){
+  const meta = TREND_META[metric] || TREND_META.calls;
   try{
-    const res = await fetch('/api/calls-trend', {
+    const res = await fetch(meta.endpoint, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({campaign_ids:campaignIds, start:start||'', end:end||''})
     });
@@ -2735,92 +2763,60 @@ async function drawCallTrendInto(canvasId, campaignIds, start, end, loadingElId)
     const cv = q(canvasId);
     if(!cv) return;
     if(!series.length){
-      const w = cv.parentElement; if(w) w.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:13px">No dated calls found for this campaign.</div>';
+      const w = cv.parentElement; if(w) w.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:13px">No dated ${meta.noun} found for this campaign.</div>`;
       return;
     }
     cv.style.display = 'block';
     if(S.charts[canvasId]) S.charts[canvasId].destroy();
-    S.charts[canvasId] = new Chart(cv, {
-      type:'line',
-      data:{ labels:series.map(p=>fmtD(p.date)), datasets:[{
-        label:'Calls', data:series.map(p=>p.calls),
-        borderColor:'#A78BFA', backgroundColor:'rgba(167,139,250,0.12)',
-        fill:true, tension:0.3, pointRadius:3, pointHoverRadius:5, pointBackgroundColor:'#A78BFA',
-      }]},
-      options:{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{display:false}, tooltip:{backgroundColor:'rgba(12,26,43,0.95)', titleColor:'#ECF2F9', bodyColor:'#7B9EC2', borderColor:'#1A3352', borderWidth:1} },
-        scales:{
-          x:{ grid:{color:'rgba(26,51,82,0.6)'}, ticks:{color:'#D0DEF0',font:{size:10},maxRotation:60,autoSkip:true,maxTicksLimit:14} },
-          y:{ beginAtZero:true, grid:{color:'rgba(26,51,82,0.6)'}, ticks:{color:'#D0DEF0',font:{size:11},precision:0} },
-        }
-      }
-    });
+    S.charts[canvasId] = new Chart(cv, _trendLineConfig(series, meta.color, meta.fill));
   }catch(e){
     if(loadingElId && q(loadingElId)) q(loadingElId).innerHTML = `<div style="color:var(--amber);font-size:12px">Could not load trend: ${esc(String(e))}</div>`;
   }
 }
 
-async function openCallsTrendModal(override){
-  const fmtD = s => { try { return new Date(s+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); } catch { return s; } };
-  const ctx = override || S.callsTrendCtx || {campaign_ids:[], start:'', end:'', total:0, label:'All SDRs', period:'All time'};
+// Dashboard / single-campaign standalone trend modal (calls or emails).
+async function openTrendModal(metric, override){
+  const meta = TREND_META[metric] || TREND_META.calls;
+  let ctx;
+  if(override){
+    ctx = override;
+  } else {
+    const b = S.trendCtx || {campaign_ids:[], start:'', end:'', totals:{}, label:'All SDRs', period:'All time'};
+    ctx = {campaign_ids:b.campaign_ids, start:b.start, end:b.end, total:(b.totals||{})[metric]||0, label:b.label, period:b.period};
+  }
+  q('callsTrendTitle').textContent = meta.title;
   q('callsTrendOverlay').classList.add('open');
   q('callsTrendSub').textContent = (ctx.campaign_ids.length === 1)
     ? `${ctx.label} · ${ctx.period}`
     : `${ctx.label} · ${ctx.period} · ${ctx.campaign_ids.length} campaigns`;
   q('callsTrendKpis').innerHTML = '';
-  q('callsTrendLoading').style.display = 'block';
-  q('callsTrendChart').style.display = 'none';
+  q('callsTrendWrap').innerHTML = '<div id="callsTrendLoading" style="padding:40px;text-align:center;color:var(--text-dim)"><div class="spinner" style="width:24px;height:24px;margin:0 auto 12px"></div>Counting ' + meta.noun + ' per day from Salesforce…</div><canvas id="callsTrendChart" style="display:none"></canvas>';
   try{
-    const res = await fetch('/api/calls-trend', {
+    const res = await fetch(meta.endpoint, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({campaign_ids:ctx.campaign_ids, start:ctx.start, end:ctx.end})
     });
     const d = await res.json();
     const series = d.series || [];
     q('callsTrendLoading').style.display = 'none';
-    q('callsTrendChart').style.display = 'block';
 
-    // Summary KPIs — reconcile note: backend total vs the card number
-    const days     = series.length;
-    const peak     = series.reduce((m,p)=>p.calls>m.calls?p:m, {calls:0,date:'—'});
-    const avg      = days ? Math.round(d.total/days) : 0;
-    const matches  = (d.total === ctx.total);
+    const days    = series.length;
+    const peak    = series.reduce((m,p)=>p.count>m.count?p:m, {count:0,date:'—'});
+    const avg     = days ? Math.round(d.total/days) : 0;
+    const matches = (d.total === ctx.total);
     q('callsTrendKpis').innerHTML = `
-      <div class="modal-kpi"><div class="modal-kpi-val">${fmt(d.total)}</div><div class="modal-kpi-lbl">Total calls${matches?'':` (card: ${fmt(ctx.total)})`}</div></div>
+      <div class="modal-kpi"><div class="modal-kpi-val">${fmt(d.total)}</div><div class="modal-kpi-lbl">Total ${meta.noun}${matches?'':` (card: ${fmt(ctx.total)})`}</div></div>
       <div class="modal-kpi"><div class="modal-kpi-val">${fmt(avg)}</div><div class="modal-kpi-lbl">Avg / active day</div></div>
-      <div class="modal-kpi"><div class="modal-kpi-val">${fmt(peak.calls)}</div><div class="modal-kpi-lbl">Peak — ${fmtD(peak.date)}</div></div>`;
+      <div class="modal-kpi"><div class="modal-kpi-val">${fmt(peak.count)}</div><div class="modal-kpi-lbl">Peak — ${_trendFmtD(peak.date)}</div></div>`;
 
     if(!series.length){
-      q('callsTrendWrap').innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim)">No dated calls found for this selection.</div>';
+      q('callsTrendWrap').innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-dim)">No dated ${meta.noun} found for this selection.</div>`;
       return;
     }
+    q('callsTrendChart').style.display = 'block';
     if(S.charts['callsTrendChart']) S.charts['callsTrendChart'].destroy();
-    S.charts['callsTrendChart'] = new Chart(q('callsTrendChart'), {
-      type:'line',
-      data:{
-        labels: series.map(p=>fmtD(p.date)),
-        datasets:[{
-          label:'Calls', data: series.map(p=>p.calls),
-          borderColor:'#A78BFA', backgroundColor:'rgba(167,139,250,0.12)',
-          fill:true, tension:0.3, pointRadius:3, pointHoverRadius:5,
-          pointBackgroundColor:'#A78BFA',
-        }]
-      },
-      options:{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{
-          legend:{display:false},
-          tooltip:{backgroundColor:'rgba(12,26,43,0.95)', titleColor:'#ECF2F9', bodyColor:'#7B9EC2', borderColor:'#1A3352', borderWidth:1}
-        },
-        scales:{
-          x:{ grid:{color:'rgba(26,51,82,0.6)'}, ticks:{color:'#D0DEF0',font:{size:10},maxRotation:60,minRotation:0,autoSkip:true,maxTicksLimit:14} },
-          y:{ beginAtZero:true, grid:{color:'rgba(26,51,82,0.6)'}, ticks:{color:'#D0DEF0',font:{size:11},precision:0} },
-        }
-      }
-    });
+    S.charts['callsTrendChart'] = new Chart(q('callsTrendChart'), _trendLineConfig(series, meta.color, meta.fill));
   }catch(err){
-    q('callsTrendLoading').style.display = 'none';
     q('callsTrendWrap').innerHTML = `<div style="padding:40px;text-align:center;color:var(--amber)">Could not load trend: ${esc(String(err))}</div>`;
   }
 }
@@ -3319,7 +3315,12 @@ function openModal(id) {
         <div class="modal-kpi-val" style="color:var(--purple)">${fmt(c.total_calls)}</div>
         <div class="modal-kpi-lbl">Total Call Attempts ↗</div>
       </div>
-      <div class="modal-kpi"><div class="modal-kpi-val" style="color:var(--amber)">${fmt(c.total_emails)}</div><div class="modal-kpi-lbl">Total Email Attempts</div></div>
+      <div class="modal-kpi" style="cursor:pointer;border:1px solid rgba(245,158,11,0.3);transition:background .15s"
+           onmouseover="this.style.background='rgba(245,158,11,0.08)'" onmouseout="this.style.background=''"
+           onclick="closeModal();openTrendModal('emails',{campaign_ids:['${c.id}'],start:'',end:'',total:${c.total_emails||0},label:'${campNameSafe}',period:'Campaign dates'})" title="Click to see daily email trend">
+        <div class="modal-kpi-val" style="color:var(--amber)">${fmt(c.total_emails)}</div>
+        <div class="modal-kpi-lbl">Total Email Attempts ↗</div>
+      </div>
     </div>
     <div class="modal-kpi-row">
       <div class="modal-kpi" title="${uCalled} leads called · ${notCalled} not yet called">
@@ -3484,7 +3485,7 @@ async function openNooksModal(campaignName, campaignId) {
       </div>`;
 
     // Draw the embedded daily-call-trend chart for this campaign (own dates).
-    if(campaignId) drawCallTrendInto('nooksTrendChart', [campaignId], '', '', 'nooksTrendLoading');
+    if(campaignId) drawTrendInto('nooksTrendChart', 'calls', [campaignId], '', '', 'nooksTrendLoading');
     else if(q('nooksTrendWrap')) q('nooksTrendWrap').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:12px">Open this from a campaign to see its daily trend.</div>';
   } catch(e) {
     body.innerHTML = `<div style="text-align:center;padding:40px;color:var(--red)">❌ Failed to load: ${e.message}</div>`;
