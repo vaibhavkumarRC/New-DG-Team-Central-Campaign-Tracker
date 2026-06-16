@@ -2720,11 +2720,18 @@ function closeCallsTrendModal(e){
   if(S.charts['callsTrendChart']){ S.charts['callsTrendChart'].destroy(); delete S.charts['callsTrendChart']; }
 }
 
-async function openCallsTrendModal(){
+// Scoped helper: open the daily call-trend chart for a single campaign.
+function openCampaignCallsTrend(id, name, total){
+  openCallsTrendModal({campaign_ids:[id], start:'', end:'', total: total||0, label: name, period:'Campaign dates'});
+}
+
+async function openCallsTrendModal(override){
   const fmtD = s => { try { return new Date(s+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); } catch { return s; } };
-  const ctx = S.callsTrendCtx || {campaign_ids:[], start:'', end:'', total:0, label:'All SDRs', period:'All time'};
+  const ctx = override || S.callsTrendCtx || {campaign_ids:[], start:'', end:'', total:0, label:'All SDRs', period:'All time'};
   q('callsTrendOverlay').classList.add('open');
-  q('callsTrendSub').textContent = `${ctx.label} · ${ctx.period} · ${ctx.campaign_ids.length} campaign${ctx.campaign_ids.length===1?'':'s'}`;
+  q('callsTrendSub').textContent = (ctx.campaign_ids.length === 1)
+    ? `${ctx.label} · ${ctx.period}`
+    : `${ctx.label} · ${ctx.period} · ${ctx.campaign_ids.length} campaigns`;
   q('callsTrendKpis').innerHTML = '';
   q('callsTrendLoading').style.display = 'block';
   q('callsTrendChart').style.display = 'none';
@@ -3272,7 +3279,7 @@ function openModal(id) {
       <div class="modal-kpi"><div class="modal-kpi-val" style="color:var(--blue)">${fmt(c.total_leads)}</div><div class="modal-kpi-lbl">Total Leads</div></div>
       <div class="modal-kpi" style="cursor:pointer;border:1px solid rgba(139,92,246,0.3);transition:background .15s"
            onmouseover="this.style.background='rgba(139,92,246,0.08)'" onmouseout="this.style.background=''"
-           onclick="closeModal();openNooksModal('${campNameSafe}')" title="Click to see Nooks call breakdown">
+           onclick="closeModal();openCampaignCallsTrend('${c.id}','${campNameSafe}',${c.total_calls||0})" title="Click to see daily call trend">
         <div class="modal-kpi-val" style="color:var(--purple)">${fmt(c.total_calls)}</div>
         <div class="modal-kpi-lbl">Total Call Attempts ↗</div>
       </div>
