@@ -2944,15 +2944,14 @@ function applyLiCustom(){
 
 async function loadLinkedInData(){
   const meta = LI_META[S.liType]; const ctx = S.liCtx;
+  const tmeta = TREND_META[meta.metric] || {};
   const {start,end} = (S.liWindow === 'custom')
     ? {start:S.liCustomStart, end:S.liCustomEnd}
     : _liDates(S.liWindow);
-  // Trend chart (reuses the shared metric-aware drawer). Rebuild the canvas each
-  // load so a previous empty-window render can't leave it missing.
+  // Reset chart + table to loading. The trend is derived from the same (current-
+  // membership filtered) leads the table uses, so the two always agree.
   if(S.charts['liTrendChart']){ S.charts['liTrendChart'].destroy(); delete S.charts['liTrendChart']; }
   q('liTrendWrap').innerHTML = '<div id="liTrendLoading" style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px"><div class="spinner" style="width:20px;height:20px;margin:0 auto 10px"></div>Loading daily trend…</div><canvas id="liTrendChart" style="display:none"></canvas>';
-  drawTrendInto('liTrendChart', meta.metric, ctx.campaign_ids, start, end, 'liTrendLoading');
-  // Leads table
   q('liTableWrap').innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px"><div class="spinner" style="width:20px;height:20px;margin:0 auto 10px"></div>Loading leads…</div>';
   q('liWinTotal').textContent = '';
   try{
@@ -2964,8 +2963,20 @@ async function loadLinkedInData(){
     S.liLeads = d.leads || [];
     const winLabel = (S.liWindow === 'custom') ? `${start} → ${end}` : `last ${S.liWindow} days`;
     q('liWinTotal').textContent = `${fmt(d.total)} ${meta.noun} · ${winLabel}`;
+    // Derive the daily trend from the leads (count per date).
+    const byDate = {};
+    for(const r of S.liLeads){ if(r.date) byDate[r.date] = (byDate[r.date]||0) + 1; }
+    const series = Object.keys(byDate).sort().map(dt=>({date:dt, count:byDate[dt]}));
+    q('liTrendLoading').style.display = 'none';
+    if(series.length){
+      q('liTrendChart').style.display = 'block';
+      S.charts['liTrendChart'] = new Chart(q('liTrendChart'), _trendLineConfig(series, tmeta.color||'#378ADD', tmeta.fill||'rgba(55,138,221,0.12)'));
+    } else {
+      q('liTrendWrap').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:12px">No activity in this window.</div>';
+    }
     renderLiTable();
   }catch(e){
+    q('liTrendWrap').innerHTML = `<div style="padding:24px;text-align:center;color:var(--amber);font-size:12px">Could not load: ${esc(String(e))}</div>`;
     q('liTableWrap').innerHTML = `<div style="padding:30px;text-align:center;color:var(--amber);font-size:12px">Could not load leads: ${esc(String(e))}</div>`;
   }
 }

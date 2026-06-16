@@ -2838,6 +2838,13 @@ def api_linkedin_leads():
             if lid not in seen:
                 seen.add(lid); lead_ids.append(lid)
 
+    # Current campaign names for the requested campaigns. The leads list only
+    # shows leads whose CURRENT Campaign__c is one of these — so a lead that has
+    # since moved to a different campaign doesn't appear under this filter.
+    camps_by_id = {c['id']: c for c in load_campaigns()}
+    filt_names  = {(camps_by_id.get(cid) or {}).get('name', '').strip() for cid in ids}
+    filt_names.discard('')
+
     # Pull the matching connection-request tasks for those leads.
     tasks = []
     for i in range(0, len(lead_ids), _BATCH_SIZE):
@@ -2865,6 +2872,10 @@ def api_linkedin_leads():
     for t in tasks:
         wid = t.get('WhoId') or ''
         ld  = detail.get(wid) or detail.get(wid[:15]) or {}
+        # Only leads currently in one of the filtered campaigns (excludes leads
+        # that have since moved to a different campaign).
+        if (ld.get('Campaign__c') or '').strip() not in filt_names:
+            continue
         leads.append({
             'name':     ld.get('Name')      or '—',
             'company':  ld.get('Company')   or '—',
