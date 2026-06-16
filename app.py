@@ -964,6 +964,11 @@ def campaign_metrics(c, start_override=None, end_override=None):
     if frozen_lead_ids:
         call_subj  = "Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%'"
         email_subj = "Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%'"
+        # LinkedIn (HeyReach) connection-request tasks. _SENT and _ACCEPTED are
+        # distinct substrings, so each filter is unambiguous; the legacy
+        # "Skipped: Outplay…" tasks contain neither and are excluded.
+        li_sent_subj = "Subject LIKE '%CONNECTION_REQUEST_SENT%'"
+        li_acc_subj  = "Subject LIKE '%CONNECTION_REQUEST_ACCEPTED%'"
 
         # Meeting Done / No-Show are tied to THIS campaign's meeting window:
         # only count leads whose Meeting_Generated_on__c falls inside the
@@ -993,6 +998,8 @@ def campaign_metrics(c, start_override=None, end_override=None):
             f_connects= ex.submit(_count_tasks_for_ids,        frozen_lead_ids, connect_subj, dt_task)
             f_convos  = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, convo_subj, dt_task)
             f_emails  = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, email_subj, dt_task)
+            f_lisent  = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, li_sent_subj, dt_task)
+            f_liacc   = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, li_acc_subj,  dt_task)
             f_ucalled = ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, call_subj,  dt_task)
             f_uemailed= ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, email_subj, dt_task)
 
@@ -1013,6 +1020,8 @@ def campaign_metrics(c, start_override=None, end_override=None):
         total_connects       = f_connects.result()
         total_conversations  = f_convos.result()
         total_emails         = f_emails.result()
+        li_sent              = f_lisent.result()
+        li_accepted          = f_liacc.result()
         unique_leads_called  = f_ucalled.result()
         unique_leads_emailed = f_uemailed.result()
         results['meeting_done']   = f_done.result()   # int
@@ -1024,6 +1033,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
             results['s1'] = f_s1.result()
     else:
         total_calls = total_connects = total_conversations = total_emails = unique_leads_called = unique_leads_emailed = 0
+        li_sent = li_accepted = 0
 
     total_leads = len(frozen_lead_ids)  # use frozen count so it never shrinks
 
@@ -1059,6 +1069,8 @@ def campaign_metrics(c, start_override=None, end_override=None):
         'total_connects':           total_connects,
         'total_conversations':      total_conversations,
         'total_emails':             total_emails,
+        'li_sent':                  li_sent,
+        'li_accepted':              li_accepted,
         'unique_leads_called':      unique_leads_called,
         'unique_leads_emailed':     unique_leads_emailed,
         'calls_per_called_lead':    calls_per_called_lead,
@@ -2756,6 +2768,84 @@ def api_calls_trend():
 @app.route('/api/emails-trend', methods=['POST'])
 def api_emails_trend():
     return _activity_trend("Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%'")
+
+
+# LinkedIn (HeyReach) connection-request subjects, shared by trend + leads routes.
+LI_SENT_SUBJ = "Subject LIKE '%CONNECTION_REQUEST_SENT%'"
+LI_ACC_SUBJ  = "Subject LIKE '%CONNECTION_REQUEST_ACCEPTED%'"
+
+
+@app.route('/api/linkedin-sent-trend', methods=['POST'])
+def api_linkedin_sent_trend():
+    return _activity_trend(LI_SENT_SUBJ)
+
+
+@app.route('/api/linkedin-accepted-trend', methods=['POST'])
+def api_linkedin_accepted_trend():
+    return _activity_trend(LI_ACC_SUBJ)
+
+
+@app.route('/api/linkedin-leads', methods=['POST'])
+def api_linkedin_leads():
+    """Lead-level rows behind a LinkedIn card, for the given campaign set + date
+    window. One row per connection-request Task (Lead Name, Company, Campaign,
+    Subject, Date, SF URL). type = 'sent' | 'accepted'."""
+    body  = request.get_json(silent=True) or {}
+    typ   = (body.get('type') or 'sent').strip()
+    ids   = body.get('campaign_ids') or []
+    start = (body.get('start') or '').strip()
+    end   = (body.get('end')   or '').strip()
+    subj  = LI_ACC_SUBJ if typ == 'accepted' else LI_SENT_SUBJ
+
+    dt = ''
+    if start: dt += f" AND ActivityDate >= {start}"
+    if end:   dt += f" AND ActivityDate <= {end}"
+
+    # Frozen lead IDs for the requested campaigns (same universe as the cards).
+    ledger = load_ledger()
+    lead_ids, seen = [], set()
+    for cid in ids:
+        for lid in (ledger.get(cid) or {}).get('lead_ids') or []:
+            if lid not in seen:
+                seen.add(lid); lead_ids.append(lid)
+
+    # Pull the matching connection-request tasks for those leads.
+    tasks = []
+    for i in range(0, len(lead_ids), _BATCH_SIZE):
+        batch   = lead_ids[i:i + _BATCH_SIZE]
+        ids_str = ','.join(f"'{x}'" for x in batch)
+        q = (f"SELECT WhoId, Subject, ActivityDate FROM Task "
+             f"WHERE ({subj}) AND WhoId IN ({ids_str}) AND ActivityDate != null{dt} "
+             f"ORDER BY ActivityDate DESC LIMIT 2000")
+        res = soql(q, paginate=False)
+        tasks.extend((res or {}).get('records', []))
+
+    # Resolve lead name/company/campaign for the WhoIds.
+    who_ids = list({t.get('WhoId') for t in tasks if t.get('WhoId')})
+    detail = {}
+    for i in range(0, len(who_ids), _BATCH_SIZE):
+        batch   = who_ids[i:i + _BATCH_SIZE]
+        ids_str = ','.join(f"'{x}'" for x in batch)
+        dres = soql(f"SELECT Id, Name, Company, Campaign__c FROM Lead WHERE Id IN ({ids_str})",
+                    paginate=False)
+        for r in (dres or {}).get('records', []):
+            detail[r['Id']] = r
+            detail[r['Id'][:15]] = r   # 15-vs-18 char safety
+
+    leads = []
+    for t in tasks:
+        wid = t.get('WhoId') or ''
+        ld  = detail.get(wid) or detail.get(wid[:15]) or {}
+        leads.append({
+            'name':     ld.get('Name')      or '—',
+            'company':  ld.get('Company')   or '—',
+            'campaign': ld.get('Campaign__c') or '—',
+            'subject':  t.get('Subject')    or '—',
+            'date':     (t.get('ActivityDate') or '')[:10],
+            'sf_url':   f"{SF_BASE_URL}/lightning/r/Lead/{wid}/view" if wid else '',
+        })
+    leads.sort(key=lambda x: x['date'], reverse=True)
+    return jsonify({'leads': leads, 'total': len(leads)})
 
 
 @app.route('/api/campaigns/<cid>', methods=['PUT'])

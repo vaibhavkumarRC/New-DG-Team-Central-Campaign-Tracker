@@ -1542,6 +1542,40 @@ tfoot td {
   </div>
 </div>
 
+<!-- ── LINKEDIN CONNECTION REQUESTS MODAL ── -->
+<div class="modal-overlay" id="liOverlay" onclick="closeLinkedInModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:1000px">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title" id="liTitle">LinkedIn</div>
+        <div class="modal-sub" id="liSub">Loading…</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+        <input class="search-box" id="liSearch" type="search" placeholder="Search name / company…" style="max-width:200px;margin:0" oninput="renderLiTable()">
+        <button class="modal-close" onclick="closeLinkedInModal()">×</button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text-dim)">Window:</span>
+        <button id="liWin7"  class="chip active" onclick="setLiWindow(7)">Last 7 Days</button>
+        <button id="liWin30" class="chip"        onclick="setLiWindow(30)">Last 30 Days</button>
+        <button id="liWin90" class="chip"        onclick="setLiWindow(90)">Last 90 Days</button>
+        <span id="liWinTotal" style="margin-left:auto;font-size:12px;color:var(--text-muted)"></span>
+      </div>
+      <div id="liTrendWrap" style="position:relative;height:230px;margin-bottom:18px">
+        <div id="liTrendLoading" style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px">
+          <div class="spinner" style="width:20px;height:20px;margin:0 auto 10px"></div>Loading daily trend…
+        </div>
+        <canvas id="liTrendChart" style="display:none"></canvas>
+      </div>
+      <div id="liTableWrap" style="overflow-x:auto">
+        <div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px">Loading leads…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── MEETING FUNNEL STAGE 1 (Booked on Nooks) MODAL ── -->
 <div class="modal-overlay" id="mgfOverlay" onclick="closeMgfModal(event)">
   <div class="modal-box" onclick="event.stopPropagation()" style="max-width:1100px">
@@ -2387,6 +2421,8 @@ function renderDashboard() {
   const totalConnects = sum(cps,'total_connects');
   const totalConvos   = sum(cps,'total_conversations');
   const totalEmails   = sum(cps,'total_emails');
+  const totalLiSent   = sum(cps,'li_sent');
+  const totalLiAcc    = sum(cps,'li_accepted');
   const totalMeetings = sum(cps,'meetings');
   const activeCamps   = cps.filter(c=>c.status==='Active').length;
 
@@ -2438,7 +2474,7 @@ function renderDashboard() {
   S.trendCtx = {
     campaign_ids: cps.map(c => c.id),
     start: _pStart, end: _pEnd,
-    totals: { calls: totalCalls, emails: totalEmails },
+    totals: { calls: totalCalls, emails: totalEmails, li_sent: totalLiSent, li_accepted: totalLiAcc },
     label: _filtBits.join(' · '),
     period: (S.timePeriod === 'all') ? 'All time' : S.timePeriod.toUpperCase(),
   };
@@ -2450,6 +2486,8 @@ function renderDashboard() {
     {label:'Total Connects', value:fmt(totalConnects),    sub:pct(totalConnects,totalCalls)+' connect rate',        icon:'🤝', color:'var(--green)'},
     {label:'Conversations',  value:fmt(totalConvos),      sub:pct(totalConvos,totalConnects)+' of connects',        icon:'💬', color:'var(--blue, #60A5FA)'},
     {label:'Emails Sent',    value:fmt(totalEmails),      sub:pct(totalEmails,totalLeads)+' coverage · click for daily trend', icon:'📧', color:'var(--amber)', clickable:true, onclick:"openTrendModal('emails')"},
+    {label:'LinkedIn Req Sent',     value:fmt(totalLiSent), sub:'click for leads + trend', icon:'🔗', color:'#378ADD', clickable:true, onclick:"openLinkedInModal('sent')"},
+    {label:'LinkedIn Req Accepted', value:fmt(totalLiAcc),  sub:'click for leads + trend', icon:'✅', color:'#1D9E75', clickable:true, onclick:"openLinkedInModal('accepted')"},
     {label:'Mtgs Generated', value:fmt(totalMeetings),    sub:'Click to see leads',                                 icon:'🤝', color:'var(--green)',  clickable:true, onclick:meetingsOnClick},
     {label:'Mtgs Done',      value:fmt(totalMtgDone),     sub:'Click to see leads',                                 icon:'✅', color:'#34D399',        clickable:true, onclick:mtgDoneOnClick},
   ];
@@ -2724,8 +2762,10 @@ function closeCallsTrendModal(e){
 // chart into an existing <canvas>. Used by the embedded chart in the Nooks modal.
 // Metric config shared by the dashboard trend modal and the embedded charts.
 const TREND_META = {
-  calls:  {endpoint:'/api/calls-trend',  title:'📞 Calls Made — Daily Trend',  noun:'calls',  color:'#A78BFA', fill:'rgba(167,139,250,0.12)'},
-  emails: {endpoint:'/api/emails-trend', title:'📧 Emails Sent — Daily Trend', noun:'emails', color:'#F59E0B', fill:'rgba(245,158,11,0.12)'},
+  calls:       {endpoint:'/api/calls-trend',              title:'📞 Calls Made — Daily Trend',  noun:'calls',  color:'#A78BFA', fill:'rgba(167,139,250,0.12)'},
+  emails:      {endpoint:'/api/emails-trend',             title:'📧 Emails Sent — Daily Trend', noun:'emails', color:'#F59E0B', fill:'rgba(245,158,11,0.12)'},
+  li_sent:     {endpoint:'/api/linkedin-sent-trend',      noun:'requests sent',     color:'#378ADD', fill:'rgba(55,138,221,0.12)'},
+  li_accepted: {endpoint:'/api/linkedin-accepted-trend',  noun:'requests accepted', color:'#1D9E75', fill:'rgba(29,158,117,0.12)'},
 };
 const _trendFmtD = s => { try { return new Date(s+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); } catch { return s; } };
 
@@ -2819,6 +2859,101 @@ async function openTrendModal(metric, override){
   }catch(err){
     q('callsTrendWrap').innerHTML = `<div style="padding:40px;text-align:center;color:var(--amber)">Could not load trend: ${esc(String(err))}</div>`;
   }
+}
+
+// ── LINKEDIN CONNECTION REQUESTS (leads + trend, 7/30/90 window) ──────────────
+const LI_META = {
+  sent:     {title:'🔗 LinkedIn Connection Requests Sent',     metric:'li_sent',     noun:'sent',     dateCol:'Date Sent'},
+  accepted: {title:'✅ LinkedIn Connection Requests Accepted', metric:'li_accepted', noun:'accepted', dateCol:'Date Accepted'},
+};
+
+function _liDates(days){
+  const end = new Date(); const start = new Date(); start.setDate(end.getDate() - (days - 1));
+  const f = d => d.toISOString().slice(0,10);
+  return {start:f(start), end:f(end)};
+}
+
+function closeLinkedInModal(e){
+  if(e && e.target !== e.currentTarget) return;
+  q('liOverlay').classList.remove('open');
+  if(S.charts['liTrendChart']){ S.charts['liTrendChart'].destroy(); delete S.charts['liTrendChart']; }
+}
+
+function openLinkedInModal(type, override){
+  S.liType = (LI_META[type] ? type : 'sent');
+  const meta = LI_META[S.liType];
+  let ctx;
+  if(override){ ctx = override; }
+  else {
+    const b = S.trendCtx || {campaign_ids:[], label:'All SDRs', totals:{}};
+    ctx = {campaign_ids:b.campaign_ids, label:b.label, total:(b.totals||{})[meta.metric]||0};
+  }
+  S.liCtx = ctx;
+  S.liWindow = 7;
+  q('liTitle').textContent = meta.title;
+  q('liSub').textContent = (ctx.campaign_ids.length === 1) ? ctx.label : `${ctx.label} · ${ctx.campaign_ids.length} campaigns`;
+  const sb = q('liSearch'); if(sb) sb.value = '';
+  q('liOverlay').classList.add('open');
+  [7,30,90].forEach(d=>{ const btn=q('liWin'+d); if(btn) btn.className = 'chip'+(d===7?' active':''); });
+  loadLinkedInData();
+}
+
+function setLiWindow(days){
+  S.liWindow = days;
+  [7,30,90].forEach(d=>{ const btn=q('liWin'+d); if(btn) btn.className = 'chip'+(d===days?' active':''); });
+  loadLinkedInData();
+}
+
+async function loadLinkedInData(){
+  const meta = LI_META[S.liType]; const ctx = S.liCtx; const {start,end} = _liDates(S.liWindow);
+  // Trend chart (reuses the shared metric-aware drawer). Rebuild the canvas each
+  // load so a previous empty-window render can't leave it missing.
+  if(S.charts['liTrendChart']){ S.charts['liTrendChart'].destroy(); delete S.charts['liTrendChart']; }
+  q('liTrendWrap').innerHTML = '<div id="liTrendLoading" style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px"><div class="spinner" style="width:20px;height:20px;margin:0 auto 10px"></div>Loading daily trend…</div><canvas id="liTrendChart" style="display:none"></canvas>';
+  drawTrendInto('liTrendChart', meta.metric, ctx.campaign_ids, start, end, 'liTrendLoading');
+  // Leads table
+  q('liTableWrap').innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px"><div class="spinner" style="width:20px;height:20px;margin:0 auto 10px"></div>Loading leads…</div>';
+  q('liWinTotal').textContent = '';
+  try{
+    const res = await fetch('/api/linkedin-leads', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({type:S.liType, campaign_ids:ctx.campaign_ids, start, end})
+    });
+    const d = await res.json();
+    S.liLeads = d.leads || [];
+    q('liWinTotal').textContent = `${fmt(d.total)} ${meta.noun} · last ${S.liWindow} days`;
+    renderLiTable();
+  }catch(e){
+    q('liTableWrap').innerHTML = `<div style="padding:30px;text-align:center;color:var(--amber);font-size:12px">Could not load leads: ${esc(String(e))}</div>`;
+  }
+}
+
+function renderLiTable(){
+  const meta = LI_META[S.liType];
+  const term = (q('liSearch')?.value || '').toLowerCase();
+  let rows = S.liLeads || [];
+  if(term) rows = rows.filter(r => (r.name+' '+r.company+' '+r.campaign).toLowerCase().includes(term));
+  if(!rows.length){
+    q('liTableWrap').innerHTML = `<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:13px">No ${meta.noun} connection requests in this window.</div>`;
+    return;
+  }
+  const body = rows.map(r=>`
+    <tr>
+      <td style="font-weight:600">${r.sf_url
+        ? `<span style="color:var(--gold-light);cursor:pointer" onclick="window.open('${r.sf_url}','_blank')">${esc(r.name)} <span style="font-size:10px;opacity:.6">↗</span></span>`
+        : esc(r.name)}</td>
+      <td style="color:var(--text-muted)">${esc(r.company)}</td>
+      <td style="color:var(--text-muted)">${esc(r.campaign)}</td>
+      <td style="color:var(--text-dim);font-size:11px">${esc(r.subject)}</td>
+      <td style="white-space:nowrap">${esc(r.date)}</td>
+    </tr>`).join('');
+  q('liTableWrap').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Lead Name</th><th>Company</th><th>Campaign</th><th>Task Subject</th><th>${meta.dateCol}</th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table>`;
 }
 
 // ── CAMPAIGNS TAB ────────────────────────────────────────────────────────────
@@ -3336,6 +3471,20 @@ function openModal(id) {
       <div class="modal-kpi">
         <div class="modal-kpi-val" style="font-size:16px;color:var(--text-muted)">${c.calls_per_called_lead>0?c.calls_per_called_lead.toFixed(1):'—'} / ${c.emails_per_emailed_lead>0?c.emails_per_emailed_lead.toFixed(1):'—'}</div>
         <div class="modal-kpi-lbl">Avg Calls / Emails per Lead</div>
+      </div>
+    </div>
+    <div class="modal-kpi-row" style="grid-template-columns:repeat(2,1fr)">
+      <div class="modal-kpi" style="cursor:pointer;border:1px solid rgba(55,138,221,0.3);transition:background .15s"
+           onmouseover="this.style.background='rgba(55,138,221,0.08)'" onmouseout="this.style.background=''"
+           onclick="closeModal();openLinkedInModal('sent',{campaign_ids:['${c.id}'],label:'${campNameSafe}',total:${c.li_sent||0}})" title="Click to see leads + daily trend">
+        <div class="modal-kpi-val" style="color:#378ADD">${fmt(c.li_sent)}</div>
+        <div class="modal-kpi-lbl">LinkedIn Req Sent ↗</div>
+      </div>
+      <div class="modal-kpi" style="cursor:pointer;border:1px solid rgba(29,158,117,0.3);transition:background .15s"
+           onmouseover="this.style.background='rgba(29,158,117,0.08)'" onmouseout="this.style.background=''"
+           onclick="closeModal();openLinkedInModal('accepted',{campaign_ids:['${c.id}'],label:'${campNameSafe}',total:${c.li_accepted||0}})" title="Click to see leads + daily trend">
+        <div class="modal-kpi-val" style="color:#1D9E75">${fmt(c.li_accepted)}</div>
+        <div class="modal-kpi-lbl">LinkedIn Req Accepted ↗</div>
       </div>
     </div>
     <div class="modal-kpi-row">
