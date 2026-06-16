@@ -2720,9 +2720,45 @@ function closeCallsTrendModal(e){
   if(S.charts['callsTrendChart']){ S.charts['callsTrendChart'].destroy(); delete S.charts['callsTrendChart']; }
 }
 
-// Scoped helper: open the daily call-trend chart for a single campaign.
-function openCampaignCallsTrend(id, name, total){
-  openCallsTrendModal({campaign_ids:[id], start:'', end:'', total: total||0, label: name, period:'Campaign dates'});
+// Reusable: fetch the daily call trend for a set of campaigns and draw a line
+// chart into an existing <canvas>. Used by the embedded chart in the Nooks modal.
+async function drawCallTrendInto(canvasId, campaignIds, start, end, loadingElId){
+  const fmtD = s => { try { return new Date(s+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); } catch { return s; } };
+  try{
+    const res = await fetch('/api/calls-trend', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({campaign_ids:campaignIds, start:start||'', end:end||''})
+    });
+    const d = await res.json();
+    const series = d.series || [];
+    if(loadingElId && q(loadingElId)) q(loadingElId).style.display = 'none';
+    const cv = q(canvasId);
+    if(!cv) return;
+    if(!series.length){
+      const w = cv.parentElement; if(w) w.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:13px">No dated calls found for this campaign.</div>';
+      return;
+    }
+    cv.style.display = 'block';
+    if(S.charts[canvasId]) S.charts[canvasId].destroy();
+    S.charts[canvasId] = new Chart(cv, {
+      type:'line',
+      data:{ labels:series.map(p=>fmtD(p.date)), datasets:[{
+        label:'Calls', data:series.map(p=>p.calls),
+        borderColor:'#A78BFA', backgroundColor:'rgba(167,139,250,0.12)',
+        fill:true, tension:0.3, pointRadius:3, pointHoverRadius:5, pointBackgroundColor:'#A78BFA',
+      }]},
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false}, tooltip:{backgroundColor:'rgba(12,26,43,0.95)', titleColor:'#ECF2F9', bodyColor:'#7B9EC2', borderColor:'#1A3352', borderWidth:1} },
+        scales:{
+          x:{ grid:{color:'rgba(26,51,82,0.6)'}, ticks:{color:'#D0DEF0',font:{size:10},maxRotation:60,autoSkip:true,maxTicksLimit:14} },
+          y:{ beginAtZero:true, grid:{color:'rgba(26,51,82,0.6)'}, ticks:{color:'#D0DEF0',font:{size:11},precision:0} },
+        }
+      }
+    });
+  }catch(e){
+    if(loadingElId && q(loadingElId)) q(loadingElId).innerHTML = `<div style="color:var(--amber);font-size:12px">Could not load trend: ${esc(String(e))}</div>`;
+  }
 }
 
 async function openCallsTrendModal(override){
@@ -3279,7 +3315,7 @@ function openModal(id) {
       <div class="modal-kpi"><div class="modal-kpi-val" style="color:var(--blue)">${fmt(c.total_leads)}</div><div class="modal-kpi-lbl">Total Leads</div></div>
       <div class="modal-kpi" style="cursor:pointer;border:1px solid rgba(139,92,246,0.3);transition:background .15s"
            onmouseover="this.style.background='rgba(139,92,246,0.08)'" onmouseout="this.style.background=''"
-           onclick="closeModal();openCampaignCallsTrend('${c.id}','${campNameSafe}',${c.total_calls||0})" title="Click to see daily call trend">
+           onclick="closeModal();openNooksModal('${campNameSafe}','${c.id}')" title="Click to see Nooks breakdown + daily call trend">
         <div class="modal-kpi-val" style="color:var(--purple)">${fmt(c.total_calls)}</div>
         <div class="modal-kpi-lbl">Total Call Attempts ↗</div>
       </div>
@@ -3366,7 +3402,7 @@ function closeModal(e) {
 }
 
 // ── NOOKS CALL DETAIL MODAL ──────────────────────────────────────────────────
-async function openNooksModal(campaignName) {
+async function openNooksModal(campaignName, campaignId) {
   const overlay = q('nooksOverlay');
   const body    = q('nooksModalBody');
   const sub     = q('nooksModalSub');
@@ -3432,9 +3468,24 @@ async function openNooksModal(campaignName) {
         </div>
       </div>`}
 
+      <!-- Daily call trend (below the breakdown) -->
+      <div class="modal-section">
+        <div class="modal-section-title">📈 Daily Call Trend — calls logged per day</div>
+        <div id="nooksTrendWrap" style="position:relative;height:240px">
+          <div id="nooksTrendLoading" style="text-align:center;padding:30px;color:var(--text-dim);font-size:12px">
+            <div class="spinner" style="width:20px;height:20px;margin:0 auto 10px"></div>Counting calls per day…
+          </div>
+          <canvas id="nooksTrendChart" style="display:none"></canvas>
+        </div>
+      </div>
+
       <div style="margin-top:8px;padding:10px 14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);font-size:11px;color:var(--text-dim)">
         📌 Connected = any Answered / Connected disposition &nbsp;·&nbsp; Conversations = tasks with Nooks AI summary in comments &nbsp;·&nbsp; Meetings = Booked Meeting / Meeting Generated dispositions
       </div>`;
+
+    // Draw the embedded daily-call-trend chart for this campaign (own dates).
+    if(campaignId) drawCallTrendInto('nooksTrendChart', [campaignId], '', '', 'nooksTrendLoading');
+    else if(q('nooksTrendWrap')) q('nooksTrendWrap').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:12px">Open this from a campaign to see its daily trend.</div>';
   } catch(e) {
     body.innerHTML = `<div style="text-align:center;padding:40px;color:var(--red)">❌ Failed to load: ${e.message}</div>`;
   }
@@ -3442,6 +3493,7 @@ async function openNooksModal(campaignName) {
 
 function closeNooksModal(e) {
   if(e && e.target !== q('nooksOverlay')) return;
+  if(S.charts['nooksTrendChart']){ S.charts['nooksTrendChart'].destroy(); delete S.charts['nooksTrendChart']; }
   q('nooksOverlay').classList.remove('open');
 }
 
