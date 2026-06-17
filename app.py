@@ -1432,13 +1432,16 @@ def effective_end_date(c):
     return None
 
 def auto_complete_campaigns():
-    """Auto-set status to Completed for campaigns whose effective end date has passed.
-    Also back-fills missing end_date with start_date + 14 days."""
+    """Keep campaign status in sync with the effective end date:
+      • past end date  → Completed
+      • end date today or in the future → Active (auto-heal: e.g. when a
+        Completed campaign's end date was later extended)
+    Paused campaigns are left untouched. Also back-fills missing end_date with
+    start_date + 14 days."""
     camps   = load_campaigns()
     today   = date.today()
     changed = False
     for c in camps:
-        eff_end = effective_end_date(c)
         # Back-fill end_date if missing but start_date exists
         if not (c.get('end_date') or '').strip() and (c.get('start_date') or '').strip():
             try:
@@ -1448,9 +1451,17 @@ def auto_complete_campaigns():
                 changed = True
             except ValueError:
                 pass
-        # Auto-complete if past effective end date and not already Completed
-        if eff_end and today > eff_end and c.get('status') != 'Completed':
+        eff_end = effective_end_date(c)
+        status  = c.get('status')
+        if not eff_end or status == 'Paused':
+            continue
+        # Past effective end date → Completed
+        if today > eff_end and status != 'Completed':
             c['status'] = 'Completed'
+            changed = True
+        # End date today/future but marked Completed → heal back to Active
+        elif today <= eff_end and status == 'Completed':
+            c['status'] = 'Active'
             changed = True
     if changed:
         save_campaigns(camps)
