@@ -971,10 +971,13 @@ def campaign_metrics(c, start_override=None, end_override=None):
         # have the action, ALL-TIME (campaign dates do not apply). Counted over
         # current_lead_ids (current Campaign__c members) so leads that moved out
         # aren't counted.
-        li_sent_subj = "Subject LIKE '%CONNECTION_REQUEST_SENT%'"
-        li_acc_subj  = "Subject LIKE '%CONNECTION_REQUEST_ACCEPTED%'"
-        li_msg_subj   = "Subject LIKE '%HeyReach - MESSAGE_SENT%'"
-        li_reply_subj = "Subject LIKE '%HeyReach - MESSAGE_REPLY_RECEIVED%'"
+        # Stages are CUMULATIVE — a downstream action implies the upstream ones
+        # (a reply ⇒ messaged ⇒ accepted ⇒ sent), because HeyReach doesn't always
+        # log the upstream task (e.g. you can only message after an accept).
+        li_reply_cum = LI_REPLY_SUBJ
+        li_msg_cum   = f"({LI_MSG_SUBJ}) OR ({LI_REPLY_SUBJ})"
+        li_acc_cum   = f"({LI_ACC_SUBJ}) OR ({LI_MSG_SUBJ}) OR ({LI_REPLY_SUBJ})"
+        li_sent_cum  = f"({LI_SENT_SUBJ}) OR ({LI_ACC_SUBJ}) OR ({LI_MSG_SUBJ}) OR ({LI_REPLY_SUBJ})"
 
         # Meeting Done / No-Show are tied to THIS campaign's meeting window:
         # only count leads whose Meeting_Generated_on__c falls inside the
@@ -1004,10 +1007,10 @@ def campaign_metrics(c, start_override=None, end_override=None):
             f_connects= ex.submit(_count_tasks_for_ids,        frozen_lead_ids, connect_subj, dt_task)
             f_convos  = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, convo_subj, dt_task)
             f_emails  = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, email_subj, dt_task)
-            f_lisent  = ex.submit(_count_distinct_who_for_ids, current_lead_ids, li_sent_subj,  '')
-            f_liacc   = ex.submit(_count_distinct_who_for_ids, current_lead_ids, li_acc_subj,   '')
-            f_limsg   = ex.submit(_count_distinct_who_for_ids, current_lead_ids, li_msg_subj,   '')
-            f_lireply = ex.submit(_count_distinct_who_for_ids, current_lead_ids, li_reply_subj, '')
+            f_lisent  = ex.submit(_count_distinct_who_for_ids, current_lead_ids, li_sent_cum,  '')
+            f_liacc   = ex.submit(_count_distinct_who_for_ids, current_lead_ids, li_acc_cum,   '')
+            f_limsg   = ex.submit(_count_distinct_who_for_ids, current_lead_ids, li_msg_cum,   '')
+            f_lireply = ex.submit(_count_distinct_who_for_ids, current_lead_ids, li_reply_cum, '')
             f_ucalled = ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, call_subj,  dt_task)
             f_uemailed= ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, email_subj, dt_task)
 
@@ -2788,12 +2791,22 @@ LI_ACC_SUBJ   = "Subject LIKE '%CONNECTION_REQUEST_ACCEPTED%'"
 LI_MSG_SUBJ   = "Subject LIKE '%HeyReach - MESSAGE_SENT%'"
 LI_REPLY_SUBJ = "Subject LIKE '%HeyReach - MESSAGE_REPLY_RECEIVED%'"
 
-# type → subject filter, used by the trend + leads routes.
+# type → subject filter, used by the (now legacy) trend routes.
 LI_SUBJ_BY_TYPE = {
     'sent':      LI_SENT_SUBJ,
     'accepted':  LI_ACC_SUBJ,
     'msg_sent':  LI_MSG_SUBJ,
     'msg_reply': LI_REPLY_SUBJ,
+}
+
+# CUMULATIVE subject per funnel stage — a downstream action implies the upstream
+# stages (reply ⇒ messaged ⇒ accepted ⇒ sent), since HeyReach doesn't always log
+# the upstream task. Used by the funnel drill-down so stages stay monotonic.
+LI_CUM_BY_TYPE = {
+    'msg_reply': LI_REPLY_SUBJ,
+    'msg_sent':  f"({LI_MSG_SUBJ}) OR ({LI_REPLY_SUBJ})",
+    'accepted':  f"({LI_ACC_SUBJ}) OR ({LI_MSG_SUBJ}) OR ({LI_REPLY_SUBJ})",
+    'sent':      f"({LI_SENT_SUBJ}) OR ({LI_ACC_SUBJ}) OR ({LI_MSG_SUBJ}) OR ({LI_REPLY_SUBJ})",
 }
 
 
@@ -2887,8 +2900,8 @@ def api_linkedin_leads():
                       'date': info.get('date') or ''})
         return r
 
-    # ── DONE: currently-enrolled leads that have this action ──────────────────
-    this_pl = _li_stage_leads(LI_SUBJ_BY_TYPE[typ], with_detail=True)
+    # ── DONE: currently-enrolled leads that have reached this stage ───────────
+    this_pl = _li_stage_leads(LI_CUM_BY_TYPE[typ], with_detail=True)
     this_detail = _li_lead_detail(this_pl.keys())
     done, done_ids = [], set()
     for wid, info in this_pl.items():
@@ -2918,7 +2931,7 @@ def api_linkedin_leads():
                 break
         remaining_capped = remaining_count > len(remaining)
     else:
-        prev_pl = _li_stage_leads(LI_SUBJ_BY_TYPE[prev], with_detail=False)
+        prev_pl = _li_stage_leads(LI_CUM_BY_TYPE[prev], with_detail=False)
         prev_detail = _li_lead_detail(prev_pl.keys())
         prev_seen = set()
         for wid in prev_pl:
