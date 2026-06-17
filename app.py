@@ -967,9 +967,12 @@ def campaign_metrics(c, start_override=None, end_override=None):
         # LinkedIn (HeyReach) connection-request tasks. _SENT and _ACCEPTED are
         # distinct substrings, so each filter is unambiguous; the legacy
         # "Skipped: Outplay…" tasks contain neither and are excluded.
+        # LinkedIn cards are funnel metrics: UNIQUE currently-enrolled leads that
+        # have the action, ALL-TIME (campaign dates do not apply). Counted over
+        # current_lead_ids (current Campaign__c members) so leads that moved out
+        # aren't counted.
         li_sent_subj = "Subject LIKE '%CONNECTION_REQUEST_SENT%'"
         li_acc_subj  = "Subject LIKE '%CONNECTION_REQUEST_ACCEPTED%'"
-        # LinkedIn messaging (after a connection is accepted).
         li_msg_subj   = "Subject LIKE '%HeyReach - MESSAGE_SENT%'"
         li_reply_subj = "Subject LIKE '%HeyReach - MESSAGE_REPLY_RECEIVED%'"
 
@@ -1001,10 +1004,10 @@ def campaign_metrics(c, start_override=None, end_override=None):
             f_connects= ex.submit(_count_tasks_for_ids,        frozen_lead_ids, connect_subj, dt_task)
             f_convos  = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, convo_subj, dt_task)
             f_emails  = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, email_subj, dt_task)
-            f_lisent  = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, li_sent_subj, dt_task)
-            f_liacc   = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, li_acc_subj,  dt_task)
-            f_limsg   = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, li_msg_subj,   dt_task)
-            f_lireply = ex.submit(_count_tasks_for_ids,        frozen_lead_ids, li_reply_subj, dt_task)
+            f_lisent  = ex.submit(_count_distinct_who_for_ids, current_lead_ids, li_sent_subj,  '')
+            f_liacc   = ex.submit(_count_distinct_who_for_ids, current_lead_ids, li_acc_subj,   '')
+            f_limsg   = ex.submit(_count_distinct_who_for_ids, current_lead_ids, li_msg_subj,   '')
+            f_lireply = ex.submit(_count_distinct_who_for_ids, current_lead_ids, li_reply_subj, '')
             f_ucalled = ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, call_subj,  dt_task)
             f_uemailed= ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, email_subj, dt_task)
 
@@ -2814,79 +2817,126 @@ def api_linkedin_msg_reply_trend():
     return _activity_trend(LI_REPLY_SUBJ)
 
 
+LI_PREV_STAGE = {'sent': None, 'accepted': 'sent', 'msg_sent': 'accepted', 'msg_reply': 'msg_sent'}
+_LI_LIST_CAP = 2000
+
+
+def _li_stage_leads(subject, with_detail):
+    """For a LinkedIn subject, return {WhoId: {date, subject, content}} keyed by
+    lead, keeping the LATEST task per lead (any date, org-wide). LinkedIn task
+    volumes are small, so an org-wide scan is fine; callers filter by current
+    campaign membership afterward."""
+    fields = "WhoId, ActivityDate" + (", Subject, Description" if with_detail else "")
+    res = soql(f"SELECT {fields} FROM Task WHERE ({subject}) AND ActivityDate != null "
+               f"ORDER BY ActivityDate DESC", paginate=True)
+    per = {}
+    for r in (res or {}).get('records', []):
+        wid = r.get('WhoId')
+        if not wid or wid in per:   # first occurrence = latest (ORDER BY DESC)
+            continue
+        per[wid] = {'date': (r.get('ActivityDate') or '')[:10],
+                    'subject': r.get('Subject') or '',
+                    'content': r.get('Description') or ''}
+    return per
+
+
+def _li_lead_detail(ids):
+    """Batched Lead lookup → {id: {Id,Name,Company,Campaign__c}} (15- & 18-char keys)."""
+    out, ids = {}, [i for i in ids if i]
+    for i in range(0, len(ids), _BATCH_SIZE):
+        batch   = ids[i:i + _BATCH_SIZE]
+        ids_str = ','.join(f"'{x}'" for x in batch)
+        res = soql(f"SELECT Id, Name, Company, Campaign__c FROM Lead WHERE Id IN ({ids_str})",
+                   paginate=False)
+        for r in (res or {}).get('records', []):
+            out[r['Id']] = r
+            out[r['Id'][:15]] = r
+    return out
+
+
 @app.route('/api/linkedin-leads', methods=['POST'])
 def api_linkedin_leads():
-    """Lead-level rows behind a LinkedIn card, for the given campaign set + date
-    window. One row per connection-request Task (Lead Name, Company, Campaign,
-    Subject, Date, SF URL). type = 'sent' | 'accepted'."""
-    body  = request.get_json(silent=True) or {}
-    typ   = (body.get('type') or 'sent').strip()
-    ids   = body.get('campaign_ids') or []
-    start = (body.get('start') or '').strip()
-    end   = (body.get('end')   or '').strip()
-    subj  = LI_SUBJ_BY_TYPE.get(typ, LI_SENT_SUBJ)
+    """Funnel drill-down for a LinkedIn card. Returns the DONE leads (currently
+    enrolled leads that have this action, all-time) and the REMAINING leads (the
+    previous funnel stage's leads that don't have it yet):
 
-    dt = ''
-    if start: dt += f" AND ActivityDate >= {start}"
-    if end:   dt += f" AND ActivityDate <= {end}"
+        enrolled → sent → accepted → msg_sent → msg_reply
 
-    # Frozen lead IDs for the requested campaigns (same universe as the cards).
-    ledger = load_ledger()
-    lead_ids, seen = [], set()
-    for cid in ids:
-        for lid in (ledger.get(cid) or {}).get('lead_ids') or []:
-            if lid not in seen:
-                seen.add(lid); lead_ids.append(lid)
+    'Enrolled' = leads whose CURRENT Campaign__c is one of the requested
+    campaigns. Unique leads, date-independent (matches the card numbers)."""
+    body = request.get_json(silent=True) or {}
+    typ  = (body.get('type') or 'sent').strip()
+    if typ not in LI_SUBJ_BY_TYPE:
+        typ = 'sent'
+    ids  = body.get('campaign_ids') or []
 
-    # Current campaign names for the requested campaigns. The leads list only
-    # shows leads whose CURRENT Campaign__c is one of these — so a lead that has
-    # since moved to a different campaign doesn't appear under this filter.
     camps_by_id = {c['id']: c for c in load_campaigns()}
-    filt_names  = {(camps_by_id.get(cid) or {}).get('name', '').strip() for cid in ids}
-    filt_names.discard('')
+    names = sorted({(camps_by_id.get(cid) or {}).get('name', '').strip() for cid in ids} - {''})
+    empty = {'done': [], 'remaining': [], 'done_count': 0, 'remaining_count': 0, 'remaining_capped': False}
+    if not names:
+        return jsonify(empty)
+    names_in = ','.join("'" + esc(n) + "'" for n in names)
 
-    # Pull the matching connection-request tasks for those leads.
-    tasks = []
-    for i in range(0, len(lead_ids), _BATCH_SIZE):
-        batch   = lead_ids[i:i + _BATCH_SIZE]
-        ids_str = ','.join(f"'{x}'" for x in batch)
-        q = (f"SELECT WhoId, Subject, Description, ActivityDate FROM Task "
-             f"WHERE ({subj}) AND WhoId IN ({ids_str}) AND ActivityDate != null{dt} "
-             f"ORDER BY ActivityDate DESC LIMIT 2000")
-        res = soql(q, paginate=False)
-        tasks.extend((res or {}).get('records', []))
+    def row(ld, wid, info=None):
+        r = {'name': ld.get('Name') or '—', 'company': ld.get('Company') or '—',
+             'campaign': ld.get('Campaign__c') or '—',
+             'sf_url': f"{SF_BASE_URL}/lightning/r/Lead/{wid}/view" if wid else ''}
+        if info is not None:
+            r.update({'subject': info.get('subject') or '—',
+                      'content': info.get('content') or '',
+                      'date': info.get('date') or ''})
+        return r
 
-    # Resolve lead name/company/campaign for the WhoIds.
-    who_ids = list({t.get('WhoId') for t in tasks if t.get('WhoId')})
-    detail = {}
-    for i in range(0, len(who_ids), _BATCH_SIZE):
-        batch   = who_ids[i:i + _BATCH_SIZE]
-        ids_str = ','.join(f"'{x}'" for x in batch)
-        dres = soql(f"SELECT Id, Name, Company, Campaign__c FROM Lead WHERE Id IN ({ids_str})",
-                    paginate=False)
-        for r in (dres or {}).get('records', []):
-            detail[r['Id']] = r
-            detail[r['Id'][:15]] = r   # 15-vs-18 char safety
-
-    leads = []
-    for t in tasks:
-        wid = t.get('WhoId') or ''
-        ld  = detail.get(wid) or detail.get(wid[:15]) or {}
-        # Only leads currently in one of the filtered campaigns (excludes leads
-        # that have since moved to a different campaign).
-        if (ld.get('Campaign__c') or '').strip() not in filt_names:
+    # ── DONE: currently-enrolled leads that have this action ──────────────────
+    this_pl = _li_stage_leads(LI_SUBJ_BY_TYPE[typ], with_detail=True)
+    this_detail = _li_lead_detail(this_pl.keys())
+    done, done_ids = [], set()
+    for wid, info in this_pl.items():
+        ld = this_detail.get(wid) or this_detail.get(wid[:15])
+        if not ld or (ld.get('Campaign__c') or '').strip() not in names:
             continue
-        leads.append({
-            'name':     ld.get('Name')      or '—',
-            'company':  ld.get('Company')   or '—',
-            'campaign': ld.get('Campaign__c') or '—',
-            'subject':  t.get('Subject')    or '—',
-            'content':  t.get('Description') or '',
-            'date':     (t.get('ActivityDate') or '')[:10],
-            'sf_url':   f"{SF_BASE_URL}/lightning/r/Lead/{wid}/view" if wid else '',
-        })
-    leads.sort(key=lambda x: x['date'], reverse=True)
-    return jsonify({'leads': leads, 'total': len(leads)})
+        done_ids.add(ld['Id'])
+        done.append(row(ld, ld['Id'], info))
+    done.sort(key=lambda x: x['date'], reverse=True)
+
+    # ── REMAINING: previous-stage leads that haven't reached this stage ───────
+    prev = LI_PREV_STAGE[typ]
+    remaining, remaining_capped = [], False
+    if prev is None:
+        # Stage 1: remaining = enrolled leads with no request sent.
+        enrolled_count  = cnt(soql(f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c IN ({names_in})",
+                                   paginate=False))
+        remaining_count = max(enrolled_count - len(done_ids), 0)
+        res = soql(f"SELECT Id, Name, Company, Campaign__c FROM Lead "
+                   f"WHERE Campaign__c IN ({names_in}) LIMIT {_LI_LIST_CAP + len(done_ids) + 50}",
+                   paginate=False)
+        for r in (res or {}).get('records', []):
+            if r['Id'] in done_ids:
+                continue
+            remaining.append(row(r, r['Id']))
+            if len(remaining) >= _LI_LIST_CAP:
+                break
+        remaining_capped = remaining_count > len(remaining)
+    else:
+        prev_pl = _li_stage_leads(LI_SUBJ_BY_TYPE[prev], with_detail=False)
+        prev_detail = _li_lead_detail(prev_pl.keys())
+        prev_seen = set()
+        for wid in prev_pl:
+            ld = prev_detail.get(wid) or prev_detail.get(wid[:15])
+            if not ld or (ld.get('Campaign__c') or '').strip() not in names:
+                continue
+            if ld['Id'] in done_ids or ld['Id'] in prev_seen:
+                continue
+            prev_seen.add(ld['Id'])
+            remaining.append(row(ld, ld['Id']))
+        remaining.sort(key=lambda x: x['name'])
+        remaining_count = len(remaining)
+
+    return jsonify({
+        'done': done, 'remaining': remaining,
+        'done_count': len(done), 'remaining_count': remaining_count,
+        'remaining_capped': remaining_capped,
+    })
 
 
 @app.route('/api/campaigns/<cid>', methods=['PUT'])

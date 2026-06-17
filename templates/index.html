@@ -1551,33 +1551,46 @@ tfoot td {
         <div class="modal-sub" id="liSub">Loading…</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
-        <input class="search-box" id="liSearch" type="search" placeholder="Search name / company…" style="max-width:200px;margin:0" oninput="renderLiTable()">
+        <input class="search-box" id="liSearch" type="search" placeholder="Search name / company…" style="max-width:200px;margin:0" oninput="renderLiActiveTab()">
         <button class="modal-close" onclick="closeLinkedInModal()">×</button>
       </div>
     </div>
     <div class="modal-body">
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
-        <span style="font-size:12px;color:var(--text-dim)">Window:</span>
-        <button id="liWin7"  class="chip active" onclick="setLiWindow(7)">Last 7 Days</button>
-        <button id="liWin30" class="chip"        onclick="setLiWindow(30)">Last 30 Days</button>
-        <button id="liWin90" class="chip"        onclick="setLiWindow(90)">Last 90 Days</button>
-        <button id="liWincustom" class="chip"    onclick="setLiWindow('custom')">📅 Custom</button>
-        <span id="liCustomRange" style="display:none;align-items:center;gap:6px">
-          <input type="date" id="liCustomStart" style="height:30px;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:0 6px;font-size:12px">
-          <span style="font-size:11px;color:var(--text-dim)">to</span>
-          <input type="date" id="liCustomEnd" style="height:30px;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:0 6px;font-size:12px">
-          <button class="chip" onclick="applyLiCustom()">Apply</button>
-        </span>
-        <span id="liWinTotal" style="margin-left:auto;font-size:12px;color:var(--text-muted)"></span>
+      <!-- Done / Remaining tabs -->
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button id="liTabDone" class="chip active" onclick="setLiTab('done')">Done</button>
+        <button id="liTabRem"  class="chip"        onclick="setLiTab('remaining')">Remaining</button>
       </div>
-      <div id="liTrendWrap" style="position:relative;height:230px;margin-bottom:18px">
-        <div id="liTrendLoading" style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px">
-          <div class="spinner" style="width:20px;height:20px;margin:0 auto 10px"></div>Loading daily trend…
+
+      <!-- DONE pane: trend (with window) + leads table -->
+      <div id="liPaneDone">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+          <span style="font-size:12px;color:var(--text-dim)">Trend window:</span>
+          <button id="liWin7"  class="chip active" onclick="setLiWindow(7)">Last 7 Days</button>
+          <button id="liWin30" class="chip"        onclick="setLiWindow(30)">Last 30 Days</button>
+          <button id="liWin90" class="chip"        onclick="setLiWindow(90)">Last 90 Days</button>
+          <button id="liWincustom" class="chip"    onclick="setLiWindow('custom')">📅 Custom</button>
+          <span id="liCustomRange" style="display:none;align-items:center;gap:6px">
+            <input type="date" id="liCustomStart" style="height:30px;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:0 6px;font-size:12px">
+            <span style="font-size:11px;color:var(--text-dim)">to</span>
+            <input type="date" id="liCustomEnd" style="height:30px;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:0 6px;font-size:12px">
+            <button class="chip" onclick="applyLiCustom()">Apply</button>
+          </span>
+          <span id="liWinTotal" style="margin-left:auto;font-size:12px;color:var(--text-muted)"></span>
         </div>
-        <canvas id="liTrendChart" style="display:none"></canvas>
+        <div id="liTrendWrap" style="position:relative;height:220px;margin-bottom:18px">
+          <canvas id="liTrendChart" style="display:none"></canvas>
+        </div>
+        <div id="liDoneTableWrap" style="overflow-x:auto">
+          <div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px"><div class="spinner" style="width:20px;height:20px;margin:0 auto 10px"></div>Loading…</div>
+        </div>
       </div>
-      <div id="liTableWrap" style="overflow-x:auto">
-        <div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px">Loading leads…</div>
+
+      <!-- REMAINING pane: leads table only -->
+      <div id="liPaneRem" style="display:none">
+        <div id="liRemTableWrap" style="overflow-x:auto">
+          <div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px"><div class="spinner" style="width:20px;height:20px;margin:0 auto 10px"></div>Loading…</div>
+        </div>
       </div>
     </div>
   </div>
@@ -2900,8 +2913,8 @@ function openLinkedInModal(type, override){
   let ctx;
   if(override){ ctx = override; }
   else {
-    const b = S.trendCtx || {campaign_ids:[], label:'All SDRs', totals:{}};
-    ctx = {campaign_ids:b.campaign_ids, label:b.label, total:(b.totals||{})[meta.metric]||0};
+    const b = S.trendCtx || {campaign_ids:[], label:'All SDRs'};
+    ctx = {campaign_ids:b.campaign_ids, label:b.label};
   }
   S.liCtx = ctx;
   S.liWindow = 7;
@@ -2911,6 +2924,8 @@ function openLinkedInModal(type, override){
   q('liOverlay').classList.add('open');
   q('liCustomRange').style.display = 'none';
   _liSetChips(7);
+  _liSetTab('done');
+  q('liTabDone').textContent = 'Done'; q('liTabRem').textContent = 'Remaining';
   loadLinkedInData();
 }
 
@@ -2918,20 +2933,29 @@ function _liSetChips(active){
   [7,30,90,'custom'].forEach(d=>{ const btn=q('liWin'+d); if(btn) btn.className = 'chip'+(d===active?' active':''); });
 }
 
+function _liSetTab(tab){
+  S.liTab = tab;
+  q('liTabDone').className = 'chip'+(tab==='done'?' active':'');
+  q('liTabRem').className  = 'chip'+(tab==='remaining'?' active':'');
+  q('liPaneDone').style.display = (tab==='done') ? '' : 'none';
+  q('liPaneRem').style.display  = (tab==='remaining') ? '' : 'none';
+}
+
+function setLiTab(tab){ _liSetTab(tab); renderLiActiveTab(); }
+
+// Window only affects the trend chart (the card/tab counts are all-time).
 function setLiWindow(days){
   if(days === 'custom'){
     _liSetChips('custom');
-    const cr = q('liCustomRange'); cr.style.display = 'inline-flex';
-    // Prefill with the last 30 days if empty.
+    q('liCustomRange').style.display = 'inline-flex';
     if(!q('liCustomStart').value || !q('liCustomEnd').value){
       const d = _liDates(30); q('liCustomStart').value = d.start; q('liCustomEnd').value = d.end;
     }
-    return;   // wait for Apply
+    return;
   }
   q('liCustomRange').style.display = 'none';
-  S.liWindow = days;
-  _liSetChips(days);
-  loadLinkedInData();
+  S.liWindow = days; _liSetChips(days);
+  renderLiTrend();
 }
 
 function applyLiCustom(){
@@ -2939,74 +2963,111 @@ function applyLiCustom(){
   if(!s || !e){ alert('Pick both a start and end date.'); return; }
   if(s > e){ alert('Start date must be on or before end date.'); return; }
   S.liWindow = 'custom'; S.liCustomStart = s; S.liCustomEnd = e;
-  loadLinkedInData();
+  renderLiTrend();
 }
 
 async function loadLinkedInData(){
-  const meta = LI_META[S.liType]; const ctx = S.liCtx;
-  const tmeta = TREND_META[meta.metric] || {};
-  const {start,end} = (S.liWindow === 'custom')
-    ? {start:S.liCustomStart, end:S.liCustomEnd}
-    : _liDates(S.liWindow);
-  // Reset chart + table to loading. The trend is derived from the same (current-
-  // membership filtered) leads the table uses, so the two always agree.
-  if(S.charts['liTrendChart']){ S.charts['liTrendChart'].destroy(); delete S.charts['liTrendChart']; }
-  q('liTrendWrap').innerHTML = '<div id="liTrendLoading" style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px"><div class="spinner" style="width:20px;height:20px;margin:0 auto 10px"></div>Loading daily trend…</div><canvas id="liTrendChart" style="display:none"></canvas>';
-  q('liTableWrap').innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px"><div class="spinner" style="width:20px;height:20px;margin:0 auto 10px"></div>Loading leads…</div>';
+  const ctx = S.liCtx;
+  q('liDoneTableWrap').innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px"><div class="spinner" style="width:20px;height:20px;margin:0 auto 10px"></div>Loading…</div>';
+  q('liRemTableWrap').innerHTML  = '<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px"><div class="spinner" style="width:20px;height:20px;margin:0 auto 10px"></div>Loading…</div>';
   q('liWinTotal').textContent = '';
+  if(S.charts['liTrendChart']){ S.charts['liTrendChart'].destroy(); delete S.charts['liTrendChart']; }
+  q('liTrendChart').style.display = 'none';
   try{
     const res = await fetch('/api/linkedin-leads', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({type:S.liType, campaign_ids:ctx.campaign_ids, start, end})
+      body: JSON.stringify({type:S.liType, campaign_ids:ctx.campaign_ids})
     });
     const d = await res.json();
-    S.liLeads = d.leads || [];
-    const winLabel = (S.liWindow === 'custom') ? `${start} → ${end}` : `last ${S.liWindow} days`;
-    q('liWinTotal').textContent = `${fmt(d.total)} ${meta.noun} · ${winLabel}`;
-    // Derive the daily trend from the leads (count per date).
-    const byDate = {};
-    for(const r of S.liLeads){ if(r.date) byDate[r.date] = (byDate[r.date]||0) + 1; }
-    const series = Object.keys(byDate).sort().map(dt=>({date:dt, count:byDate[dt]}));
-    q('liTrendLoading').style.display = 'none';
-    if(series.length){
-      q('liTrendChart').style.display = 'block';
-      S.charts['liTrendChart'] = new Chart(q('liTrendChart'), _trendLineConfig(series, tmeta.color||'#378ADD', tmeta.fill||'rgba(55,138,221,0.12)'));
-    } else {
-      q('liTrendWrap').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:12px">No activity in this window.</div>';
-    }
-    renderLiTable();
+    S.liDone = d.done || []; S.liRemaining = d.remaining || [];
+    S.liRemCount = d.remaining_count || 0; S.liRemCapped = !!d.remaining_capped;
+    q('liTabDone').textContent = `Done (${fmt(d.done_count||0)})`;
+    q('liTabRem').textContent  = `Remaining (${fmt(S.liRemCount)})`;
+    renderLiTrend();
+    renderLiActiveTab();
   }catch(e){
-    q('liTrendWrap').innerHTML = `<div style="padding:24px;text-align:center;color:var(--amber);font-size:12px">Could not load: ${esc(String(e))}</div>`;
-    q('liTableWrap').innerHTML = `<div style="padding:30px;text-align:center;color:var(--amber);font-size:12px">Could not load leads: ${esc(String(e))}</div>`;
+    q('liDoneTableWrap').innerHTML = `<div style="padding:30px;text-align:center;color:var(--amber);font-size:12px">Could not load: ${esc(String(e))}</div>`;
   }
 }
 
-function renderLiTable(){
+// Trend is built from the Done leads' dates, filtered to the selected window.
+function renderLiTrend(){
+  const meta = LI_META[S.liType]; const tmeta = TREND_META[meta.metric] || {};
+  const {start,end} = (S.liWindow==='custom') ? {start:S.liCustomStart,end:S.liCustomEnd} : _liDates(S.liWindow);
+  if(S.charts['liTrendChart']){ S.charts['liTrendChart'].destroy(); delete S.charts['liTrendChart']; }
+  q('liTrendWrap').innerHTML = '<canvas id="liTrendChart" style="display:none"></canvas>';
+  const byDate = {};
+  for(const r of (S.liDone||[])){ if(r.date && r.date >= start && r.date <= end) byDate[r.date] = (byDate[r.date]||0) + 1; }
+  const series = Object.keys(byDate).sort().map(dt=>({date:dt, count:byDate[dt]}));
+  const winLabel = (S.liWindow==='custom') ? `${start} → ${end}` : `last ${S.liWindow} days`;
+  const inWin = series.reduce((a,p)=>a+p.count, 0);
+  q('liWinTotal').textContent = `${fmt(inWin)} ${meta.noun} · ${winLabel}`;
+  if(series.length){
+    q('liTrendChart').style.display = 'block';
+    S.charts['liTrendChart'] = new Chart(q('liTrendChart'), _trendLineConfig(series, tmeta.color||'#378ADD', tmeta.fill||'rgba(55,138,221,0.12)'));
+  } else {
+    q('liTrendWrap').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:12px">No activity in this window.</div>';
+  }
+}
+
+function renderLiActiveTab(){
+  if(S.liTab === 'remaining') renderLiRemTable(); else renderLiDoneTable();
+}
+
+function _liNameCell(r){
+  return r.sf_url
+    ? `<span style="color:var(--gold-light);cursor:pointer" onclick="window.open('${r.sf_url}','_blank')">${esc(r.name)} <span style="font-size:10px;opacity:.6">↗</span></span>`
+    : esc(r.name);
+}
+
+function renderLiDoneTable(){
   const meta = LI_META[S.liType];
   const term = (q('liSearch')?.value || '').toLowerCase();
-  let rows = S.liLeads || [];
+  let rows = S.liDone || [];
   if(term) rows = rows.filter(r => (r.name+' '+r.company+' '+r.campaign).toLowerCase().includes(term));
   if(!rows.length){
-    q('liTableWrap').innerHTML = `<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:13px">No ${meta.noun} connection requests in this window.</div>`;
+    q('liDoneTableWrap').innerHTML = `<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:13px">No leads here yet.</div>`;
     return;
   }
   const showContent = !!meta.contentCol;
   const body = rows.map(r=>`
     <tr>
-      <td style="font-weight:600">${r.sf_url
-        ? `<span style="color:var(--gold-light);cursor:pointer" onclick="window.open('${r.sf_url}','_blank')">${esc(r.name)} <span style="font-size:10px;opacity:.6">↗</span></span>`
-        : esc(r.name)}</td>
+      <td style="font-weight:600">${_liNameCell(r)}</td>
       <td style="color:var(--text-muted)">${esc(r.company)}</td>
       <td style="color:var(--text-muted)">${esc(r.campaign)}</td>
       ${showContent ? `<td style="color:var(--text-muted);font-size:11px;max-width:340px;white-space:normal;line-height:1.4">${esc(r.content||'—')}</td>` : ''}
       <td style="color:var(--text-dim);font-size:11px">${esc(r.subject)}</td>
       <td style="white-space:nowrap">${esc(r.date)}</td>
     </tr>`).join('');
-  q('liTableWrap').innerHTML = `
+  q('liDoneTableWrap').innerHTML = `
     <table>
       <thead><tr>
         <th>Lead Name</th><th>Company</th><th>Campaign</th>${showContent?`<th>${meta.contentCol}</th>`:''}<th>Task Subject</th><th>${meta.dateCol}</th>
       </tr></thead>
+      <tbody>${body}</tbody>
+    </table>`;
+}
+
+function renderLiRemTable(){
+  const term = (q('liSearch')?.value || '').toLowerCase();
+  let rows = S.liRemaining || [];
+  if(term) rows = rows.filter(r => (r.name+' '+r.company+' '+r.campaign).toLowerCase().includes(term));
+  if(!rows.length){
+    q('liRemTableWrap').innerHTML = `<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:13px">None remaining — all caught up. 🎉</div>`;
+    return;
+  }
+  const cap = S.liRemCapped
+    ? `<div style="padding:0 0 10px;font-size:11px;color:var(--text-dim)">Showing first ${fmt(rows.length)} of ${fmt(S.liRemCount)} remaining leads.</div>`
+    : '';
+  const body = rows.map(r=>`
+    <tr>
+      <td style="font-weight:600">${_liNameCell(r)}</td>
+      <td style="color:var(--text-muted)">${esc(r.company)}</td>
+      <td style="color:var(--text-muted)">${esc(r.campaign)}</td>
+    </tr>`).join('');
+  q('liRemTableWrap').innerHTML = cap + `
+    <table>
+      <thead><tr><th>Lead Name</th><th>Company</th><th>Campaign</th></tr></thead>
       <tbody>${body}</tbody>
     </table>`;
 }
