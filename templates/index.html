@@ -2598,12 +2598,22 @@ function renderDashboard() {
   if(!sorted.length) {
     q('campaignTableWrap').innerHTML = '<div class="empty" style="padding:40px"><div class="empty-icon">📋</div>No campaigns match this filter.</div>';
   } else {
+    const _today = new Date(); _today.setHours(0,0,0,0);
+    const _daysToEnd = end => { if(!end) return null; const e=new Date(end+'T00:00:00'); return isNaN(e)?null:Math.round((e-_today)/86400000); };
+    const _endBadge = c => {
+      const dl=_daysToEnd(c.end_date);
+      if(dl===null || dl<0 || dl>7 || (c.status||'Active')==='Completed') return '';
+      const lbl = dl===0 ? 'Ends today' : `Ends in ${dl} day${dl>1?'s':''}`;
+      return `<div style="margin-top:3px"><span style="font-size:9.5px;font-weight:700;color:#F59E0B;background:rgba(245,158,11,0.13);border:1px solid rgba(245,158,11,0.35);border-radius:6px;padding:1px 6px;white-space:nowrap">⏳ ${lbl}</span></div>`;
+    };
     q('campaignTableWrap').innerHTML = `
       <table style="font-size:12px">
         <thead><tr>
           <th style="width:32px">#</th>
           <th>Campaign</th>
           <th style="text-align:center">SDR</th>
+          <th style="text-align:center">Start Date</th>
+          <th style="text-align:center">End Date</th>
           <th style="text-align:right" title="Total leads in this campaign">Total Leads</th>
           <th style="text-align:right;color:var(--purple)" title="Total call attempts made (Orum + Nooks)">Total Call Attempts</th>
           <th style="text-align:right;color:var(--purple)" title="No. of unique leads that received at least 1 call — hover each cell to see uncalled count">Unique Leads Called</th>
@@ -2628,6 +2638,8 @@ function renderDashboard() {
               <td class="td-center" style="color:var(--text-dim)">${i+1}</td>
               <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;font-weight:600" title="${esc(c.name)}">${esc(c.name)}</td>
               <td style="text-align:center;color:var(--text-muted);font-size:11px;white-space:nowrap">${esc(c.sdr_owner||'—')}</td>
+              <td style="text-align:center;color:var(--text-muted);font-size:11px;white-space:nowrap">${c.start_date?fmtDay(c.start_date):'—'}</td>
+              <td style="text-align:center;font-size:11px;white-space:nowrap"><span style="color:var(--text-muted)">${c.end_date?fmtDay(c.end_date):'—'}</span>${_endBadge(c)}</td>
               <td class="td-num" style="color:var(--blue)">${fmt(c.total_leads)}</td>
               <td class="td-num" style="color:var(--purple);font-weight:700">${fmt(c.total_calls||0)}</td>
               <td class="td-num" style="color:var(--purple)" title="${uC} unique leads called · ${nC} not yet called">${fmt(uC)}</td>
@@ -2644,6 +2656,7 @@ function renderDashboard() {
         </tbody>
         <tfoot><tr>
           <td colspan="3" style="font-size:11px">TOTAL — ${sorted.length} campaigns</td>
+          <td></td><td></td>
           <td class="td-num">${fmt(totalLeads)}</td>
           <td class="td-num" style="color:var(--purple)">${fmt(totalCalls)}</td>
           <td class="td-num" style="color:var(--purple)">${fmt(sum(cps,'unique_leads_called'))}</td>
