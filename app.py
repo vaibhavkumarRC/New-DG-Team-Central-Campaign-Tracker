@@ -2220,6 +2220,7 @@ def api_meetings_leads():
     # (mirrors the period filter on the dashboard — same campaigns as the KPI card)
     camp_period_start = request.args.get('camp_start', '').strip() or None
     camp_period_end   = request.args.get('camp_end',   '').strip() or None
+    camp_status       = request.args.get('camp_status', '').strip()   # Active|Completed|Paused
     if camp:
         # Serve from frozen ledger — immune to lead reassignment
         camps_cfg = load_campaigns()
@@ -2262,6 +2263,8 @@ def api_meetings_leads():
             camps_cfg = [c for c in camps_cfg if (c.get('start_date') or '') >= camp_period_start]
         if camp_period_end:
             camps_cfg = [c for c in camps_cfg if (c.get('start_date') or '') <= camp_period_end]
+        if camp_status and camp_status != 'All':
+            camps_cfg = [c for c in camps_cfg if (c.get('status') or 'Active') == camp_status]
 
         with _ledger_lock:
             ledger = load_ledger()
@@ -2315,6 +2318,7 @@ def api_status_leads():
     pod_team      = request.args.get('pod_team', '').strip()
     camp_period_start = request.args.get('camp_start', '').strip() or None
     camp_period_end   = request.args.get('camp_end',   '').strip() or None
+    camp_status       = request.args.get('camp_status', '').strip()   # Active|Completed|Paused
 
     STATUS_FILTERS = {
         'done':   "(Meeting_Status__c LIKE 'Meeting Done%' OR Status = 'S1 Converted')",
@@ -2340,6 +2344,8 @@ def api_status_leads():
         camps_cfg = [c for c in camps_cfg if (c.get('start_date') or '') >= camp_period_start]
     if camp_period_end:
         camps_cfg = [c for c in camps_cfg if (c.get('start_date') or '') <= camp_period_end]
+    if camp_status and camp_status != 'All':
+        camps_cfg = [c for c in camps_cfg if (c.get('status') or 'Active') == camp_status]
 
     ledger = load_ledger()
     all_lead_ids = []
@@ -2583,14 +2589,17 @@ def api_s1_opportunities():
     sdr_display = request.args.get('sdr',      '').strip()
     segment     = request.args.get('segment',  '').strip()
     pod_team    = request.args.get('pod_team', '').strip()
+    camp_status = request.args.get('camp_status', '').strip()   # Active|Completed|Paused
 
-    if segment or pod_team:
+    if segment or pod_team or (camp_status and camp_status != 'All'):
         camps_cfg = load_campaigns()
         filtered  = camps_cfg
         if segment:
             filtered = [c for c in filtered if (c.get('segment') or '').strip() == segment]
         if pod_team:
             filtered = [c for c in filtered if (c.get('pod_team') or '').strip() == pod_team]
+        if camp_status and camp_status != 'All':
+            filtered = [c for c in filtered if (c.get('status') or 'Active') == camp_status]
         camp_names_list = [c['name'] for c in filtered]
         if not camp_names_list:
             return jsonify({'opportunities': [], 'total': 0})

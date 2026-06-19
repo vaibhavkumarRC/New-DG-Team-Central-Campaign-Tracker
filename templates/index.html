@@ -2488,11 +2488,13 @@ function renderDashboard() {
   // Pass active period dates so modals only show leads within the selected period
   const _pStart = (S.timePeriod !== 'all' && S.periodData) ? (S.periodData.start_date || '') : '';
   const _pEnd   = (S.timePeriod !== 'all' && S.periodData) ? (S.periodData.end_date   || '') : '';
-  const meetingsOnClick  = `openMeetingsModal('','${_sdr}','${_seg}','${_pod}','${_pStart}','${_pEnd}')`;
-  const mtgDoneOnClick   = `openStatusLeadsModal('done','${_sdr}','${_seg}','${_pod}','${_pStart}','${_pEnd}')`;
-  const noShowOnClick    = `openStatusLeadsModal('noshow','${_sdr}','${_seg}','${_pod}','${_pStart}','${_pEnd}')`;
-  const sqlOnClick       = `openStatusLeadsModal('sql','${_sdr}','${_seg}','${_pod}','${_pStart}','${_pEnd}')`;
-  const s1OnClick        = `openS1Modal('${_sdr}','${_seg}','${_pod}')`;
+  // Status chip → drill-down modals so the lead lists match the (status-filtered) card.
+  const _cst   = S.campPerfFilter;   // 'All'|'Active'|'Completed'|'Paused'
+  const meetingsOnClick  = `openMeetingsModal('','${_sdr}','${_seg}','${_pod}','${_pStart}','${_pEnd}','${_cst}')`;
+  const mtgDoneOnClick   = `openStatusLeadsModal('done','${_sdr}','${_seg}','${_pod}','${_pStart}','${_pEnd}','${_cst}')`;
+  const noShowOnClick    = `openStatusLeadsModal('noshow','${_sdr}','${_seg}','${_pod}','${_pStart}','${_pEnd}','${_cst}')`;
+  const sqlOnClick       = `openStatusLeadsModal('sql','${_sdr}','${_seg}','${_pod}','${_pStart}','${_pEnd}','${_cst}')`;
+  const s1OnClick        = `openS1Modal('${_sdr}','${_seg}','${_pod}','${_cst}')`;
 
   // Calls/Emails trend drill-down: stash the EXACT filtered campaign set + active
   // period window so each trend chart reconciles with its card by construction.
@@ -3844,7 +3846,7 @@ async function quickAddCampaign() {
 // ── MEETINGS LEADS MODAL ─────────────────────────────────────────────────────
 let _meetingsAllLeads = [];
 
-async function openMeetingsModal(campaignName, sdrFilter, segmentFilter, podFilter, startDate, endDate) {
+async function openMeetingsModal(campaignName, sdrFilter, segmentFilter, podFilter, startDate, endDate, campStatus) {
   q('meetingsOverlay').classList.add('open');
   q('meetingsSearch').value = '';
   const periodNote = startDate ? ` · ${fmtDay(startDate)} – ${fmtDay(endDate||startDate)}` : '';
@@ -3870,6 +3872,7 @@ async function openMeetingsModal(campaignName, sdrFilter, segmentFilter, podFilt
       // Filter WHICH campaigns are included by their start_date (matches the card's logic)
       if (startDate)     url += `${url.includes('?')?'&':'?'}camp_start=${startDate}`;
       if (endDate)       url += `${url.includes('?')?'&':'?'}camp_end=${endDate}`;
+      if (campStatus && campStatus !== 'All') url += `${url.includes('?')?'&':'?'}camp_status=${campStatus}`;
     }
     const r   = await fetch(url);
     const d   = await r.json();
@@ -3944,7 +3947,7 @@ function closeMeetingsModal(e) {
 // ── S1 OPPORTUNITIES MODAL ────────────────────────────────────────────────────
 let _s1AllOpps = [];
 
-async function openS1Modal(sdrFilter, segmentFilter, podFilter) {
+async function openS1Modal(sdrFilter, segmentFilter, podFilter, campStatus) {
   q('s1Overlay').classList.add('open');
   q('s1Search').value = '';
   const ctxLabel = (segmentFilter ? `Segment: ${segmentFilter}` : (podFilter ? `POD: ${podFilter}` : 'All SDRs')) + (sdrFilter ? ` · ${sdrFilter}` : '') + ' · loading…';
@@ -3961,6 +3964,7 @@ async function openS1Modal(sdrFilter, segmentFilter, podFilter) {
     if(sdrFilter)     params.push(`sdr=${encodeURIComponent(sdrFilter)}`);
     if(segmentFilter) params.push(`segment=${encodeURIComponent(segmentFilter)}`);
     if(podFilter)     params.push(`pod_team=${encodeURIComponent(podFilter)}`);
+    if(campStatus && campStatus !== 'All') params.push(`camp_status=${campStatus}`);
     if(params.length) url += '?' + params.join('&');
     const r = await fetch(url);
     const d = await r.json();
@@ -4039,7 +4043,7 @@ const STATUS_LABELS = {
 };
 let _statusAllLeads = [];
 
-async function openStatusLeadsModal(status, sdrFilter, segmentFilter, podFilter, startDate, endDate) {
+async function openStatusLeadsModal(status, sdrFilter, segmentFilter, podFilter, startDate, endDate, campStatus) {
   const meta = STATUS_LABELS[status] || { title:'Lead Details', sub:'' };
   q('meetingsOverlay').classList.add('open');
   q('meetingsSearch').value = '';
@@ -4064,6 +4068,7 @@ async function openStatusLeadsModal(status, sdrFilter, segmentFilter, podFilter,
     // Filter WHICH campaigns are included by their start_date (matches the card's logic)
     if(startDate)     url += `&camp_start=${startDate}`;
     if(endDate)       url += `&camp_end=${endDate}`;
+    if(campStatus && campStatus !== 'All') url += `&camp_status=${campStatus}`;
     const r = await fetch(url);
     const d = await r.json();
     _statusAllLeads = d.leads || [];
