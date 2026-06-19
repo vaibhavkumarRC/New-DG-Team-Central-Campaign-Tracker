@@ -2418,12 +2418,19 @@ function renderDashboard() {
   }
 
   // ── Filter campaigns by selected SDR + Segment + POD ──────────────────────────
-  const cps = allCps.filter(c => {
+  // cpsBase = filtered by SDR/Segment/POD only (used by the status doughnut so it
+  // always shows the full Active/Paused/Completed breakdown).
+  const cpsBase = allCps.filter(c => {
     if(S.dashSdrFilter !== 'All' && (c.sdr_owner||'').trim() !== S.dashSdrFilter) return false;
     if(S.dashSegmentFilter !== 'All' && (c.segment||'').trim() !== S.dashSegmentFilter) return false;
     if(S.dashPodFilter !== 'All' && (c.pod_team||'').trim() !== S.dashPodFilter) return false;
     return true;
   });
+  // cps additionally applies the status chip (All/Active/Completed/Paused) so it
+  // drives the WHOLE dashboard — Overview cards + TOTAL row + table.
+  const cps = (S.campPerfFilter === 'All')
+    ? cpsBase
+    : cpsBase.filter(c => (c.status || 'Active') === S.campPerfFilter);
 
   // Update the tag label on the table card
   const tag = q('campTableSdrTag');
@@ -2451,7 +2458,7 @@ function renderDashboard() {
   // For MTGS Done, No Show, SQL, S1: use global true totals when no filters applied.
   // Per-campaign frozen-ID sums can double-count leads that moved between campaigns.
   // Global totals (stored in src.totals after each sync) count each lead exactly once.
-  const noFilter = S.dashSdrFilter === 'All' && S.dashSegmentFilter === 'All' && S.dashPodFilter === 'All';
+  const noFilter = S.dashSdrFilter === 'All' && S.dashSegmentFilter === 'All' && S.dashPodFilter === 'All' && S.campPerfFilter === 'All';
   const globT    = src.totals || {};
 
   const totalMtgDone  = noFilter ? (globT.meeting_done   ?? sum(cps,'meeting_done'))   : sum(cps,'meeting_done');
@@ -2464,7 +2471,7 @@ function renderDashboard() {
   // When an SDR filter is active, use that SDR's s1_count from sdr_stats.
   // When segment/pod filter is active, fall back to campaign-level s1_created sum.
   let totalS1;
-  if (S.dashSegmentFilter !== 'All' || S.dashPodFilter !== 'All') {
+  if (S.dashSegmentFilter !== 'All' || S.dashPodFilter !== 'All' || S.campPerfFilter !== 'All') {
     totalS1 = sum(cps, 's1_created');
   } else if (S.dashSdrFilter !== 'All') {
     const filtSdrStats = (src.sdr_stats || []).filter(s => s.name === S.dashSdrFilter);
@@ -2582,10 +2589,8 @@ function renderDashboard() {
     </div>`;
 
   // ── Campaign Performance Table (replaces bar chart) ───────────────────────
-  const perfFiltered = S.campPerfFilter === 'All'
-    ? cps
-    : cps.filter(c => (c.status || 'Active') === S.campPerfFilter);
-  const sorted = [...perfFiltered].sort((a,b)=>(b.meetings||0)-(a.meetings||0));
+  // cps is already status-filtered (the status chip drives the whole dashboard).
+  const sorted = [...cps].sort((a,b)=>(b.meetings||0)-(a.meetings||0));
   const maxMtg = sorted[0]?.meetings || 1;
 
   if(!sorted.length) {
@@ -2654,7 +2659,7 @@ function renderDashboard() {
 
   // ── Status doughnut chart ─────────────────────────────────────────────────
   const statMap = {Active:0, Paused:0, Completed:0};
-  cps.forEach(c=>{ if(statMap[c.status]!==undefined) statMap[c.status]++; else statMap['Active']++; });
+  cpsBase.forEach(c=>{ if(statMap[c.status]!==undefined) statMap[c.status]++; else statMap['Active']++; });
   drawDoughnut('statusChart',
     Object.keys(statMap), Object.values(statMap),
     ['rgba(34,197,94,0.8)','rgba(245,158,11,0.8)','rgba(59,130,246,0.8)']
