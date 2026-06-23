@@ -3369,7 +3369,7 @@ function renderSDR() {
     const mDone   = lv ? lv.done     : ((s.meeting_done||0) + (s.sql_gen||0));
     const mNoShow = lv ? lv.noshow   : (s.meeting_noshow || 0);
     const mSql    = lv ? lv.sql      : (s.sql_gen || 0);
-    const mS1     = lv ? lv.s1       : (s.s1_count || 0);
+    const mS1     = s.s1_count || 0;   // opportunity-based (SDR_Owner__c), matches the S1 drill-down + SFDC
 
     const tgt = SDR_TARGETS[s.name] || null;
     const mtgDoneTotal = mDone;

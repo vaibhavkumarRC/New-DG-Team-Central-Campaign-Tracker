@@ -775,6 +775,24 @@ def norm_sdr(name):
 # Reverse map: display name → SFDC raw name (for querying SFDC by display name)
 SFDC_NAME_MAP_REVERSE = {v: k for k, v in SFDC_NAME_MAP.items()}
 
+def sdr_sfdc_values(display_name):
+    """All raw SFDC SDR values that normalize to this canonical display name.
+    SFDC fields (SDR_Owner__c, Meeting_Generated_by__c) use first-name OR
+    full-name forms inconsistently (e.g. opps say 'Ananya', leads say
+    'Ananya Rao'), so a query must match ANY of them."""
+    if not display_name:
+        return []
+    vals = {k for k, v in SFDC_NAME_MAP.items() if v == display_name}
+    vals.add(display_name)
+    return sorted(v for v in vals if v)
+
+def sdr_in_clause(field, display_name):
+    """Build `field IN ('a','b',...)` covering every raw form of an SDR name."""
+    vals = sdr_sfdc_values(display_name)
+    if not vals:
+        return f"{field} = ''"   # matches nothing
+    return f"{field} IN (" + ",".join("'" + esc(v) + "'" for v in vals) + ")"
+
 # Campaign naming convention: "Campaign Name_SDR Name" or "Campaign Name_SDR Name_Date"
 KNOWN_SDRS = {
     # lowercase keyword extracted from campaign name → canonical display name
@@ -2434,19 +2452,19 @@ def api_sdr_detail():
     if not sdr_display:
         return jsonify({'opportunities': [], 'meeting_done_leads': [], 'sql_leads': []})
 
-    sfdc_name = SFDC_NAME_MAP_REVERSE.get(sdr_display, sdr_display)
-    sfdc_esc  = esc(sfdc_name)
+    opp_owner = sdr_in_clause('SDR_Owner__c', sdr_display)
+    mtg_by    = sdr_in_clause('Meeting_Generated_by__c', sdr_display)
 
     opp_q  = (f"SELECT Id, Name, Amount, StageName, Account.Name, CreatedDate "
               f"FROM Opportunity "
-              f"WHERE SDR_Owner__c = '{sfdc_esc}' "
+              f"WHERE {opp_owner} "
               f"AND CreatedDate >= {NPV_START_DATE} "
               f"ORDER BY Amount DESC NULLS LAST LIMIT 200")
 
     done_q = (f"SELECT Id, Name, Title, Company, Campaign__c, "
               f"Meeting_Generated_on__c, Meeting_Status__c "
               f"FROM Lead "
-              f"WHERE Meeting_Generated_by__c = '{sfdc_esc}' "
+              f"WHERE {mtg_by} "
               f"AND Meeting_Status__c IN ('Meeting Done-Nurture', "
               f"'Meeting Done- Not Interested', 'Meeting Done-Unqualified') "
               f"ORDER BY Meeting_Generated_on__c DESC NULLS LAST LIMIT 200")
@@ -2454,7 +2472,7 @@ def api_sdr_detail():
     sql_q  = (f"SELECT Id, Name, Title, Company, Campaign__c, "
               f"Meeting_Generated_on__c "
               f"FROM Lead "
-              f"WHERE Meeting_Generated_by__c = '{sfdc_esc}' "
+              f"WHERE {mtg_by} "
               f"AND Status = 'SQL' "
               f"ORDER BY Meeting_Generated_on__c DESC NULLS LAST LIMIT 200")
 
@@ -2621,10 +2639,7 @@ def api_s1_opportunities():
         if not camp_names_list:
             return jsonify({'opportunities': [], 'total': 0})
         camp_names = ','.join(f"'{esc(n)}'" for n in camp_names_list)
-        sdr_clause = ''
-        if sdr_display:
-            sfdc_name  = SFDC_NAME_MAP_REVERSE.get(sdr_display, sdr_display)
-            sdr_clause = f" AND SDR_Owner__c = '{esc(sfdc_name)}'"
+        sdr_clause = f" AND {sdr_in_clause('SDR_Owner__c', sdr_display)}" if sdr_display else ''
         q_str = (f"SELECT Id, Name, Amount, StageName, Account.Name, SDR_Owner__c, CreatedDate "
                  f"FROM Opportunity "
                  f"WHERE Id IN ("
@@ -2633,10 +2648,7 @@ def api_s1_opportunities():
                  f"){sdr_clause} "
                  f"ORDER BY CreatedDate DESC NULLS LAST LIMIT 500")
     else:
-        sdr_clause = ''
-        if sdr_display:
-            sfdc_name  = SFDC_NAME_MAP_REVERSE.get(sdr_display, sdr_display)
-            sdr_clause = f" AND SDR_Owner__c = '{esc(sfdc_name)}'"
+        sdr_clause = f" AND {sdr_in_clause('SDR_Owner__c', sdr_display)}" if sdr_display else ''
         q_str = (f"SELECT Id, Name, Amount, StageName, Account.Name, SDR_Owner__c, CreatedDate "
                  f"FROM Opportunity "
                  f"WHERE CreatedDate >= {NPV_START_DATE} "
