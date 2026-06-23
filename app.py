@@ -1209,7 +1209,7 @@ def build_sdr_stats(enriched, sdr_opp_stats=None):
     for c in enriched:
         camp_owner = norm_sdr((c.get('sdr_owner') or '').strip())
         for b in c.get('sdr_breakdown', []):
-            name = b['name']
+            name = norm_sdr(b['name'])   # re-normalize stale ledger names (e.g. 'Soham' → 'Soham Saha')
             ensure(name)
             sdr[name]['meetings'] += b['meetings']
             # Only list campaign under this SDR if they own it
@@ -1220,7 +1220,7 @@ def build_sdr_stats(enriched, sdr_opp_stats=None):
     # Pass 3 – assign meeting_done / meeting_noshow / sql_gen from status_sdr_breakdown
     for c in enriched:
         for b in c.get('status_sdr_breakdown', []):
-            name = b['name']
+            name = norm_sdr(b['name'])   # re-normalize stale ledger names
             ensure(name)
             sdr[name]['meeting_done']   += b.get('meeting_done',   0)
             sdr[name]['meeting_noshow'] += b.get('meeting_noshow', 0)
