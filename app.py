@@ -725,18 +725,23 @@ def setup_sf_auth():
 SFDC_NAME_MAP = {
     # ── Active SDRs — canonical display names ─────────────────────────────────
     # SFDC raw value (Meeting_Generated_by__c / SDR_Owner__c) → canonical name
+    # Aliases are listed BEFORE the canonical self-entry so the reverse map
+    # (display → SFDC raw, built below) keeps resolving to the canonical name.
     'Akil Krishna':          'Akil Krishna',
     'Akhilesh':              'Akhilesh Stan',
+    'Ananya':                'Ananya Rao',
     'Ananya Rao':            'Ananya Rao',
     'Anurup Bhattacharjee':  'Anurup Bhattacharjee',
     'Anushka HB':            'Anushka HB',
     'Deborah':               'Deborah Deborah',
     'Hreeman Saha':          'Hreeman Saha',
     'Isaac Bartels':         'Isaac Bartels',
+    'Michelle Beckford':     'Michelle B',
     'Michelle B':            'Michelle B',
     'Rithick S':             'Rithick S',
     'Saka':                  'Saka Thapa',
     'Samridhi Dutta':        'Samridhi Dutta',
+    'Shahana':               'Shahana Abbasi',
     'Shahana Abbasi':        'Shahana Abbasi',
     'Soham Saha':            'Soham Saha',
     'Sukhneet':              'Sukhneet Sukhneet',
