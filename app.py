@@ -80,6 +80,39 @@ def merge_leads_into_ledger(campaign_id, lead_ids):
             save_ledger(ledger)
         return entry['lead_ids']
 
+def prune_leads_from_ledger(campaign_id, remove_ids):
+    """Remove reassigned Lead IDs from a campaign's frozen lead_ids.
+    Only lead_ids are pruned — the meetings dict is left intact, because a
+    meeting generated while the lead was in this campaign is a point-in-time
+    achievement that stays attributed here."""
+    rm = set(remove_ids)
+    if not rm:
+        return
+    with _ledger_lock:
+        ledger = load_ledger()
+        entry  = _get_or_create_entry(ledger, campaign_id)
+        kept   = [lid for lid in entry['lead_ids'] if lid not in rm]
+        if len(kept) != len(entry['lead_ids']):
+            entry['lead_ids'] = kept
+            save_ledger(ledger)
+
+def _moved_lead_ids(stale_ids, this_campaign_name):
+    """Of stale_ids (frozen but no longer in this campaign), return those whose
+    current Campaign__c is a DIFFERENT non-blank campaign — i.e. truly reassigned
+    elsewhere. Leads with a blank/null Campaign__c are NOT returned: they were
+    removed from all campaigns (not reassigned) and stay frozen so this campaign
+    keeps credit for activity logged while they were members."""
+    moved = []
+    nm = esc(this_campaign_name)
+    for i in range(0, len(stale_ids), _BATCH_SIZE):
+        batch   = stale_ids[i:i + _BATCH_SIZE]
+        ids_str = ','.join(f"'{x}'" for x in batch)
+        res = soql(f"SELECT Id FROM Lead WHERE Id IN ({ids_str}) "
+                   f"AND Campaign__c != null AND Campaign__c != '{nm}'",
+                   paginate=False)
+        moved.extend(r['Id'] for r in (res or {}).get('records', []))
+    return moved
+
 def merge_meetings_into_ledger(campaign_id, sf_records, start=None, end=None):
     """Add newly discovered meeting leads into the ledger. Never removes entries.
     sf_records: list of SFDC Lead records with Id, Meeting_Generated_on__c,
@@ -911,6 +944,19 @@ def campaign_metrics(c, start_override=None, end_override=None):
 
     # Merge current Lead IDs into the frozen ledger so we never lose them
     frozen_lead_ids = merge_leads_into_ledger(c['id'], current_lead_ids)
+
+    # Prune leads that have since been reassigned to a DIFFERENT campaign. They
+    # would otherwise stay frozen here forever and get double-counted in both the
+    # old and new campaign (total_leads, calls, emails). Leads removed to NO
+    # campaign (blank Campaign__c) are kept frozen — they weren't reassigned.
+    cur_set = set(current_lead_ids)
+    stale   = [lid for lid in frozen_lead_ids if lid not in cur_set]
+    if stale:
+        moved = _moved_lead_ids(stale, c['name'])
+        if moved:
+            prune_leads_from_ledger(c['id'], moved)
+            mv = set(moved)
+            frozen_lead_ids = [lid for lid in frozen_lead_ids if lid not in mv]
 
     # ── Step 2: fetch meeting-lead details (name/title/company) ──────────────
     if current_lead_ids:
