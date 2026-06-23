@@ -1810,6 +1810,11 @@ tfoot td {
 <script>
 // ── SDR TARGETS ──────────────────────────────────────────────────────────────
 // Meeting Done target = Meeting Done-Nurture + Meeting Done-Not Interested + Meeting Done-SQL
+// SDR cards hidden from the SDR Performance grid (former / non-DG SDRs).
+const HIDDEN_SDR_CARDS = new Set([
+  'Aditya Dev Pandey', 'Matt', 'Deborah Deborah', 'Hreeman Saha', 'Dushyant',
+]);
+
 // Keyed by canonical SDR names (must match s.name from sdr_stats).
 const SDR_TARGETS = {
   'Akil Krishna':         { meeting_done: 18, s1: 6, npv: 1300000 },
@@ -3346,7 +3351,7 @@ function renderLeaderboard(containerId, sdrs) {
 
 function renderSDR() {
   const src  = S.data;  // SDR tab always shows all data — period filter is Dashboard-only
-  const sdrs = src.sdr_stats || [];
+  const sdrs = (src.sdr_stats || []).filter(s => !HIDDEN_SDR_CARDS.has(s.name));
   initSdrPerf();  // performance table is live-SFDC-driven, independent of sdr_stats
   if(!sdrs.length){ q('sdrEmpty').style.display='block'; q('sdrGrid').innerHTML=''; return; }
   q('sdrEmpty').style.display='none';
