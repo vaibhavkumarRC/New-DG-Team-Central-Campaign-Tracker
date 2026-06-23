@@ -1810,22 +1810,23 @@ tfoot td {
 <script>
 // ── SDR TARGETS ──────────────────────────────────────────────────────────────
 // Meeting Done target = Meeting Done-Nurture + Meeting Done-Not Interested + Meeting Done-SQL
+// Keyed by canonical SDR names (must match s.name from sdr_stats).
 const SDR_TARGETS = {
-  'Akil Krishna': { meeting_done: 18, s1: 6, npv: 1300000 },
-  'Anurup':   { meeting_done: 18, s1: 6, npv: 1300000 },
-  'Ananya':   { meeting_done: 18, s1: 6, npv: 1300000 },
-  'Anushka':  { meeting_done: 18, s1: 6, npv: 1300000 },
-  'Deborah':  { meeting_done: 18, s1: 6, npv: 1300000 },
-  'Felix':    { meeting_done: 18, s1: 6, npv: 1300000 },
-  'Isaac':    { meeting_done: 18, s1: 6, npv: 1300000 },
-  'Hreeman':  { meeting_done: 6,  s1: 2, npv:  450000 },
-  'Michelle': { meeting_done: 18, s1: 6, npv: 1300000 },
-  'Samrudhi': { meeting_done: 16, s1: 6, npv: 1300000 },
-  'Shahana':  { meeting_done: 18, s1: 6, npv: 1300000 },
-  'Rithick':  { meeting_done: 16, s1: 6, npv: 1300000 },
-  'Akhilesh': { meeting_done: 16, s1: 5, npv: 1080000 },
-  'Sukhneet': { meeting_done: 18, s1: 6, npv: 1300000 },
-  'Saka':     { meeting_done: 16, s1: 5, npv: 1080000 },
+  'Akil Krishna':         { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Anurup Bhattacharjee': { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Ananya Rao':           { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Anushka HB':           { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Deborah Deborah':      { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Felix Sam':            { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Isaac Bartels':        { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Hreeman Saha':         { meeting_done: 6,  s1: 2, npv:  450000 },
+  'Michelle B':           { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Samridhi Dutta':       { meeting_done: 16, s1: 6, npv: 1300000 },
+  'Shahana Abbasi':       { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Rithick S':            { meeting_done: 16, s1: 6, npv: 1300000 },
+  'Akhilesh Stan':        { meeting_done: 16, s1: 5, npv: 1080000 },
+  'Sukhneet Sukhneet':    { meeting_done: 18, s1: 6, npv: 1300000 },
+  'Saka Thapa':           { meeting_done: 16, s1: 5, npv: 1080000 },
 };
 
 const POD_TEAMS = [
@@ -3466,24 +3467,41 @@ function renderSDR() {
       </div>` : ''}
 
       <div class="sdr-camp-list">
-        ${s.campaigns.slice(0,3).map(c=>{
-          const campCfg = (src.campaigns||[]).find(x=>x.name===c.name) || {};
-          const dateStr = campCfg.start_date
-            ? `<span style="font-size:10px;color:var(--text-dim);margin-left:4px">${fmtDay(campCfg.start_date)}${campCfg.end_date?' → '+fmtDay(campCfg.end_date):''}</span>`
-            : '';
-          return `
-          <div class="sdr-camp-row" style="flex-direction:column;align-items:flex-start;gap:1px;padding:5px 0">
-            <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
-              <span class="sdr-camp-name" title="${esc(c.name)}">${esc(c.name)}</span>
-              <span class="sdr-camp-val">${c.meetings} mtgs</span>
-            </div>
-            ${dateStr}
-          </div>`;
-        }).join('')}
-        ${s.campaigns.length>3?`<div style="font-size:10.5px;color:var(--text-dim);padding-top:4px">+${s.campaigns.length-3} more campaigns</div>`:''}
+        ${(()=>{
+          const campRow = c => {
+            const campCfg = (src.campaigns||[]).find(x=>x.name===c.name) || {};
+            const dateStr = campCfg.start_date
+              ? `<span style="font-size:10px;color:var(--text-dim);margin-left:4px">${fmtDay(campCfg.start_date)}${campCfg.end_date?' → '+fmtDay(campCfg.end_date):''}</span>`
+              : '';
+            return `
+            <div class="sdr-camp-row" style="flex-direction:column;align-items:flex-start;gap:1px;padding:5px 0">
+              <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
+                <span class="sdr-camp-name" title="${esc(c.name)}">${esc(c.name)}</span>
+                <span class="sdr-camp-val">${c.meetings} mtgs</span>
+              </div>
+              ${dateStr}
+            </div>`;
+          };
+          const first = s.campaigns.slice(0,3).map(campRow).join('');
+          if(s.campaigns.length<=3) return first;
+          const n = s.campaigns.length-3;
+          return `${first}
+            <div id="sdrmore-${i}" style="display:none">${s.campaigns.slice(3).map(campRow).join('')}</div>
+            <div onclick="toggleSdrCamps(event,'sdrmore-${i}',${n})" style="font-size:10.5px;color:var(--gold);cursor:pointer;padding-top:4px;user-select:none">+${n} more campaigns ▾</div>`;
+        })()}
       </div>
     </div>`;
   }).join('');
+}
+
+// Expand/collapse the "+N more campaigns" list on an SDR card (without opening the card modal).
+function toggleSdrCamps(ev, id, n){
+  ev.stopPropagation();
+  const el = document.getElementById(id);
+  if(!el) return;
+  const show = el.style.display === 'none';
+  el.style.display = show ? 'block' : 'none';
+  ev.currentTarget.innerHTML = show ? '▴ Show less' : `+${n} more campaigns ▾`;
 }
 
 // ── MANAGE TAB ───────────────────────────────────────────────────────────────
