@@ -945,18 +945,24 @@ def campaign_metrics(c, start_override=None, end_override=None):
     # Merge current Lead IDs into the frozen ledger so we never lose them
     frozen_lead_ids = merge_leads_into_ledger(c['id'], current_lead_ids)
 
-    # Prune leads that have since been reassigned to a DIFFERENT campaign. They
-    # would otherwise stay frozen here forever and get double-counted in both the
-    # old and new campaign (total_leads, calls, emails). Leads removed to NO
-    # campaign (blank Campaign__c) are kept frozen — they weren't reassigned.
-    cur_set = set(current_lead_ids)
-    stale   = [lid for lid in frozen_lead_ids if lid not in cur_set]
-    if stale:
-        moved = _moved_lead_ids(stale, c['name'])
-        if moved:
-            prune_leads_from_ledger(c['id'], moved)
-            mv = set(moved)
-            frozen_lead_ids = [lid for lid in frozen_lead_ids if lid not in mv]
+    # Prune leads that have since been reassigned to a DIFFERENT campaign — but
+    # ONLY for ACTIVE campaigns. This de-dups leads shuffled between campaigns
+    # that run at the same time (e.g. the EcW set), so they aren't counted twice.
+    #
+    # COMPLETED (and Paused) campaigns are NEVER pruned: once a campaign is over,
+    # its stats (total_leads, total_calls, …) are a permanent historical record
+    # and must stay frozen even though its leads are later enrolled in new active
+    # campaigns. (The normal workflow only reassigns a lead after its previous
+    # campaign has completed, so the old campaign keeps its full history.)
+    if (c.get('status') or 'Active') == 'Active':
+        cur_set = set(current_lead_ids)
+        stale   = [lid for lid in frozen_lead_ids if lid not in cur_set]
+        if stale:
+            moved = _moved_lead_ids(stale, c['name'])
+            if moved:
+                prune_leads_from_ledger(c['id'], moved)
+                mv = set(moved)
+                frozen_lead_ids = [lid for lid in frozen_lead_ids if lid not in mv]
 
     # ── Step 2: fetch meeting-lead details (name/title/company) ──────────────
     if current_lead_ids:
