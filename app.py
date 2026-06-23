@@ -725,24 +725,36 @@ def setup_sf_auth():
 SFDC_NAME_MAP = {
     # ── Active SDRs — canonical display names ─────────────────────────────────
     # SFDC raw value (Meeting_Generated_by__c / SDR_Owner__c) → canonical name
-    # Aliases are listed BEFORE the canonical self-entry so the reverse map
-    # (display → SFDC raw, built below) keeps resolving to the canonical name.
+    # SDRs are entered inconsistently in SFDC — sometimes first name only,
+    # sometimes full name. Both forms map to the same canonical SDR. Each alias
+    # is listed BEFORE the canonical self-entry so SFDC_NAME_MAP_REVERSE keeps
+    # resolving the display name back to the canonical value.
+    'Akil':                  'Akil Krishna',
     'Akil Krishna':          'Akil Krishna',
     'Akhilesh':              'Akhilesh Stan',
     'Ananya':                'Ananya Rao',
     'Ananya Rao':            'Ananya Rao',
+    'Anurup':                'Anurup Bhattacharjee',
     'Anurup Bhattacharjee':  'Anurup Bhattacharjee',
+    'Anushka':               'Anushka HB',
     'Anushka HB':            'Anushka HB',
     'Deborah':               'Deborah Deborah',
+    'Hreeman':               'Hreeman Saha',
     'Hreeman Saha':          'Hreeman Saha',
+    'Isaac':                 'Isaac Bartels',
+    'Issac':                 'Isaac Bartels',
     'Isaac Bartels':         'Isaac Bartels',
+    'Michelle':              'Michelle B',
     'Michelle Beckford':     'Michelle B',
     'Michelle B':            'Michelle B',
+    'Rithick':               'Rithick S',
     'Rithick S':             'Rithick S',
     'Saka':                  'Saka Thapa',
+    'Samridhi':              'Samridhi Dutta',
     'Samridhi Dutta':        'Samridhi Dutta',
     'Shahana':               'Shahana Abbasi',
     'Shahana Abbasi':        'Shahana Abbasi',
+    'Soham':                 'Soham Saha',
     'Soham Saha':            'Soham Saha',
     'Sukhneet':              'Sukhneet Sukhneet',
     # ── Other / alumni SDRs ───────────────────────────────────────────────────
