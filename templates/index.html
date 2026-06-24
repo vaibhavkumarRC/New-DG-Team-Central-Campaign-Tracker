@@ -5061,19 +5061,19 @@ function _fmtRange(a, b) {                       // a, b = UTC Date objects
     : `${ma} ${a.getUTCDate()} – ${mb} ${b.getUTCDate()}`;
 }
 
-// Quarter-relative week number + Mon–Fri date range for a week (given its Monday).
-// Matches the DG Q2 dashboard: Week 1 = the (possibly partial) week containing
-// the quarter start (Apr 1 / Jul 1 / …); its displayed range is clamped to start
-// at the quarter start. The quarter is decided by the week's Thursday (ISO rule),
-// so a week straddling a boundary lands in the quarter that owns most of it.
+// Continuous week number + Mon–Fri date range for a week (given its Monday).
+// Week 1 = the (possibly partial) week containing the program anchor (Apr 1
+// 2026); numbers then count UP continuously with no quarter reset — Week 13 =
+// Jun 22-26, Week 14 = Jun 29-Jul 3, Week 15 = Jul 6-10, … through the year.
+// The anchor week's displayed range is clamped to start at the anchor date.
+const TREND_WEEK_ANCHOR = '2026-04-01';
 function _weekMeta(mondayYMD) {
-  const M   = new Date(mondayYMD + 'T00:00:00Z');
-  const thu = new Date(M); thu.setUTCDate(thu.getUTCDate() + 3);
-  const QS  = new Date(Date.UTC(thu.getUTCFullYear(), Math.floor(thu.getUTCMonth() / 3) * 3, 1));
-  const qsDow = (QS.getUTCDay() + 6) % 7;
-  const QSmon = new Date(QS); QSmon.setUTCDate(QSmon.getUTCDate() - qsDow);
-  const weekNum = Math.round((M - QSmon) / (7 * 86400000)) + 1;
-  const dispStart = M < QS ? QS : M;             // clamp the first week to the quarter start
+  const M    = new Date(mondayYMD + 'T00:00:00Z');
+  const A    = new Date(TREND_WEEK_ANCHOR + 'T00:00:00Z');
+  const aDow = (A.getUTCDay() + 6) % 7;
+  const Amon = new Date(A); Amon.setUTCDate(Amon.getUTCDate() - aDow);   // Monday of the anchor week
+  const weekNum = Math.round((M - Amon) / (7 * 86400000)) + 1;
+  const dispStart = M < A ? A : M;               // clamp only the anchor week to the anchor date
   const fri = new Date(M); fri.setUTCDate(fri.getUTCDate() + 4);
   return { weekNum, range: _fmtRange(dispStart, fri) };
 }
