@@ -795,7 +795,7 @@ tfoot td {
           <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:#1D9E75;display:inline-block"></span>Meeting Done</span>
         </div>
       </div>
-      <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">Week-wise, bucketed by Meeting Generated On · respects the filters &amp; period below</div>
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">Week-wise, bucketed by Meeting Generated On · respects the filters &amp; period below · 💡 click any point to see that week's leads</div>
       <div style="position:relative;height:260px"><canvas id="sdrTrendChart"></canvas></div>
       <div id="sdrTrendEmpty" style="display:none;text-align:center;padding:24px;color:var(--text-dim);font-size:13px">No meetings in the selected range.</div>
     </div>
@@ -5135,6 +5135,13 @@ function renderSdrTrendChart() {
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
+      onHover: (evt, els) => { const t = evt && evt.native && evt.native.target; if (t) t.style.cursor = els.length ? 'pointer' : 'default'; },
+      onClick: (evt, _els, chart) => {
+        const pts = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: false }, true);
+        if (!pts.length) return;
+        const p = pts[0];
+        openSdrTrendModal(weeks[p.index], p.datasetIndex === 1 ? 'done' : 'generated');
+      },
       plugins: {
         legend: { display: false },
         tooltip: { backgroundColor: 'rgba(12,26,43,0.95)', titleColor: '#ECF2F9', bodyColor: '#7B9EC2',
@@ -5240,9 +5247,23 @@ function openSdrpModal(sdr, metric) {
   if (sdr !== '__ALL__') rows = rows.filter(r => r.generated_by === sdr);
   if (metric === 'done') rows = rows.filter(SDRP_IS_DONE);
   if (metric === 's1')   rows = rows.filter(SDRP_IS_S1);
-  rows.sort((a, b) => String(b.generated_on || '').localeCompare(String(a.generated_on || '')));
+  _sdrpLeadModal(`${SDRP_METRIC_LABEL[metric]} — ${sdr === '__ALL__' ? 'All SDRs' : sdr}`, rows);
+}
 
-  document.getElementById('sdrpModalTitle').textContent = `${SDRP_METRIC_LABEL[metric]} — ${sdr === '__ALL__' ? 'All SDRs' : sdr}`;
+// Drill-down for a clicked point on the weekly trend chart: that week's
+// Generated (all rows in the week) or Done (SDRP_IS_DONE) leads.
+function openSdrTrendModal(mondayYMD, series) {
+  let rows = sdrpFilteredRows().filter(r => r.generated_on && _weekStart(r.generated_on) === mondayYMD);
+  if (series === 'done') rows = rows.filter(SDRP_IS_DONE);
+  const m = _weekMeta(mondayYMD);
+  const label = series === 'done' ? '✅ Meetings Done' : '🤝 Meetings Generated';
+  _sdrpLeadModal(`${label} — Week ${m.weekNum} · ${m.range}`, rows);
+}
+
+// Shared lead-list modal (used by the table cells and the trend chart points).
+function _sdrpLeadModal(title, rows) {
+  rows = rows.slice().sort((a, b) => String(b.generated_on || '').localeCompare(String(a.generated_on || '')));
+  document.getElementById('sdrpModalTitle').textContent = title;
   document.getElementById('sdrpModalSub').textContent   = `${rows.length} lead${rows.length !== 1 ? 's' : ''} · click a row to open in Salesforce`;
   document.getElementById('sdrpModalBody').innerHTML = rows.length === 0
     ? '<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:12px">No leads.</div>'
