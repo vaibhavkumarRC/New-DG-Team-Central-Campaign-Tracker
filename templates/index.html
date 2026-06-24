@@ -5061,11 +5061,12 @@ function _fmtRange(a, b) {                       // a, b = UTC Date objects
     : `${ma} ${a.getUTCDate()} – ${mb} ${b.getUTCDate()}`;
 }
 
-// Continuous week number + Mon–Fri date range for a week (given its Monday).
+// Continuous week number + full Mon–Sun date range for a week (given its Monday).
 // Week 1 = the (possibly partial) week containing the program anchor (Apr 1
 // 2026); numbers then count UP continuously with no quarter reset — Week 13 =
-// Jun 22-26, Week 14 = Jun 29-Jul 3, Week 15 = Jul 6-10, … through the year.
+// Jun 22-28, Week 14 = Jun 29-Jul 5, Week 15 = Jul 6-12, … through the year.
 // The anchor week's displayed range is clamped to start at the anchor date.
+// (Buckets always span Mon–Sun, so weekend meetings are included.)
 const TREND_WEEK_ANCHOR = '2026-04-01';
 function _weekMeta(mondayYMD) {
   const M    = new Date(mondayYMD + 'T00:00:00Z');
@@ -5074,8 +5075,8 @@ function _weekMeta(mondayYMD) {
   const Amon = new Date(A); Amon.setUTCDate(Amon.getUTCDate() - aDow);   // Monday of the anchor week
   const weekNum = Math.round((M - Amon) / (7 * 86400000)) + 1;
   const dispStart = M < A ? A : M;               // clamp only the anchor week to the anchor date
-  const fri = new Date(M); fri.setUTCDate(fri.getUTCDate() + 4);
-  return { weekNum, range: _fmtRange(dispStart, fri) };
+  const sun = new Date(M); sun.setUTCDate(sun.getUTCDate() + 6);         // Sunday = full week end
+  return { weekNum, range: _fmtRange(dispStart, sun) };
 }
 
 // Weekly "Meeting Generated vs Meeting Done" trend chart. Uses the EXACT same
