@@ -785,6 +785,20 @@ tfoot td {
         <button class="btn-export" onclick="exportCSV('sdr')" title="Export SDR performance to CSV">⬇ Export CSV</button>
       </div>
     </div>
+    <!-- MEETING GENERATED vs MEETING DONE — WEEKLY TREND CHART -->
+    <div id="sdrTrendSection" style="margin-bottom:24px;background:var(--card-bg);border:1px solid var(--border);border-radius:14px;padding:16px 18px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:var(--text)">📈 Meeting Generated vs Meeting Done Trend Chart</div>
+        <span id="sdrTrendSub" style="font-size:11px;color:var(--text-muted)"></span>
+        <div style="margin-left:auto;display:flex;gap:16px;align-items:center;font-size:11px;color:var(--text-muted)">
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:#A78BFA;display:inline-block"></span>Meeting Generated</span>
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:#1D9E75;display:inline-block"></span>Meeting Done</span>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">Week-wise, bucketed by Meeting Generated On · respects the filters &amp; period below</div>
+      <div style="position:relative;height:260px"><canvas id="sdrTrendChart"></canvas></div>
+      <div id="sdrTrendEmpty" style="display:none;text-align:center;padding:24px;color:var(--text-dim);font-size:13px">No meetings in the selected range.</div>
+    </div>
     <!-- SDR PERFORMANCE TABLE (live SFDC meeting data — same source as SDR Reporting 2026) -->
     <div id="sdrPerfSection" style="margin-bottom:28px">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
@@ -5029,9 +5043,88 @@ function sortSdrpTable(key) {
   renderSdrPerfTable();
 }
 
+// Monday-start ISO week key (YYYY-MM-DD of that week's Monday) for a date string.
+function _weekStart(ymd) {
+  const d = new Date(ymd + 'T00:00:00');
+  const dow = (d.getDay() + 6) % 7;   // 0=Mon … 6=Sun
+  d.setDate(d.getDate() - dow);
+  return d.toISOString().slice(0, 10);
+}
+
+// Weekly "Meeting Generated vs Meeting Done" trend chart. Uses the EXACT same
+// rows, filters and definitions as the SDR Performance Table below it:
+//   • dataset = sdrpFilteredRows() (period + multi-select filters applied)
+//   • Meeting Generated = one row = one meeting (bucketed by Meeting_Generated_on)
+//   • Meeting Done       = SDRP_IS_DONE(r) (same rule as the table)
+function renderSdrTrendChart() {
+  const cv    = document.getElementById('sdrTrendChart');
+  if (!cv || !MTG.data) return;
+  const empty = document.getElementById('sdrTrendEmpty');
+  const sub   = document.getElementById('sdrTrendSub');
+  const rows  = sdrpFilteredRows().filter(r => r.generated_on);
+
+  if (!rows.length) {
+    if (S.charts['sdrTrendChart']) { S.charts['sdrTrendChart'].destroy(); delete S.charts['sdrTrendChart']; }
+    cv.style.display = 'none';
+    if (empty) empty.style.display = 'block';
+    if (sub) sub.textContent = '';
+    return;
+  }
+  cv.style.display = 'block';
+  if (empty) empty.style.display = 'none';
+
+  const gen = {}, done = {};
+  rows.forEach(r => {
+    const w = _weekStart(r.generated_on);
+    gen[w] = (gen[w] || 0) + 1;
+    if (SDRP_IS_DONE(r)) done[w] = (done[w] || 0) + 1;
+  });
+
+  // Continuous weekly axis from first to last week (so gaps show as zero).
+  const present = Object.keys(gen).sort();
+  const labels  = [];
+  let cur = new Date(present[0] + 'T00:00:00');
+  const last = new Date(present[present.length - 1] + 'T00:00:00');
+  while (cur <= last) { labels.push(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 7); }
+
+  const genData  = labels.map(w => gen[w]  || 0);
+  const doneData = labels.map(w => done[w] || 0);
+  const totGen   = genData.reduce((a, b) => a + b, 0);
+  const totDone  = doneData.reduce((a, b) => a + b, 0);
+  if (sub) sub.textContent = `· ${labels.length} week${labels.length !== 1 ? 's' : ''} · ${totGen} generated · ${totDone} done`;
+
+  const mkDS = (label, data, color, fill) => ({
+    label, data, borderColor: color, backgroundColor: fill,
+    fill: true, tension: 0.3, pointRadius: 3, pointHoverRadius: 5, pointBackgroundColor: color,
+  });
+  if (S.charts['sdrTrendChart']) S.charts['sdrTrendChart'].destroy();
+  S.charts['sdrTrendChart'] = new Chart(cv, {
+    type: 'line',
+    data: { labels: labels.map(_trendFmtD), datasets: [
+      mkDS('Meeting Generated', genData,  '#A78BFA', 'rgba(167,139,250,0.10)'),
+      mkDS('Meeting Done',      doneData, '#1D9E75', 'rgba(29,158,117,0.10)'),
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor: 'rgba(12,26,43,0.95)', titleColor: '#ECF2F9', bodyColor: '#7B9EC2',
+                   borderColor: '#1A3352', borderWidth: 1,
+                   callbacks: { title: items => 'Week of ' + items[0].label } },
+      },
+      scales: {
+        x: { grid: { color: 'rgba(26,51,82,0.6)' }, ticks: { color: '#D0DEF0', font: { size: 10 }, maxRotation: 60, minRotation: 0, autoSkip: true, maxTicksLimit: 16 } },
+        y: { beginAtZero: true, grid: { color: 'rgba(26,51,82,0.6)' }, ticks: { color: '#D0DEF0', font: { size: 11 }, precision: 0 } },
+      }
+    }
+  });
+}
+
 function renderSdrPerfTable() {
   const wrap = document.getElementById('sdrpTableWrap');
   if (!wrap) return;
+  renderSdrTrendChart();
   const rows = sdrpFilteredRows();
 
   // Aggregate per SDR (Meeting_Generated_by__c)
