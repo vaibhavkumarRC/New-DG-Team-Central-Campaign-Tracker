@@ -5043,12 +5043,39 @@ function sortSdrpTable(key) {
   renderSdrPerfTable();
 }
 
-// Monday-start ISO week key (YYYY-MM-DD of that week's Monday) for a date string.
+// Monday-start week key (YYYY-MM-DD of that week's Monday). All math in UTC so
+// it never shifts by the viewer's local timezone (e.g. IST) — a mismatch here
+// would make every bucket lookup miss and the chart read as all-zero.
 function _weekStart(ymd) {
-  const d = new Date(ymd + 'T00:00:00');
-  const dow = (d.getDay() + 6) % 7;   // 0=Mon … 6=Sun
-  d.setDate(d.getDate() - dow);
+  const d = new Date(ymd + 'T00:00:00Z');
+  const dow = (d.getUTCDay() + 6) % 7;   // 0=Mon … 6=Sun
+  d.setUTCDate(d.getUTCDate() - dow);
   return d.toISOString().slice(0, 10);
+}
+
+const _MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function _fmtRange(a, b) {                       // a, b = UTC Date objects
+  const ma = _MON[a.getUTCMonth()], mb = _MON[b.getUTCMonth()];
+  return ma === mb
+    ? `${ma} ${a.getUTCDate()}–${b.getUTCDate()}`
+    : `${ma} ${a.getUTCDate()} – ${mb} ${b.getUTCDate()}`;
+}
+
+// Quarter-relative week number + Mon–Fri date range for a week (given its Monday).
+// Matches the DG Q2 dashboard: Week 1 = the (possibly partial) week containing
+// the quarter start (Apr 1 / Jul 1 / …); its displayed range is clamped to start
+// at the quarter start. The quarter is decided by the week's Thursday (ISO rule),
+// so a week straddling a boundary lands in the quarter that owns most of it.
+function _weekMeta(mondayYMD) {
+  const M   = new Date(mondayYMD + 'T00:00:00Z');
+  const thu = new Date(M); thu.setUTCDate(thu.getUTCDate() + 3);
+  const QS  = new Date(Date.UTC(thu.getUTCFullYear(), Math.floor(thu.getUTCMonth() / 3) * 3, 1));
+  const qsDow = (QS.getUTCDay() + 6) % 7;
+  const QSmon = new Date(QS); QSmon.setUTCDate(QSmon.getUTCDate() - qsDow);
+  const weekNum = Math.round((M - QSmon) / (7 * 86400000)) + 1;
+  const dispStart = M < QS ? QS : M;             // clamp the first week to the quarter start
+  const fri = new Date(M); fri.setUTCDate(fri.getUTCDate() + 4);
+  return { weekNum, range: _fmtRange(dispStart, fri) };
 }
 
 // Weekly "Meeting Generated vs Meeting Done" trend chart. Uses the EXACT same
@@ -5080,18 +5107,19 @@ function renderSdrTrendChart() {
     if (SDRP_IS_DONE(r)) done[w] = (done[w] || 0) + 1;
   });
 
-  // Continuous weekly axis from first to last week (so gaps show as zero).
+  // Continuous weekly axis from first to last week (so gaps show as zero). UTC.
   const present = Object.keys(gen).sort();
-  const labels  = [];
-  let cur = new Date(present[0] + 'T00:00:00');
-  const last = new Date(present[present.length - 1] + 'T00:00:00');
-  while (cur <= last) { labels.push(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 7); }
+  const weeks   = [];
+  let cur = new Date(present[0] + 'T00:00:00Z');
+  const last = new Date(present[present.length - 1] + 'T00:00:00Z');
+  while (cur <= last) { weeks.push(cur.toISOString().slice(0, 10)); cur.setUTCDate(cur.getUTCDate() + 7); }
 
-  const genData  = labels.map(w => gen[w]  || 0);
-  const doneData = labels.map(w => done[w] || 0);
+  const meta     = weeks.map(_weekMeta);
+  const genData  = weeks.map(w => gen[w]  || 0);
+  const doneData = weeks.map(w => done[w] || 0);
   const totGen   = genData.reduce((a, b) => a + b, 0);
   const totDone  = doneData.reduce((a, b) => a + b, 0);
-  if (sub) sub.textContent = `· ${labels.length} week${labels.length !== 1 ? 's' : ''} · ${totGen} generated · ${totDone} done`;
+  if (sub) sub.textContent = `· ${weeks.length} week${weeks.length !== 1 ? 's' : ''} · ${totGen} generated · ${totDone} done`;
 
   const mkDS = (label, data, color, fill) => ({
     label, data, borderColor: color, backgroundColor: fill,
@@ -5100,7 +5128,7 @@ function renderSdrTrendChart() {
   if (S.charts['sdrTrendChart']) S.charts['sdrTrendChart'].destroy();
   S.charts['sdrTrendChart'] = new Chart(cv, {
     type: 'line',
-    data: { labels: labels.map(_trendFmtD), datasets: [
+    data: { labels: meta.map(m => [`Week ${m.weekNum}`, m.range]), datasets: [
       mkDS('Meeting Generated', genData,  '#A78BFA', 'rgba(167,139,250,0.10)'),
       mkDS('Meeting Done',      doneData, '#1D9E75', 'rgba(29,158,117,0.10)'),
     ] },
@@ -5111,10 +5139,10 @@ function renderSdrTrendChart() {
         legend: { display: false },
         tooltip: { backgroundColor: 'rgba(12,26,43,0.95)', titleColor: '#ECF2F9', bodyColor: '#7B9EC2',
                    borderColor: '#1A3352', borderWidth: 1,
-                   callbacks: { title: items => 'Week of ' + items[0].label } },
+                   callbacks: { title: items => { const m = meta[items[0].dataIndex]; return `Week ${m.weekNum} · ${m.range}`; } } },
       },
       scales: {
-        x: { grid: { color: 'rgba(26,51,82,0.6)' }, ticks: { color: '#D0DEF0', font: { size: 10 }, maxRotation: 60, minRotation: 0, autoSkip: true, maxTicksLimit: 16 } },
+        x: { grid: { color: 'rgba(26,51,82,0.6)' }, ticks: { color: '#D0DEF0', font: { size: 10 }, maxRotation: 0, minRotation: 0, autoSkip: true, maxTicksLimit: 16 } },
         y: { beginAtZero: true, grid: { color: 'rgba(26,51,82,0.6)' }, ticks: { color: '#D0DEF0', font: { size: 11 }, precision: 0 } },
       }
     }
