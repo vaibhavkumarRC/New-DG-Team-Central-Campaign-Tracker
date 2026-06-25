@@ -3194,6 +3194,15 @@ def _ist_date(dt_str):
     except Exception:
         return (str(dt_str) or '')[:10]
 
+@app.route('/api/sdr-s1')
+def api_sdr_s1():
+    """Per-SDR opportunity-based S1 count within a date range (for the SDR
+    Performance Table's quarter filter). ?from=YYYY-MM-DD&to=YYYY-MM-DD."""
+    frm = (request.args.get('from') or '').strip() or None
+    to  = (request.args.get('to')   or '').strip() or None
+    stats = fetch_sdr_opp_stats(frm, to)
+    return jsonify({'s1': {name: v['s1'] for name, v in stats.items()}})
+
 @app.route('/api/meeting-leads')
 def api_meeting_leads():
     """Return all leads where Meeting_Generated_on__c is set. Default lower bound
