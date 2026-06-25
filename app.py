@@ -81,19 +81,26 @@ def merge_leads_into_ledger(campaign_id, lead_ids):
         return entry['lead_ids']
 
 def prune_leads_from_ledger(campaign_id, remove_ids):
-    """Remove reassigned Lead IDs from a campaign's frozen lead_ids.
-    Only lead_ids are pruned — the meetings dict is left intact, because a
-    meeting generated while the lead was in this campaign is a point-in-time
-    achievement that stays attributed here."""
+    """Remove reassigned Lead IDs from a campaign's frozen ledger — BOTH the
+    lead_ids list AND the meetings dict. When a lead moves to a different ACTIVE
+    campaign it must stop counting here entirely (leads, calls, AND meetings),
+    otherwise its meeting shows up under both the old and the new campaign.
+    Only called for Active campaigns (see campaign_metrics); Completed/Paused
+    campaigns are never pruned, so they keep their full frozen history."""
     rm = set(remove_ids)
     if not rm:
         return
     with _ledger_lock:
         ledger = load_ledger()
         entry  = _get_or_create_entry(ledger, campaign_id)
-        kept   = [lid for lid in entry['lead_ids'] if lid not in rm]
-        if len(kept) != len(entry['lead_ids']):
+        kept     = [lid for lid in entry['lead_ids'] if lid not in rm]
+        meetings = entry.get('meetings') or {}
+        dropped_m = [lid for lid in meetings if lid in rm]
+        if len(kept) != len(entry['lead_ids']) or dropped_m:
             entry['lead_ids'] = kept
+            for lid in dropped_m:
+                del meetings[lid]
+            entry['meetings'] = meetings
             save_ledger(ledger)
 
 def _moved_lead_ids(stale_ids, this_campaign_name):
@@ -947,7 +954,8 @@ def campaign_metrics(c, start_override=None, end_override=None):
 
     # Prune leads that have since been reassigned to a DIFFERENT campaign — but
     # ONLY for ACTIVE campaigns. This de-dups leads shuffled between campaigns
-    # that run at the same time (e.g. the EcW set), so they aren't counted twice.
+    # that run at the same time (e.g. the EcW set), so neither their leads/calls
+    # NOR their meetings are counted twice (once under the old + once the new).
     #
     # COMPLETED (and Paused) campaigns are NEVER pruned: once a campaign is over,
     # its stats (total_leads, total_calls, …) are a permanent historical record
