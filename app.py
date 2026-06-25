@@ -964,7 +964,14 @@ def campaign_metrics(c, start_override=None, end_override=None):
     # campaign has completed, so the old campaign keeps its full history.)
     if (c.get('status') or 'Active') == 'Active':
         cur_set = set(current_lead_ids)
-        stale   = [lid for lid in frozen_lead_ids if lid not in cur_set]
+        # Candidates = lead_ids in the ledger PLUS any lead that still has a
+        # meeting entry. A lead's id may have been pruned in an earlier sync while
+        # its meeting lingered, so scan the meetings dict too — otherwise that
+        # orphaned meeting keeps showing under the old campaign.
+        _entry  = load_ledger().get(c['id']) or {}
+        mtg_keys = list((_entry.get('meetings') or {}).keys())
+        cand    = set(frozen_lead_ids) | set(mtg_keys)
+        stale   = [lid for lid in cand if lid not in cur_set]
         if stale:
             moved = _moved_lead_ids(stale, c['name'])
             if moved:
