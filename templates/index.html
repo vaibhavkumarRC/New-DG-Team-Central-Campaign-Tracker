@@ -790,12 +790,13 @@ tfoot td {
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
         <div style="font-size:13px;font-weight:700;color:var(--text)">📈 Meeting Generated vs Meeting Done Trend Chart</div>
         <span id="sdrTrendSub" style="font-size:11px;color:var(--text-muted)"></span>
-        <div style="margin-left:auto;display:flex;gap:16px;align-items:center;font-size:11px;color:var(--text-muted)">
+        <div style="margin-left:auto;display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text-muted);flex-wrap:wrap">
           <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:#A78BFA;display:inline-block"></span>Meeting Generated</span>
-          <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:#1D9E75;display:inline-block"></span>Meeting Done</span>
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:#1D9E75;display:inline-block"></span>Meeting Done · SFDC</span>
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:#38BDF8;display:inline-block"></span>Meeting Done · Zoom</span>
         </div>
       </div>
-      <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">Week-wise, bucketed by Meeting Generated On · respects the filters &amp; period below · 💡 click any point to see that week's leads</div>
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">Generated &amp; Done·SFDC bucketed by <b>Meeting Generated On</b>; Done·Zoom bucketed by <b>actual Zoom meeting date</b> (IST) · respects the filters below · 💡 click any point to see that week's leads</div>
       <div style="position:relative;height:260px"><canvas id="sdrTrendChart"></canvas></div>
       <div id="sdrTrendEmpty" style="display:none;text-align:center;padding:24px;color:var(--text-dim);font-size:13px">No meetings in the selected range.</div>
     </div>
@@ -5101,15 +5102,21 @@ function renderSdrTrendChart() {
   cv.style.display = 'block';
   if (empty) empty.style.display = 'none';
 
-  const gen = {}, done = {};
+  // gen / done(SFDC) bucket by Meeting_Generated_on; zoom bucket by the actual
+  // Zoom meeting date (zoom_done_on, IST) where Zoom_Meeting_Status = 'Meeting Done'.
+  const gen = {}, done = {}, zoom = {};
   rows.forEach(r => {
     const w = _weekStart(r.generated_on);
     gen[w] = (gen[w] || 0) + 1;
     if (SDRP_IS_DONE(r)) done[w] = (done[w] || 0) + 1;
+    if (r.zoom_status === 'Meeting Done' && r.zoom_done_on) {
+      const zw = _weekStart(r.zoom_done_on);
+      zoom[zw] = (zoom[zw] || 0) + 1;
+    }
   });
 
-  // Continuous weekly axis from first to last week (so gaps show as zero). UTC.
-  const present = Object.keys(gen).sort();
+  // Continuous weekly axis spanning every week that has data on ANY line. UTC.
+  const present = [...new Set([...Object.keys(gen), ...Object.keys(zoom)])].sort();
   const weeks   = [];
   let cur = new Date(present[0] + 'T00:00:00Z');
   const last = new Date(present[present.length - 1] + 'T00:00:00Z');
@@ -5118,9 +5125,11 @@ function renderSdrTrendChart() {
   const meta     = weeks.map(_weekMeta);
   const genData  = weeks.map(w => gen[w]  || 0);
   const doneData = weeks.map(w => done[w] || 0);
+  const zoomData = weeks.map(w => zoom[w] || 0);
   const totGen   = genData.reduce((a, b) => a + b, 0);
   const totDone  = doneData.reduce((a, b) => a + b, 0);
-  if (sub) sub.textContent = `· ${weeks.length} week${weeks.length !== 1 ? 's' : ''} · ${totGen} generated · ${totDone} done`;
+  const totZoom  = zoomData.reduce((a, b) => a + b, 0);
+  if (sub) sub.textContent = `· ${weeks.length} week${weeks.length !== 1 ? 's' : ''} · ${totGen} generated · ${totDone} done (SFDC) · ${totZoom} done (Zoom)`;
 
   const mkDS = (label, data, color, fill) => ({
     label, data, borderColor: color, backgroundColor: fill,
@@ -5130,8 +5139,9 @@ function renderSdrTrendChart() {
   S.charts['sdrTrendChart'] = new Chart(cv, {
     type: 'line',
     data: { labels: meta.map(m => [`Week ${m.weekNum}`, m.range]), datasets: [
-      mkDS('Meeting Generated', genData,  '#A78BFA', 'rgba(167,139,250,0.10)'),
-      mkDS('Meeting Done',      doneData, '#1D9E75', 'rgba(29,158,117,0.10)'),
+      mkDS('Meeting Generated',     genData,  '#A78BFA', 'rgba(167,139,250,0.10)'),
+      mkDS('Meeting Done · SFDC',   doneData, '#1D9E75', 'rgba(29,158,117,0.10)'),
+      mkDS('Meeting Done · Zoom',   zoomData, '#38BDF8', 'rgba(56,189,248,0.10)'),
     ] },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -5141,7 +5151,8 @@ function renderSdrTrendChart() {
         const pts = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: false }, true);
         if (!pts.length) return;
         const p = pts[0];
-        openSdrTrendModal(weeks[p.index], p.datasetIndex === 1 ? 'done' : 'generated');
+        const series = p.datasetIndex === 2 ? 'zoom' : p.datasetIndex === 1 ? 'done' : 'generated';
+        openSdrTrendModal(weeks[p.index], series);
       },
       plugins: {
         legend: { display: false },
@@ -5254,10 +5265,17 @@ function openSdrpModal(sdr, metric) {
 // Drill-down for a clicked point on the weekly trend chart: that week's
 // Generated (all rows in the week) or Done (SDRP_IS_DONE) leads.
 function openSdrTrendModal(mondayYMD, series) {
-  let rows = sdrpFilteredRows().filter(r => r.generated_on && _weekStart(r.generated_on) === mondayYMD);
-  if (series === 'done') rows = rows.filter(SDRP_IS_DONE);
   const m = _weekMeta(mondayYMD);
-  const label = series === 'done' ? '✅ Meetings Done' : '🤝 Meetings Generated';
+  let rows, label;
+  if (series === 'zoom') {
+    // Done-on-Zoom: bucket by the actual Zoom meeting date, not the booked date.
+    rows  = sdrpFilteredRows().filter(r => r.zoom_status === 'Meeting Done' && r.zoom_done_on && _weekStart(r.zoom_done_on) === mondayYMD);
+    label = '🔵 Meetings Done (Zoom)';
+  } else {
+    rows  = sdrpFilteredRows().filter(r => r.generated_on && _weekStart(r.generated_on) === mondayYMD);
+    if (series === 'done') rows = rows.filter(SDRP_IS_DONE);
+    label = series === 'done' ? '✅ Meetings Done (SFDC)' : '🤝 Meetings Generated';
+  }
   _sdrpLeadModal(`${label} — Week ${m.weekNum} · ${m.range}`, rows);
 }
 

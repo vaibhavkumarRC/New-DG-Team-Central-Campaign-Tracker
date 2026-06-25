@@ -3182,6 +3182,18 @@ def api_segments_add():
 
 # ── SDR Reporting 2026 – Meeting Leads ───────────────────────────────────────
 
+def _ist_date(dt_str):
+    """Convert an SFDC UTC Date/Time string to its IST calendar date (YYYY-MM-DD).
+    Zoom_Meeting_Done_Date__c is stored UTC; the team works in IST, so the week a
+    meeting 'happened' must be decided in IST (a 20:57 UTC meeting is next-day IST)."""
+    if not dt_str:
+        return ''
+    try:
+        base = datetime.strptime(str(dt_str)[:19], '%Y-%m-%dT%H:%M:%S')
+        return (base + timedelta(hours=5, minutes=30)).strftime('%Y-%m-%d')
+    except Exception:
+        return (str(dt_str) or '')[:10]
+
 @app.route('/api/meeting-leads')
 def api_meeting_leads():
     """Return all leads where Meeting_Generated_on__c is set and > 2026-03-31."""
@@ -3189,7 +3201,8 @@ def api_meeting_leads():
         "SELECT Id, FirstName, LastName, Title, Company, Status, "
         "Meeting_Status__c, Meeting_Generated_on__c, Meeting_Scheduled_On__c, "
         "Meeting_Generated_by__c, Meeting_Source__c, Meeting_Channel__c, "
-        "Meeting_Type__c, Zoom_Meeting_Link_URL__c, Seller_Name__c "
+        "Meeting_Type__c, Zoom_Meeting_Link_URL__c, Seller_Name__c, "
+        "Zoom_Meeting_Status__c, Zoom_Meeting_Done_Date__c "
         "FROM Lead "
         "WHERE Meeting_Generated_on__c != null "
         "AND Meeting_Generated_on__c > 2026-03-31 "
@@ -3221,6 +3234,8 @@ def api_meeting_leads():
             'type':         r.get('Meeting_Type__c')          or '—',
             'zoom_url':     r.get('Zoom_Meeting_Link_URL__c') or '',
             'seller':       r.get('Seller_Name__c')           or '—',
+            'zoom_status':  r.get('Zoom_Meeting_Status__c')   or '',
+            'zoom_done_on': _ist_date(r.get('Zoom_Meeting_Done_Date__c')),
             'sf_url':       f"{SF_BASE_URL}/lightning/r/Lead/{lid}/view" if lid else '',
         })
     return jsonify({'leads': leads, 'total': len(leads)})
