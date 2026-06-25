@@ -3196,7 +3196,12 @@ def _ist_date(dt_str):
 
 @app.route('/api/meeting-leads')
 def api_meeting_leads():
-    """Return all leads where Meeting_Generated_on__c is set and > 2026-03-31."""
+    """Return all leads where Meeting_Generated_on__c is set. Default lower bound
+    is after 2026-03-31 (Q2+); pass ?from=YYYY-MM-DD to go back further (the SDR
+    trend chart uses ?from=2026-01-01 for a full-year view)."""
+    frm = (request.args.get('from') or '').strip()
+    valid_from = len(frm) == 10 and frm[4] == '-' and frm[7] == '-' and frm.replace('-', '').isdigit()
+    date_clause = f"Meeting_Generated_on__c >= {frm}" if valid_from else "Meeting_Generated_on__c > 2026-03-31"
     q = (
         "SELECT Id, FirstName, LastName, Title, Company, Status, "
         "Meeting_Status__c, Meeting_Generated_on__c, Meeting_Scheduled_On__c, "
@@ -3204,10 +3209,9 @@ def api_meeting_leads():
         "Meeting_Type__c, Zoom_Meeting_Link_URL__c, Seller_Name__c, "
         "Zoom_Meeting_Status__c, Zoom_Meeting_Done_Date__c "
         "FROM Lead "
-        "WHERE Meeting_Generated_on__c != null "
-        "AND Meeting_Generated_on__c > 2026-03-31 "
+        f"WHERE Meeting_Generated_on__c != null AND {date_clause} "
         "ORDER BY Meeting_Generated_on__c DESC NULLS LAST "
-        "LIMIT 5000"
+        "LIMIT 8000"
     )
     result = soql(q)
     records = result.get('records', []) if result else []
