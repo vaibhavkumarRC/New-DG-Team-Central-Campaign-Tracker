@@ -2282,6 +2282,7 @@ def api_camps_add():
         'status':      d.get('status', 'Active'),
         'segment':     (d.get('segment') or '').strip(),
         'pod_team':    (d.get('pod_team') or '').strip(),
+        'campaign_type': (d.get('campaign_type') or '').strip(),
         'start_date':  d.get('start_date', ''),
         'end_date':    d.get('end_date', ''),
     }
@@ -2318,6 +2319,7 @@ def api_meetings_leads():
     camp      = request.args.get('campaign', '').strip()
     segment   = request.args.get('segment',  '').strip()
     pod_team  = request.args.get('pod_team', '').strip()
+    campaign_type = request.args.get('campaign_type', '').strip()
     # camp_start / camp_end: filter WHICH campaigns are included by their start_date
     # (mirrors the period filter on the dashboard — same campaigns as the KPI card)
     camp_period_start = request.args.get('camp_start', '').strip() or None
@@ -2359,6 +2361,8 @@ def api_meetings_leads():
             camps_cfg = [c for c in camps_cfg if (c.get('segment') or '').strip() == segment]
         if pod_team:
             camps_cfg = [c for c in camps_cfg if (c.get('pod_team') or '').strip() == pod_team]
+        if campaign_type:
+            camps_cfg = [c for c in camps_cfg if (c.get('campaign_type') or '').strip() == campaign_type]
         # Filter WHICH campaigns are shown by their start_date (mirrors the dashboard
         # period filter so the modal matches the KPI card exactly)
         if camp_period_start:
@@ -2418,6 +2422,7 @@ def api_status_leads():
     sdr           = request.args.get('sdr',      '').strip()
     segment       = request.args.get('segment',  '').strip()
     pod_team      = request.args.get('pod_team', '').strip()
+    campaign_type = request.args.get('campaign_type', '').strip()
     camp_period_start = request.args.get('camp_start', '').strip() or None
     camp_period_end   = request.args.get('camp_end',   '').strip() or None
     camp_status       = request.args.get('camp_status', '').strip()   # Active|Completed|Paused
@@ -2442,6 +2447,8 @@ def api_status_leads():
         camps_cfg = [c for c in camps_cfg if (c.get('segment') or '').strip() == segment]
     if pod_team:
         camps_cfg = [c for c in camps_cfg if (c.get('pod_team') or '').strip() == pod_team]
+    if campaign_type:
+        camps_cfg = [c for c in camps_cfg if (c.get('campaign_type') or '').strip() == campaign_type]
     if camp_period_start:
         camps_cfg = [c for c in camps_cfg if (c.get('start_date') or '') >= camp_period_start]
     if camp_period_end:
@@ -2691,15 +2698,18 @@ def api_s1_opportunities():
     sdr_display = request.args.get('sdr',      '').strip()
     segment     = request.args.get('segment',  '').strip()
     pod_team    = request.args.get('pod_team', '').strip()
+    campaign_type = request.args.get('campaign_type', '').strip()
     camp_status = request.args.get('camp_status', '').strip()   # Active|Completed|Paused
 
-    if segment or pod_team or (camp_status and camp_status != 'All'):
+    if segment or pod_team or campaign_type or (camp_status and camp_status != 'All'):
         camps_cfg = load_campaigns()
         filtered  = camps_cfg
         if segment:
             filtered = [c for c in filtered if (c.get('segment') or '').strip() == segment]
         if pod_team:
             filtered = [c for c in filtered if (c.get('pod_team') or '').strip() == pod_team]
+        if campaign_type:
+            filtered = [c for c in filtered if (c.get('campaign_type') or '').strip() == campaign_type]
         if camp_status and camp_status != 'All':
             filtered = [c for c in filtered if (c.get('status') or 'Active') == camp_status]
         camp_names_list = [c['name'] for c in filtered]
