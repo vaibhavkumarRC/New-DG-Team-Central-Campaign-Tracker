@@ -1440,7 +1440,7 @@ tfoot td {
           </div>
           <div class="form-grid-2">
             <div class="form-group">
-              <label class="form-label">SDR Owner</label>
+              <label class="form-label">SDR Owner <span style="color:#F87171">*</span></label>
               <select class="form-select" name="sdr_owner">
                 <option value="">— Select SDR —</option>
                 <option>Akhilesh Stan</option>
@@ -1480,7 +1480,7 @@ tfoot td {
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Segment</label>
+              <label class="form-label">Segment <span style="color:#F87171">*</span></label>
               <select class="form-select" id="addSegmentSelect" onchange="handleAddSegmentChange(this.value)">
                 <option value="">— Select segment —</option>
               </select>
@@ -1495,14 +1495,14 @@ tfoot td {
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">POD Team</label>
+            <label class="form-label">POD Team <span style="color:#F87171">*</span></label>
             <select class="form-select" id="addPodTeamSelect">
               <option value="">— Select POD —</option>
               <!-- populated by JS -->
             </select>
           </div>
           <div class="form-group">
-            <label class="form-label">Campaign Type</label>
+            <label class="form-label">Campaign Type <span style="color:#F87171">*</span></label>
             <select class="form-select" name="campaign_type">
               <option value="">— Select Campaign Type —</option>
               <option value="Signal Led Campaign">Signal Led Campaign</option>
@@ -1511,7 +1511,7 @@ tfoot td {
           </div>
           <div class="form-grid-2">
             <div class="form-group">
-              <label class="form-label">Start Date</label>
+              <label class="form-label">Start Date <span style="color:#F87171">*</span></label>
               <input class="form-input" name="start_date" type="date">
             </div>
             <div class="form-group">
@@ -2042,6 +2042,20 @@ async function addCampaign(e) {
   const body = Object.fromEntries(fd.entries());
   body.segment = getAddSegmentValue();
   body.pod_team = q('addPodTeamSelect')?.value || '';
+  // Required-field validation — all of these must be filled before adding.
+  const required = [
+    ['Campaign Name', body.name],
+    ['SDR Owner',     body.sdr_owner],
+    ['Segment',       body.segment],
+    ['POD Team',      body.pod_team],
+    ['Campaign Type', body.campaign_type],
+    ['Start Date',    body.start_date],
+  ];
+  const missing = required.filter(([, v]) => !(v || '').trim()).map(([label]) => label);
+  if (missing.length) {
+    showToast('⚠️ Please fill all required fields: ' + missing.join(', '));
+    return;
+  }
   const r = await fetch('/api/campaigns',{method:'POST',headers:authHeaders(),body:JSON.stringify(body)});
   if(r.ok){
     const added = await r.json();
