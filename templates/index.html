@@ -815,7 +815,7 @@ tfoot td {
           <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:#38BDF8;display:inline-block"></span>Meeting Done · Zoom</span>
         </div>
       </div>
-      <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">Generated &amp; Done·SFDC bucketed by <b>Meeting Generated On</b>; Done·Zoom bucketed by <b>actual Zoom meeting date</b> (IST) · respects the filters below · 💡 click any point to see that week's leads</div>
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">Generated &amp; Done·SFDC = <b>booked-meeting cold calls</b> (cold + conference) bucketed by <b>call date</b> (IST); Done·SFDC = the subset whose lead is Done; Done·Zoom by <b>actual Zoom meeting date</b> (IST) · filters below apply to the Zoom line only · 💡 click any point to see that week's meetings</div>
       <div style="position:relative;height:260px"><canvas id="sdrTrendChart"></canvas></div>
       <div id="sdrTrendEmpty" style="display:none;text-align:center;padding:24px;color:var(--text-dim);font-size:13px">No meetings in the selected range.</div>
     </div>
@@ -5026,9 +5026,24 @@ function loadTrendRows() {
     .finally(() => { TREND_FETCHING = false; });
 }
 
+// Call-activity meetings (the trend chart's purple "Meeting Generated" line).
+// One row per qualifying outbound call Task (cold or conference), bucketed by
+// the call's IST date. Separate fetch from the lead-based green/blue lines.
+let CALL_MTG_ROWS = null, CALL_MTG_FETCHING = false;
+function loadCallMeetings() {
+  if (CALL_MTG_ROWS || CALL_MTG_FETCHING) return;
+  CALL_MTG_FETCHING = true;
+  fetch('/api/call-meetings?from=2026-01-01')
+    .then(r => r.json())
+    .then(d => { CALL_MTG_ROWS = d.meetings || []; renderSdrTrendChart(); })
+    .catch(() => {})
+    .finally(() => { CALL_MTG_FETCHING = false; });
+}
+
 function initSdrPerf() {
   buildSdrpFilterBar();
   loadTrendRows();
+  loadCallMeetings();
   if (MTG.data) { populateSdrpFilters(); populateSdrpTableQuarters(); renderSdrPerfTable(); return; }
   if (SDRP.fetching) return;
   SDRP.fetching = true;
@@ -5298,11 +5313,16 @@ function _weekMeta(mondayYMD) {
   return { weekNum, range, lines: [`Week ${weekNum}`, range], tip: `Week ${weekNum} · ${range}` };
 }
 
-// Weekly "Meeting Generated vs Meeting Done" trend chart. Uses the EXACT same
-// rows, filters and definitions as the SDR Performance Table below it:
-//   • dataset = sdrpFilteredRows() (period + multi-select filters applied)
-//   • Meeting Generated = one row = one meeting (bucketed by Meeting_Generated_on)
-//   • Meeting Done       = SDRP_IS_DONE(r) (same rule as the table)
+// Weekly "Meeting Generated vs Meeting Done" trend chart.
+//   • Meeting Generated (purple) = outbound call Tasks whose CallDisposition booked
+//     a meeting (cold + conference), from CALL_MTG_ROWS, bucketed by the call's IST
+//     date. Driven by the date window only — the multi-select filters below are
+//     lead-meeting attributes (Seller/Channel/Meeting Status/Type/Lead Status) that
+//     call activities don't carry, so they don't narrow this line.
+//   • Meeting Done · SFDC (green) = SDRP_IS_DONE(r) on the lead rows (bucketed by
+//     Meeting_Generated_on), respecting the multi-select filters.
+//   • Meeting Done · Zoom (blue)  = lead rows with a Zoom 'Meeting Done', bucketed
+//     by the actual Zoom meeting date (IST).
 function renderSdrTrendChart() {
   const cv    = document.getElementById('sdrTrendChart');
   if (!cv) return;
@@ -5319,12 +5339,17 @@ function renderSdrTrendChart() {
 
   const keyOf = ymd => gran === 'month' ? ymd.slice(0, 7) : _weekStart(ymd);
   const gen = {}, done = {}, zoom = {};
-  sdrpTrendBase().forEach(r => {
-    if (inWin(r.generated_on)) {
-      const k = keyOf(r.generated_on);
+  // Purple + green lines: call-activity meetings (cold + conference), bucketed by
+  // call IST date. Green = the subset whose linked lead is Done — same week as purple.
+  (CALL_MTG_ROWS || []).forEach(r => {
+    if (inWin(r.date)) {
+      const k = keyOf(r.date);
       gen[k] = (gen[k] || 0) + 1;
-      if (SDRP_IS_DONE(r)) done[k] = (done[k] || 0) + 1;
+      if (r.done) done[k] = (done[k] || 0) + 1;
     }
+  });
+  // Blue line: lead-based, respecting the multi-select filters.
+  sdrpTrendBase().forEach(r => {
     if (r.zoom_status === 'Meeting Done' && inWin(r.zoom_done_on)) {
       const zk = keyOf(r.zoom_done_on);
       zoom[zk] = (zoom[zk] || 0) + 1;
@@ -5332,7 +5357,7 @@ function renderSdrTrendChart() {
   });
 
   // Continuous axis spanning every period that has data on ANY line.
-  const present = [...new Set([...Object.keys(gen), ...Object.keys(zoom)])].sort();
+  const present = [...new Set([...Object.keys(gen), ...Object.keys(done), ...Object.keys(zoom)])].sort();
 
   if (!present.length) {
     if (S.charts['sdrTrendChart']) { S.charts['sdrTrendChart'].destroy(); delete S.charts['sdrTrendChart']; }
@@ -5506,18 +5531,59 @@ function openSdrpModal(sdr, metric) {
 function openSdrTrendModal(periodKey, series) {
   const gran = SDRP.trendGran || 'week';
   const inPeriod = ymd => ymd && (gran === 'month' ? ymd.slice(0, 7) === periodKey : _weekStart(ymd) === periodKey);
-  let rows, label;
-  if (series === 'zoom') {
-    // Done-on-Zoom: bucket by the actual Zoom meeting date, not the booked date.
-    rows  = sdrpTrendBase().filter(r => r.zoom_status === 'Meeting Done' && inPeriod(r.zoom_done_on));
-    label = '🔵 Meetings Done (Zoom)';
-  } else {
-    rows  = sdrpTrendBase().filter(r => inPeriod(r.generated_on));
-    if (series === 'done') rows = rows.filter(SDRP_IS_DONE);
-    label = series === 'done' ? '✅ Meetings Done (SFDC)' : '🤝 Meetings Generated';
-  }
   const title = gran === 'month' ? _monthMeta(periodKey).tip : _weekMeta(periodKey).tip;
-  _sdrpLeadModal(`${label} — ${title}`, rows);
+  if (series === 'generated' || series === 'done') {
+    // Purple + green: call-activity meetings. Show the cold/conference split, each
+    // row clickable through to the lead in Salesforce. Green = the Done subset.
+    let rows = (CALL_MTG_ROWS || []).filter(r => inPeriod(r.date));
+    if (series === 'done') rows = rows.filter(r => r.done);
+    const label = series === 'done' ? '✅ Meetings Done (SFDC)' : '🤝 Meetings Generated';
+    _sdrpCallMeetingModal(`${label} — ${title}`, rows);
+    return;
+  }
+  // Done-on-Zoom: bucket by the actual Zoom meeting date, not the booked date.
+  const rows = sdrpTrendBase().filter(r => r.zoom_status === 'Meeting Done' && inPeriod(r.zoom_done_on));
+  _sdrpLeadModal(`🔵 Meetings Done (Zoom) — ${title}`, rows);
+}
+
+// Call-meeting drill-down: cold/conference split header + a row per booked-meeting
+// call, click-through to the lead/contact in Salesforce.
+function _sdrpCallMeetingModal(title, rows) {
+  rows = rows.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  const cold = rows.filter(r => r.mtype === 'cold').length;
+  const conf = rows.filter(r => r.mtype === 'conference').length;
+  document.getElementById('sdrpModalTitle').textContent = title;
+  document.getElementById('sdrpModalSub').innerHTML =
+    `<b>${rows.length}</b> meetings · <span style="color:#A78BFA">${cold} cold</span> · ` +
+    `<span style="color:#38BDF8">${conf} conference</span> · click a row to open in Salesforce`;
+  document.getElementById('sdrpModalBody').innerHTML = rows.length === 0
+    ? '<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:12px">No meetings.</div>'
+    : `<table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:7px 10px;color:var(--text-muted);font-size:10.5px;font-weight:700">LEAD</th>
+          <th style="text-align:left;padding:7px 10px;color:var(--text-muted);font-size:10.5px;font-weight:700">SDR</th>
+          <th style="text-align:left;padding:7px 10px;color:var(--text-muted);font-size:10.5px;font-weight:700">TYPE</th>
+          <th style="text-align:left;padding:7px 10px;color:var(--text-muted);font-size:10.5px;font-weight:700">DIALER</th>
+          <th style="text-align:left;padding:7px 10px;color:var(--text-muted);font-size:10.5px;font-weight:700">DISPOSITION</th>
+          <th style="text-align:left;padding:7px 10px;color:var(--text-muted);font-size:10.5px;font-weight:700">CALL DATE (IST)</th>
+        </tr></thead>
+        <tbody>${rows.map(r => {
+          const typeBadge = r.mtype === 'conference'
+            ? '<span class="badge" style="background:rgba(56,189,248,0.15);color:#38BDF8">Conference</span>'
+            : '<span class="badge" style="background:rgba(167,139,250,0.15);color:#A78BFA">Cold</span>';
+          return `
+          <tr onclick="${r.sf_url ? `window.open('${r.sf_url}','_blank')` : ''}" title="${r.sf_url ? 'Open in Salesforce' : ''}"
+              style="${r.sf_url ? 'cursor:pointer;' : ''}border-bottom:1px solid var(--border)"
+              onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background=''">
+            <td style="padding:7px 10px;font-weight:600">${r.sf_url ? `<span style="color:var(--gold-light)">${escHtml(r.name)} <span style="font-size:10px;opacity:.6">↗</span></span>` : escHtml(r.name)}</td>
+            <td style="padding:7px 10px;color:var(--text-muted)">${escHtml(r.sdr)}</td>
+            <td style="padding:7px 10px">${typeBadge}</td>
+            <td style="padding:7px 10px;color:var(--text-muted)">${escHtml(r.dialer)}</td>
+            <td style="padding:7px 10px;color:var(--text-muted);font-size:11px">${escHtml(r.disposition)}</td>
+            <td style="padding:7px 10px;color:var(--text-muted);white-space:nowrap">${r.date || '—'}</td>
+          </tr>`; }).join('')}</tbody>
+      </table>`;
+  document.getElementById('sdrpOverlay').style.display = 'flex';
 }
 
 // Shared lead-list modal (used by the table cells and the trend chart points).

@@ -3264,6 +3264,97 @@ def api_meeting_leads():
     return jsonify({'leads': leads, 'total': len(leads)})
 
 
+# ── Meeting Generated from CALL activities (Tasks) ───────────────────────────
+# The "Meeting Generated" trend line is computed from outbound call Tasks, NOT
+# from Lead.Meeting_Generated_on__c. A meeting is "generated" when a cold call's
+# CallDisposition records a booked meeting. Two kinds:
+#   • COLD MEETING       = the dispositions in _CALL_COLD_DISPS
+#   • CONFERENCE MEETING = 'Meeting Generated- Conference'
+# Bucketed by the call's CreatedDate, converted to IST (the team works in IST,
+# matching CALENDAR_MONTH in the org's Asia/Kolkata timezone). The dialer is not
+# a field — it is encoded as a prefix in Subject ([Orum] / [Nooks Call] / Outplay).
+_CALL_COLD_DISPS = ['Meeting Generated- Cold', 'Answered - Booked Meeting',
+                    'Answered - Meeting Set', 'Meeting']
+_CALL_CONF_DISP  = 'Meeting Generated- Conference'
+
+def _call_dialer(subject):
+    """Infer the dialer from the Task Subject prefix (there is no dialer field)."""
+    s = subject or ''
+    if '[Orum]' in s:        return 'Orum'
+    if '[Nooks Call]' in s:  return 'Nooks'
+    if 'Outplay' in s:       return 'Outplay'
+    return 'Other'
+
+@app.route('/api/call-meetings')
+def api_call_meetings():
+    """Meetings generated from outbound call activities. Returns one row per
+    qualifying call Task (cold or conference). Default lower bound 2026-01-01;
+    pass ?from=YYYY-MM-DD to override. Powers the trend chart's purple line."""
+    frm = (request.args.get('from') or '').strip()
+    valid_from = len(frm) == 10 and frm[4] == '-' and frm[7] == '-' and frm.replace('-', '').isdigit()
+    lo = frm if valid_from else '2026-01-01'
+    disp_in = ", ".join("'" + d.replace("'", "\\'") + "'" for d in (_CALL_COLD_DISPS + [_CALL_CONF_DISP]))
+    q = (
+        "SELECT Id, CreatedDate, CallDisposition, Subject, Owner.Name, "
+        "WhoId, Who.Type, Who.Name "
+        "FROM Task "
+        "WHERE TaskSubtype = 'Call' AND CallType = 'Outbound' "
+        f"AND CreatedDate >= {lo}T00:00:00Z "
+        f"AND CallDisposition IN ({disp_in}) "
+        "ORDER BY CreatedDate DESC LIMIT 20000"
+    )
+    # paginate so the result is never silently capped at the 2000-row page size.
+    result = soql(q, paginate=True)
+    records = result.get('records', []) if result else []
+    meetings = []
+    lead_ids = set()
+    for r in records:
+        disp   = r.get('CallDisposition') or ''
+        who    = r.get('Who') or {}
+        whoid  = r.get('WhoId') or ''
+        wtype  = (who.get('Type') or '') if isinstance(who, dict) else ''
+        owner  = (r.get('Owner') or {})
+        sdr    = norm_sdr((owner.get('Name') if isinstance(owner, dict) else '') or '—')
+        if wtype == 'Lead' and whoid:
+            lead_ids.add(whoid)
+        meetings.append({
+            'id':          r.get('Id') or '',
+            'date':        _ist_date(r.get('CreatedDate')),     # IST calendar date (bucket key)
+            'disposition': disp,
+            'mtype':       'conference' if disp == _CALL_CONF_DISP else 'cold',
+            'dialer':      _call_dialer(r.get('Subject')),
+            'sdr':         sdr,
+            'name':        (who.get('Name') if isinstance(who, dict) else '') or '—',
+            'who_type':    wtype,
+            'who_id':      whoid,
+            'sf_url':      (f"{SF_BASE_URL}/lightning/r/{wtype}/{whoid}/view"
+                            if whoid and wtype in ('Lead', 'Contact') else ''),
+        })
+
+    # Green line: of these booked-meeting calls, which ended up "Done"? The done
+    # state lives on the linked Lead, so look up each call's lead Meeting_Status__c
+    # + Status and apply the same rule the table uses (Meeting_Status starts with
+    # 'Meeting Done' OR Status = 'S1 Converted'). Done is flagged on the CALL row so
+    # the green line buckets by the call date — point-for-point under the purple line.
+    lead_status = {}
+    ids = list(lead_ids)
+    for i in range(0, len(ids), 400):
+        in_clause = ", ".join("'" + x + "'" for x in ids[i:i + 400])
+        lr = soql(f"SELECT Id, Meeting_Status__c, Status FROM Lead WHERE Id IN ({in_clause})", paginate=True)
+        for rec in (lr.get('records', []) if lr else []):
+            lead_status[rec.get('Id')] = (
+                (rec.get('Meeting_Status__c') or '').startswith('Meeting Done')
+                or (rec.get('Status') or '') == 'S1 Converted'
+            )
+    for m in meetings:
+        wt  = m.pop('who_type', '')
+        wid = m.pop('who_id', '')
+        # A Contact link means the lead already converted (reached S1) → meeting happened.
+        m['done'] = True if wt == 'Contact' else bool(lead_status.get(wid, False))
+
+    return jsonify({'meetings': meetings, 'total': len(meetings)})
+
+
 # ── Zoom Server-to-Server integration ────────────────────────────────────────
 import base64 as _b64
 import re as _re_zoom
