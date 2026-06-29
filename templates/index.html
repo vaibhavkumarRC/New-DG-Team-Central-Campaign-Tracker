@@ -1527,7 +1527,13 @@ tfoot td {
         <div class="section-hdr">
           <div class="section-title">Manage Campaigns</div>
           <div style="font-size:11px;color:var(--text-dim)" id="manageCampCount"></div>
-          <select class="form-select" id="managePodFilter" style="height:28px;padding:0 8px;font-size:12px;min-width:160px;margin-left:auto" onchange="renderManage()">
+          <select class="form-select" id="manageStatusFilter" style="height:28px;padding:0 8px;font-size:12px;min-width:130px;margin-left:auto" onchange="renderManage()">
+            <option value="">All Statuses</option>
+            <option value="Active">🟢 Active</option>
+            <option value="Completed">🔵 Completed</option>
+            <option value="Paused">🟡 Paused</option>
+          </select>
+          <select class="form-select" id="managePodFilter" style="height:28px;padding:0 8px;font-size:12px;min-width:160px" onchange="renderManage()">
             <option value="">All PODs</option>
           </select>
           <select class="form-select" id="manageSegmentFilter" style="height:28px;padding:0 8px;font-size:12px;min-width:150px" onchange="renderManage()">
@@ -3629,6 +3635,7 @@ function renderManage() {
   const sdrF   = (sdrSel?.value||'').toLowerCase();
   const podF   = podSel?.value || '';
   const segF   = segSel?.value || '';
+  const statF  = q('manageStatusFilter')?.value || '';
 
   // Populate POD dropdown (keep current selection)
   if(podSel) {
@@ -3655,6 +3662,7 @@ function renderManage() {
   }
 
   const cps = allCps.filter(c => {
+    if(statF && (c.status||'Active') !== statF) return false;
     if(podF && (c.pod_team||'') !== podF) return false;
     if(segF && (c.segment||'').trim() !== segF) return false;
     if(sdrF && (c.sdr_owner||'').toLowerCase() !== sdrF) return false;
