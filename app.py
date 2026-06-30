@@ -3587,6 +3587,58 @@ def _parse_summary(j):
         return (j.get('overall_summary') or j.get('summary') or j.get('_text') or '').strip()
     return str(j).strip()
 
+# Names that indicate an AI notetaker bot, NOT a human participant. These join the
+# Zoom call and would otherwise be counted as a second "person" on a no-show.
+_ZOOM_BOT_PAT = _re_zoom.compile(
+    r'notetaker|otter\.ai|\botter\b|fireflies|fathom|read\.?ai|avoma|sybill|'
+    r'zoom ai companion|ai companion|fellow\.app|tl;?dv|tldv|nyota|spinach', _re_zoom.I)
+
+def _zoom_is_bot(name, email=''):
+    return bool(_ZOOM_BOT_PAT.search(f"{name or ''} {email or ''}"))
+
+def _zoom_human_participants(meeting_id):
+    """Distinct HUMAN participants (notetaker bots excluded), deduped by email/name,
+    with minutes-in-meeting. Returns (participants, available):
+      • participants = [{'name':str, 'minutes':float|None}]
+      • available    = True if Zoom returned participant data (so an empty list means
+        'nobody real joined', not 'we couldn't read it'); False if both calls failed.
+    Tries the report endpoint first (has per-person duration), then falls back to
+    /past_meetings/{id}/participants (duration computed from join/leave times)."""
+    raw, available = [], False
+    rep = _zoom_get(f"https://api.zoom.us/v2/report/meetings/{meeting_id}/participants?page_size=300")
+    if rep and 'participants' in rep:
+        available = True
+        for p in rep.get('participants') or []:
+            raw.append((p.get('name') or p.get('user_name') or '',
+                        p.get('user_email') or p.get('email') or '',
+                        p.get('duration')))
+    else:
+        pm = _zoom_get(f"https://api.zoom.us/v2/past_meetings/{meeting_id}/participants?page_size=300")
+        if pm and 'participants' in pm:
+            available = True
+            for p in pm.get('participants') or []:
+                secs, jt, lt = None, p.get('join_time'), p.get('leave_time')
+                if jt and lt:
+                    try:
+                        a = datetime.strptime(str(jt)[:19], '%Y-%m-%dT%H:%M:%S')
+                        b = datetime.strptime(str(lt)[:19], '%Y-%m-%dT%H:%M:%S')
+                        secs = max(0.0, (b - a).total_seconds())
+                    except Exception:
+                        secs = None
+                raw.append((p.get('name') or p.get('user_name') or '',
+                            p.get('user_email') or '', secs))
+    agg = {}
+    for name, email, secs in raw:
+        if (not name and not email) or _zoom_is_bot(name, email):
+            continue
+        key = (email or name).strip().lower()
+        cur = agg.setdefault(key, {'name': name or email, 'secs': 0.0, 'has_dur': False})
+        if secs is not None:
+            cur['secs'] += float(secs); cur['has_dur'] = True
+    humans = [{'name': v['name'], 'minutes': (v['secs'] / 60.0) if v['has_dur'] else None}
+              for v in agg.values()]
+    return humans, available
+
 def _parse_next_steps(j):
     if not j:
         return ''
@@ -3606,10 +3658,21 @@ def _parse_next_steps(j):
         return (j.get('_text') or '').strip()
     return str(j).strip()
 
+_OUTCOME_CACHE_VER = 2     # bump to force re-evaluation of cached 'done' results
+_DONE_MIN_HUMANS   = 2     # a real meeting = host + at least one other human
+_DONE_MIN_MINUTES  = 2     # each human must be present at least this long
+
 def _zoom_meeting_outcome(meeting_id, start_time, cache):
-    """Classify a single correct meeting → done / upcoming / didnt_happen,
-    fetching AI summary + next steps + participants for completed meetings.
-    'done' results are cached permanently; others are recomputed each call."""
+    """Classify a correct meeting → done / upcoming / didnt_happen.
+
+    Done   = >= _DONE_MIN_HUMANS distinct human participants (notetaker bots
+             excluded), each present >= _DONE_MIN_MINUTES → a real two-sided meeting.
+    Didn't happen = no real meeting took place — EITHER no Zoom session ever started,
+             OR a session started but < 2 humans joined (host-only / prospect no-show).
+    Upcoming = scheduled in the future.
+
+    'done' is cached permanently (versioned, so a logic change re-evaluates old
+    entries); other outcomes are recomputed each call."""
     now = datetime.utcnow()
     st  = None
     if start_time:
@@ -3618,16 +3681,9 @@ def _zoom_meeting_outcome(meeting_id, start_time, cache):
         except Exception:
             st = None
 
-    # Completed meetings never change — serve from cache.
+    # Completed meetings never change — serve from cache, but ONLY new-logic entries.
     c = cache.get(meeting_id)
-    if c and c.get('outcome') == 'done':
-        # Self-heal: backfill participants if they were cached empty (e.g. before
-        # the list-participants scope was granted).
-        if not c.get('participants'):
-            parts = _zoom_participants(meeting_id)
-            if parts:
-                c['participants'] = parts
-                cache[meeting_id] = c
+    if c and c.get('outcome') == 'done' and c.get('v') == _OUTCOME_CACHE_VER:
         return c
 
     # Basic meeting info (topic/host/scheduled) from the in-memory validation cache.
@@ -3647,30 +3703,44 @@ def _zoom_meeting_outcome(meeting_id, start_time, cache):
     if st and st > now:
         return {'outcome': 'upcoming', 'topic': topic, 'host': host, 'scheduled': sched}
 
-    # Past → did it actually occur?
+    # Past → decide by real human participation.
+    humans, avail = _zoom_human_participants(meeting_id)
+    qualifying = [h for h in humans if h['minutes'] is None or h['minutes'] >= _DONE_MIN_MINUTES]
     pm = _zoom_past_meeting(meeting_id)
-    occurred = bool(pm and (pm.get('duration') or 0) >= 1)
-    if occurred:
+    session_existed = bool(humans) or bool(pm and (pm.get('duration') or 0) >= 1)
+
+    if not avail:
+        # Couldn't read participants (transient/scope gap) — fall back to the old
+        # duration heuristic so a real meeting isn't wrongly flagged a no-show.
+        is_done = bool(pm and (pm.get('duration') or 0) >= _DONE_MIN_MINUTES)
+    else:
+        is_done = len(qualifying) >= _DONE_MIN_HUMANS
+
+    if is_done:
         assets  = _zoom_recording_assets(meeting_id)
         summary = _parse_summary(_zoom_download(assets.get('summary_url')))
         nexts   = _parse_next_steps(_zoom_download(assets.get('next_steps_url')))
-        parts   = _zoom_participants(meeting_id)
         result = {
             'outcome':      'done',
-            'topic':        pm.get('topic') or topic,
+            'v':            _OUTCOME_CACHE_VER,
+            'topic':        (pm or {}).get('topic') or topic,
             'host':         host,
             'scheduled':    sched,
-            'duration':     pm.get('duration'),
+            'duration':     (pm or {}).get('duration'),
             'transcript':   assets.get('transcript', False),
             'summary':      summary,
             'next_steps':   nexts,
-            'participants': parts,
+            'participants': [h['name'] for h in humans],
+            'human_count':  len(qualifying),
             'fetched_at':   now.isoformat(),
         }
         cache[meeting_id] = result
         return result
 
-    return {'outcome': 'didnt_happen', 'topic': topic, 'host': host, 'scheduled': sched}
+    # Not a real meeting — host-only / prospect no-show OR never started — all one bucket.
+    return {'outcome': 'didnt_happen', 'topic': topic, 'host': host, 'scheduled': sched,
+            'session_started': session_existed,   # kept for context (true = host opened it)
+            'participants': [h['name'] for h in humans], 'human_count': len(qualifying)}
 
 
 @app.route('/api/meeting-outcomes', methods=['POST'])

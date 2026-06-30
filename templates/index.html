@@ -979,17 +979,17 @@ tfoot td {
         <div class="chart-card" style="padding:24px 28px;display:flex;flex-direction:column;gap:14px">
           <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Meeting Outcomes <span style="font-weight:500;text-transform:none;color:var(--text-dim)">(of correct-link meetings)</span></div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-            <div onclick="openMgfOutcomeModal('done')" style="cursor:pointer;background:rgba(52,211,153,0.10);border:1px solid rgba(52,211,153,0.3);border-radius:10px;padding:14px 12px;text-align:center" title="Meetings that actually happened">
+            <div onclick="openMgfOutcomeModal('done')" style="cursor:pointer;background:rgba(52,211,153,0.10);border:1px solid rgba(52,211,153,0.3);border-radius:10px;padding:14px 12px;text-align:center" title="DONE: 2 or more real people actually joined and met (host + at least one other, each present ≥2 min). Notetaker bots like Otter are not counted. Verified via Zoom participants.">
               <div style="font-size:24px">✅</div>
               <div id="mgfDoneVal" style="font-size:24px;font-weight:800;color:#34D399">—</div>
               <div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-top:2px">Meetings Done ↗</div>
             </div>
-            <div onclick="openMgfOutcomeModal('upcoming')" style="cursor:pointer;background:rgba(59,130,246,0.10);border:1px solid rgba(59,130,246,0.3);border-radius:10px;padding:14px 12px;text-align:center" title="Meetings scheduled in the future">
+            <div onclick="openMgfOutcomeModal('upcoming')" style="cursor:pointer;background:rgba(59,130,246,0.10);border:1px solid rgba(59,130,246,0.3);border-radius:10px;padding:14px 12px;text-align:center" title="UPCOMING: scheduled for a future date/time — it hasn't happened yet.">
               <div style="font-size:24px">📅</div>
               <div id="mgfUpcomingVal" style="font-size:24px;font-weight:800;color:#3B82F6">—</div>
               <div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-top:2px">Upcoming ↗</div>
             </div>
-            <div onclick="openMgfOutcomeModal('didnt_happen')" style="cursor:pointer;background:rgba(239,68,68,0.10);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:14px 12px;text-align:center" title="Scheduled time passed but the meeting never took place">
+            <div onclick="openMgfOutcomeModal('didnt_happen')" style="cursor:pointer;background:rgba(239,68,68,0.10);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:14px 12px;text-align:center" title="DID NOT HAPPEN: the meeting never really took place — either nobody opened the Zoom, or the host joined but the prospect never did (fewer than 2 real people). Notetaker bots don't count as a person.">
               <div style="font-size:24px">🚫</div>
               <div id="mgfDidntVal" style="font-size:24px;font-weight:800;color:#EF4444">—</div>
               <div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-top:2px">Did Not Happen ↗</div>
@@ -4779,18 +4779,20 @@ function openMgfOutcomeModal(kind) {
       topic:     m.mtg_topic || m.zoom_topic || '—',
       host:      m.mtg_host  || m.zoom_host  || (m.seller !== '—' ? m.seller : (m.meeting_by !== '—' ? m.meeting_by : '—')),
       scheduled: fmtSched(m.scheduled || m.zoom_start || m.meeting_scheduled),
+      people:    (m.participants && m.participants.length) ? m.participants.join(', ') : '—',
       lead:      `${m.first_name} ${m.last_name}`.trim() || '—',
       sf_url:    m.sf_url,
     }));
   const titles = {
-    done:         '✅ Meetings Done',
+    done:         '✅ Meetings Done (2+ real people met)',
     upcoming:     '📅 Upcoming Meetings',
-    didnt_happen: '🚫 Meetings That Did Not Happen',
+    didnt_happen: '🚫 Did Not Happen (no real meeting — nobody opened it, or prospect no-showed)',
   };
   const cols = [
     { label: 'Meeting Title / Subject', key: 'topic', type: 'bold' },
     { label: 'Host',                    key: 'host' },
     { label: 'Scheduled',               key: 'scheduled' },
+    { label: 'Joined (humans)',         key: 'people' },
     { label: 'Lead',                    key: 'lead', type: 'link' },
   ];
   openMgfModal(titles[kind], rows, cols, n => `${n} meeting${n !== 1 ? 's' : ''}`);
