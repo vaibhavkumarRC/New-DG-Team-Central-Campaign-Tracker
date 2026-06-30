@@ -5203,7 +5203,10 @@ function sdrpTableBounds() {
 
 function sdrpDateBounds() {
   const today = new Date();
-  const toYMD = d => d.toISOString().slice(0, 10);
+  // Use LOCAL date parts, not toISOString() (which is UTC). For an IST viewer,
+  // UTC would shift local midnight back a day — e.g. the Q3 QTD start (Jul 1 IST)
+  // would read as Jun 30, leaking a Q2 day into Q3. Local parts keep it clean.
+  const toYMD = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   if (SDRP.period === '7d')  { const s = new Date(today); s.setDate(s.getDate() - 7);  return [toYMD(s), toYMD(today)]; }
   if (SDRP.period === '30d') { const s = new Date(today); s.setDate(s.getDate() - 30); return [toYMD(s), toYMD(today)]; }
   if (SDRP.period === 'qtd') { const q = Math.floor(today.getMonth() / 3); const s = new Date(today.getFullYear(), q * 3, 1); return [toYMD(s), toYMD(today)]; }
