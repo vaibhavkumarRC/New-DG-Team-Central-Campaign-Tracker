@@ -3706,6 +3706,78 @@ def api_meeting_outcomes():
     return jsonify({'configured': True, 'outcomes': results})
 
 
+# ── Zoom access diagnostic (verify the S2S app's account-wide scopes) ────────
+
+def _zoom_account_recordings(frm, to):
+    """List ALL account cloud recordings between frm and to (YYYY-MM-DD). Zoom caps
+    the range to ~1 month, so chunk by month and paginate each. Needs the account
+    recording-list admin scope; returns [] if the scope is missing."""
+    out = []
+    try:
+        start = datetime.strptime(frm, '%Y-%m-%d').date()
+        end   = datetime.strptime(to,  '%Y-%m-%d').date()
+    except Exception:
+        return out
+    cur = start
+    while cur <= end:
+        nxt     = (cur.replace(day=28) + timedelta(days=4)).replace(day=1)  # 1st of next month
+        win_end = min(end, nxt - timedelta(days=1))
+        npt = ''
+        for _ in range(50):  # page cap safety
+            url = (f"https://api.zoom.us/v2/accounts/me/recordings"
+                   f"?from={cur.isoformat()}&to={win_end.isoformat()}&page_size=300")
+            if npt:
+                url += f"&next_page_token={npt}"
+            d = _zoom_get(url)
+            if not d:
+                break
+            out.extend(d.get('meetings', []))
+            npt = d.get('next_page_token') or ''
+            if not npt:
+                break
+        cur = nxt
+    return out
+
+@app.route('/api/zoom-access-check')
+@require_admin
+def api_zoom_access_check():
+    """Read-only: confirm the S2S app can see the whole account. Lists account
+    recordings (distinct hosts), tests participant access, and counts demo/intro
+    titles. Header: X-Admin-Token."""
+    if not _zoom_configured():
+        return jsonify({'configured': False, 'note': 'ZOOM_* env vars not set'})
+    frm = (request.args.get('from') or '2026-04-01').strip()
+    to  = (request.args.get('to')   or '2026-06-30').strip()
+    recs = _zoom_account_recordings(frm, to)
+    hosts = {}
+    by_id = {}
+    for m in recs:
+        he = m.get('host_email') or m.get('host_id') or '?'
+        hosts[he] = hosts.get(he, 0) + 1
+        by_id[m.get('id')] = m.get('topic') or ''           # dedupe to unique meetings by id
+    demo  = sum(1 for t in by_id.values() if _re_zoom.search(r'demo', t, _re_zoom.I))
+    intro = sum(1 for t in by_id.values() if _re_zoom.search(r'intro', t, _re_zoom.I))
+    # Participant access test on one sample meeting.
+    ptest = {}
+    if recs:
+        s = recs[0]
+        names = _zoom_participants(s.get('id'))
+        ptest = {'meeting_id': s.get('id'), 'topic': s.get('topic'),
+                 'participant_count': len(names), 'names': names[:10]}
+    return jsonify({
+        'configured':              True,
+        'range':                   [frm, to],
+        'total_recording_entries': len(recs),
+        'unique_meetings_by_id':   len(by_id),
+        'distinct_host_count':     len(hosts),
+        'hosts':                   sorted(hosts.items(), key=lambda x: -x[1]),
+        'titled_demo':             demo,
+        'titled_intro':            intro,
+        'participant_test':        ptest,
+        'sample_topics':           [m.get('topic') for m in recs[:15]],
+    })
+
+
 # ── Meeting Generation Funnel — Stage 1: Booked on Nooks ─────────────────────
 
 @app.route('/api/meeting-funnel')
