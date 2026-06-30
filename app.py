@@ -3407,6 +3407,25 @@ def _zoom_extract_meeting_id(url):
     m = _re_zoom.search(r'(\d{9,12})', url.replace(' ', ''))
     return m.group(1) if m else ''
 
+def _zoom_link_structure(url):
+    """Inspect the link STRUCTURE and return ('valid'|'invalid', meeting_id).
+    A structurally valid Zoom meeting link is a zoom.us URL with the meeting ID in
+    a real join path — /j/<id>, /w/<id>, or /wc/join/<id> — or a personal meeting
+    room link (zoom.us/my/<vanity>). Crucially this does NOT fall back to 'any
+    9–12 digit run anywhere in the string', so a stray number in a non-Zoom URL is
+    never mistaken for a meeting ID."""
+    if not url or not str(url).strip():
+        return 'invalid', ''
+    low = str(url).strip().lower()
+    if 'zoom.us' not in low:
+        return 'invalid', ''                     # not a Zoom URL at all
+    m = _re_zoom.search(r'zoom\.us/(?:j|w|wc/join)/(\d{9,12})', low)
+    if m:
+        return 'valid', m.group(1)               # proper /j/<id> style link
+    if _re_zoom.search(r'zoom\.us/my/[a-z0-9._-]+', low):
+        return 'valid', ''                       # personal meeting room (no numeric id)
+    return 'invalid', ''                          # zoom.us text but no real meeting path
+
 def _zoom_get_meeting(meeting_id):
     """Fetch meeting details by numeric ID.
     Returns (kind, data):
@@ -3459,14 +3478,14 @@ def _zoom_classify_link(url):
     # SDRs mark conference bookings by typing "Conference Meeting" in this field.
     if 'conference' in low and 'zoom.us' not in low:
         return 'conference', None
-    mid = _zoom_extract_meeting_id(url)
-    # A real Zoom meeting link needs both a zoom.us host and a parseable meeting ID.
-    if 'zoom.us' not in low or not mid:
+    # Validate the link STRUCTURE: zoom.us host + a meeting ID in a real join path.
+    structure, mid = _zoom_link_structure(url)
+    if structure != 'valid':
         return 'wrong', None
     # Structurally valid → correct. Enrich with live metadata when we can, but a
     # fetch failure (past / no-show / cross-account) never demotes it to 'wrong'.
     data = None
-    if _zoom_configured():
+    if _zoom_configured() and mid:
         with _zoom_meeting_lock:
             cached = _zoom_meeting_cache.get(mid)
         if cached is not None:
