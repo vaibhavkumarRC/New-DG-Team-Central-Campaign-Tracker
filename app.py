@@ -3464,7 +3464,16 @@ def _zoom_classify_link(url):
     if kind == 'ok':
         status = 'correct'
     elif kind == 'notfound':
-        status = 'wrong'
+        # GET /meetings/{id} only returns SCHEDULED (upcoming) meetings. A one-time
+        # meeting that already happened 404s here even though its link is perfectly
+        # valid — which mislabeled every past meeting as "wrong". Before calling it
+        # wrong, confirm via /past_meetings/{id}: if the meeting actually occurred,
+        # the link was correct.
+        pm = _zoom_past_meeting(mid)
+        if pm and (pm.get('uuid') or pm.get('id')):
+            status, data = 'correct', pm
+        else:
+            status = 'wrong'
     else:
         # Transient error — classify as wrong for THIS response but DON'T cache,
         # so the next load retries instead of permanently mislabeling a real meeting.
