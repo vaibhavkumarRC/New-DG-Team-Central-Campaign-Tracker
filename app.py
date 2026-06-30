@@ -922,10 +922,40 @@ def period_dates(period, custom_start=None, custom_end=None):
 
 # ── Per-campaign metrics ──────────────────────────────────────────────────────
 
+# ── Completed-campaign freeze helpers ────────────────────────────────────────
+# A Completed campaign is "fully settled" 14 days after its last scheduled meeting
+# (or its end date if it generated no meetings). Past that date its numbers can no
+# longer change — meetings have happened, statuses/S1 have landed — so the sync
+# reuses the cached result and runs ZERO queries for it.
+_SETTLE_BUFFER_DAYS = 14
+
+def _ist_today():
+    return (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%Y-%m-%d')
+
+def _plus_days(ymd, n):
+    try:
+        return (datetime.strptime(str(ymd)[:10], '%Y-%m-%d') + timedelta(days=n)).strftime('%Y-%m-%d')
+    except Exception:
+        return ''
+
+def _prev_campaign_result(cid):
+    """Last sync's cached result for this campaign (None if not cached yet).
+    cache['campaigns'] still holds the previous sync's data until this sync ends."""
+    return next((r for r in (cache.get('campaigns') or []) if r.get('id') == cid), None)
+
 def campaign_metrics(c, start_override=None, end_override=None):
     n     = esc(c['name'])
     start = start_override if start_override is not None else (c.get('start_date') or '').strip()
     end   = end_override   if end_override   is not None else (c.get('end_date')   or '').strip()
+
+    # ── Freeze fully-settled completed campaigns: reuse cached stats, run NO queries.
+    # Only on the normal sync path (no date overrides) — on-demand custom-range calls
+    # always compute fresh.
+    if start_override is None and end_override is None and (c.get('status') or 'Active') == 'Completed':
+        prev = _prev_campaign_result(c['id'])
+        sd   = (prev or {}).get('settled_date')
+        if prev and sd and _ist_today() > sd:
+            return prev
 
     # Build optional date filters
     dt_task = ''
@@ -983,7 +1013,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
     if current_lead_ids:
         # Only query meeting details for leads currently in this campaign
         mtg_res = soql(
-            f"SELECT Id, Meeting_Generated_on__c, Meeting_Generated_by__c, "
+            f"SELECT Id, Meeting_Generated_on__c, Meeting_Scheduled_On__c, Meeting_Generated_by__c, "
             f"Name, Title, Company FROM Lead "
             f"WHERE Campaign__c = '{n}' AND Meeting_Generated_on__c != null LIMIT 2000"
         )
@@ -1177,8 +1207,20 @@ def campaign_metrics(c, start_override=None, end_override=None):
     calls_per_called_lead   = round(total_calls  / unique_leads_called,  1) if unique_leads_called  > 0 else 0
     emails_per_emailed_lead = round(total_emails / unique_leads_emailed, 1) if unique_leads_emailed > 0 else 0
 
+    # Settled date = 14 days after the last scheduled meeting (or the end date if the
+    # campaign generated no meetings). Once a Completed campaign passes this date, the
+    # next sync freezes it (zero queries). Never let it move EARLIER than a previously
+    # stored value, so a reassigned-away lead can't shorten the window.
+    _sched   = [(r.get('Meeting_Scheduled_On__c') or '')[:10]
+                for r in sf_meeting_records if r.get('Meeting_Scheduled_On__c')]
+    _anchor  = max(_sched + ([end] if end else []), default='')
+    _new_sd  = _plus_days(_anchor, _SETTLE_BUFFER_DAYS) if _anchor else ''
+    _prev_sd = (_prev_campaign_result(c['id']) or {}).get('settled_date') or ''
+    settled_date = max(_new_sd, _prev_sd)
+
     return {
         **c,
+        'settled_date':             settled_date,
         'total_leads':              total_leads,
         'total_calls':              total_calls,
         'total_connects':           total_connects,
