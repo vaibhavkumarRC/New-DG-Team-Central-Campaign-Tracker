@@ -3746,7 +3746,7 @@ def api_meeting_funnel():
         ids_str = ','.join(f"'{lid}'" for lid in batch)
         lq = (f"SELECT Id, FirstName, LastName, Title, Company, "
               f"Meeting_Generated_by__c, Meeting_Generated_on__c, Meeting_Source__c, "
-              f"Zoom_Meeting_Link_URL__c, Seller_Name__c "
+              f"Meeting_Scheduled_On__c, Zoom_Meeting_Link_URL__c, Seller_Name__c "
               f"FROM Lead WHERE Id IN ({ids_str})")
         res = soql(lq, paginate=False)
         for lr in (res or {}).get('records', []):
@@ -3772,7 +3772,7 @@ def api_meeting_funnel():
         who   = r.get('WhoId') or ''
 
         first = last = title = company = mtg_by = zoom = seller = ''
-        mtg_on = mtg_src = ''
+        mtg_on = mtg_src = mtg_sched = ''
         sf_url = ''
         if who in lead_map:
             ld      = lead_map[who]
@@ -3783,6 +3783,7 @@ def api_meeting_funnel():
             mtg_by  = ld.get('Meeting_Generated_by__c')  or ''
             mtg_on  = (ld.get('Meeting_Generated_on__c') or '')[:10]
             mtg_src = ld.get('Meeting_Source__c')        or ''
+            mtg_sched = ld.get('Meeting_Scheduled_On__c') or ''   # scheduled meeting datetime (UTC)
             zoom    = ld.get('Zoom_Meeting_Link_URL__c') or ''
             seller  = ld.get('Seller_Name__c')           or ''
             sf_url  = f"{SF_BASE_URL}/lightning/r/Lead/{who}/view"
@@ -3812,6 +3813,7 @@ def api_meeting_funnel():
             'meeting_by':    norm_sdr(mtg_by) if mtg_by else '—',
             'meeting_on':    mtg_on,
             'meeting_source':mtg_src or '—',
+            'meeting_scheduled': mtg_sched,   # SFDC scheduled datetime — source of truth for upcoming/past
             'zoom_url':      zoom,
             'seller':        seller  or '—',
             'is_updated':    is_updated,

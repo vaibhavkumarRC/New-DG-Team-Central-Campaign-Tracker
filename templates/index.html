@@ -4580,7 +4580,10 @@ function loadMgfOutcomes() {
   if (!MGF.data || MGF.outcomesLoading) return;
   const items = MGF.data
     .filter(m => m.zoom_status === 'correct' && m.zoom_meeting_id)
-    .map(m => ({ lead_id: m.lead_id, meeting_id: m.zoom_meeting_id, start_time: m.zoom_start }));
+    // start_time drives upcoming-vs-past. Prefer Zoom's actual start, but fall back
+    // to the SFDC scheduled datetime so a future meeting Zoom can't return still
+    // classifies as Upcoming (not defaulting to "Did Not Happen").
+    .map(m => ({ lead_id: m.lead_id, meeting_id: m.zoom_meeting_id, start_time: m.zoom_start || m.meeting_scheduled }));
   if (!items.length) { MGF.outcomes = {}; applyMgfFilters(); return; }
   MGF.outcomesLoading = true;
   const loadEl = document.getElementById('mgfOutcomeLoading');
@@ -4601,9 +4604,9 @@ function loadMgfOutcomes() {
           m.mtg_summary  = o.summary || '';
           m.next_steps   = o.next_steps || '';
           m.participants = o.participants || [];
-          m.mtg_host     = o.host || m.zoom_host || '';
+          m.mtg_host     = o.host || m.zoom_host || (m.seller !== '—' ? m.seller : (m.meeting_by !== '—' ? m.meeting_by : ''));
           m.mtg_topic    = o.topic || m.zoom_topic || '';
-          m.scheduled    = o.scheduled || m.zoom_start || '';
+          m.scheduled    = o.scheduled || m.zoom_start || m.meeting_scheduled || '';
           m.occurred_dur = o.duration || null;
         }
       });
@@ -4774,8 +4777,8 @@ function openMgfOutcomeModal(kind) {
     .filter(m => m.zoom_status === 'correct' && m.outcome === kind)
     .map(m => ({
       topic:     m.mtg_topic || m.zoom_topic || '—',
-      host:      m.mtg_host  || m.zoom_host  || '—',
-      scheduled: fmtSched(m.scheduled || m.zoom_start),
+      host:      m.mtg_host  || m.zoom_host  || (m.seller !== '—' ? m.seller : (m.meeting_by !== '—' ? m.meeting_by : '—')),
+      scheduled: fmtSched(m.scheduled || m.zoom_start || m.meeting_scheduled),
       lead:      `${m.first_name} ${m.last_name}`.trim() || '—',
       sf_url:    m.sf_url,
     }));
