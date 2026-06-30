@@ -3438,13 +3438,21 @@ def _zoom_get_meeting(meeting_id):
     return ('error', None)
 
 def _zoom_classify_link(url):
-    """Classify a Zoom link → ('empty'|'conference'|'correct'|'wrong'|'pending', data).
+    """Classify a Zoom link → ('empty'|'conference'|'correct'|'wrong', data).
       • empty      — field blank
-      • conference — field is the literal 'Conference Meeting' (no Zoom link expected)
-      • wrong      — filled but no parseable meeting ID, or ID doesn't resolve
-      • correct    — meeting ID resolves to a real meeting in the account
-      • pending    — Zoom not configured yet (creds missing); can't validate
-    Results cached per meeting_id."""
+      • conference — the literal 'Conference Meeting' (no Zoom link expected)
+      • correct    — a well-formed Zoom meeting join URL (zoom.us host + a real
+                     meeting ID). This is the structurally-valid case.
+      • wrong      — filled but NOT a valid Zoom meeting URL: no zoom.us host, or no
+                     parseable meeting ID (a typo, placeholder, or non-Zoom link).
+
+    Classification is STRUCTURAL — it does NOT depend on live Zoom API state.
+    Earlier this asked the Zoom API "does this meeting exist right now?", but a
+    perfectly valid link can't be fetched when the meeting is in the past, was a
+    no-show (never started → no /past_meetings record), or was hosted in another
+    Zoom account. Those false-404s mislabeled real links as 'wrong'. We still
+    best-effort fetch live metadata (topic/host/start) for display, but it never
+    changes the bucket. Metadata cached per meeting_id."""
     if not url or not str(url).strip():
         return 'empty', None
     low = str(url).strip().lower()
@@ -3452,35 +3460,30 @@ def _zoom_classify_link(url):
     if 'conference' in low and 'zoom.us' not in low:
         return 'conference', None
     mid = _zoom_extract_meeting_id(url)
-    if not mid:
+    # A real Zoom meeting link needs both a zoom.us host and a parseable meeting ID.
+    if 'zoom.us' not in low or not mid:
         return 'wrong', None
-    if not _zoom_configured():
-        return 'pending', None
-    with _zoom_meeting_lock:
-        if mid in _zoom_meeting_cache:
-            c = _zoom_meeting_cache[mid]
-            return c['status'], c['data']
-    kind, data = _zoom_get_meeting(mid)
-    if kind == 'ok':
-        status = 'correct'
-    elif kind == 'notfound':
-        # GET /meetings/{id} only returns SCHEDULED (upcoming) meetings. A one-time
-        # meeting that already happened 404s here even though its link is perfectly
-        # valid — which mislabeled every past meeting as "wrong". Before calling it
-        # wrong, confirm via /past_meetings/{id}: if the meeting actually occurred,
-        # the link was correct.
-        pm = _zoom_past_meeting(mid)
-        if pm and (pm.get('uuid') or pm.get('id')):
-            status, data = 'correct', pm
+    # Structurally valid → correct. Enrich with live metadata when we can, but a
+    # fetch failure (past / no-show / cross-account) never demotes it to 'wrong'.
+    data = None
+    if _zoom_configured():
+        with _zoom_meeting_lock:
+            cached = _zoom_meeting_cache.get(mid)
+        if cached is not None:
+            data = cached.get('data')
         else:
-            status = 'wrong'
-    else:
-        # Transient error — classify as wrong for THIS response but DON'T cache,
-        # so the next load retries instead of permanently mislabeling a real meeting.
-        return 'wrong', None
-    with _zoom_meeting_lock:
-        _zoom_meeting_cache[mid] = {'status': status, 'data': data}
-    return status, data
+            kind, d = _zoom_get_meeting(mid)
+            if kind == 'ok':
+                data = d
+            elif kind == 'notfound':
+                pm = _zoom_past_meeting(mid)
+                if pm and (pm.get('uuid') or pm.get('id')):
+                    data = pm
+            # Cache only definitive lookups (ok / notfound), not transient errors.
+            if kind in ('ok', 'notfound'):
+                with _zoom_meeting_lock:
+                    _zoom_meeting_cache[mid] = {'status': 'correct', 'data': data}
+    return 'correct', data
 
 # ── Zoom outcome helpers (Done / Upcoming / Did-not-happen + AI summary) ──────
 import urllib.error as _uerr2
