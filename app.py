@@ -1496,7 +1496,7 @@ def bg_loop():
         for h, m in SYNC_TIMES:
             t = now_utc.replace(hour=h, minute=m, second=0, microsecond=0)
             if t <= now_utc:
-                t = t.replace(day=t.day + 1)
+                t = t + timedelta(days=1)   # proper rollover (handles month/year ends)
             candidates.append(t)
         next_sync = min(candidates)
         seconds_until = (next_sync - now_utc).total_seconds()
