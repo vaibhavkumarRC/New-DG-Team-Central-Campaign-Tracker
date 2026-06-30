@@ -5330,11 +5330,12 @@ function renderSdrTrendChart() {
   const sub   = document.getElementById('sdrTrendSub');
   const gran  = SDRP.trendGran || 'week';
 
-  // Date window: a selected quarter scopes the chart to that quarter; otherwise
-  // fall back to the table's period buttons. Applied per-line by each line's own
-  // date (gen/done by Meeting_Generated_on, zoom by the actual Zoom meeting date).
+  // Date window: the chart obeys ONLY its own controls — the Week/Month toggle and
+  // its own quarter dropdown. It is independent of the SDR Performance Table's
+  // period buttons / quarter filter. A selected quarter scopes the chart to that
+  // quarter; "All quarters" shows the full timeline (no date filtering).
   const qsel = SDRP.trendQuarter || 'all';
-  const [ws_, we_] = qsel !== 'all' ? quarterBounds(qsel) : sdrpDateBounds();
+  const [ws_, we_] = qsel !== 'all' ? quarterBounds(qsel) : ['', ''];
   const inWin = d => d && (!ws_ || d >= ws_) && (!we_ || d <= we_);
 
   const keyOf = ymd => gran === 'month' ? ymd.slice(0, 7) : _weekStart(ymd);
