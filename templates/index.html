@@ -816,7 +816,7 @@ tfoot td {
         </div>
       </div>
       <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">Generated &amp; Done·SFDC = <b>booked-meeting cold calls</b> (cold + conference) bucketed by <b>call date</b> (IST); Done·SFDC = the subset whose lead is Done; Done·Zoom by <b>actual Zoom meeting date</b> (IST) · filters below apply to the Zoom line only · 💡 click any point to see that week's meetings</div>
-      <div style="position:relative;height:300px;max-width:840px;margin:0 auto"><canvas id="sdrTrendChart"></canvas></div>
+      <div id="sdrTrendScroll" style="overflow-x:auto;text-align:center"><div id="sdrTrendInner" style="position:relative;height:300px;display:inline-block;width:840px"><canvas id="sdrTrendChart"></canvas></div></div>
       <div id="sdrTrendEmpty" style="display:none;text-align:center;padding:24px;color:var(--text-dim);font-size:13px">No meetings in the selected range.</div>
     </div>
     <!-- SDR PERFORMANCE TABLE (live SFDC meeting data — same source as SDR Reporting 2026) -->
@@ -5387,6 +5387,12 @@ function renderSdrTrendChart() {
     const last = new Date(present[present.length - 1] + 'T00:00:00Z');
     while (cur <= last) { keys.push(cur.toISOString().slice(0, 10)); cur.setUTCDate(cur.getUTCDate() + 7); }
   }
+
+  // Grow the chart width with the number of weeks/months so each point stays
+  // readable; the container scrolls horizontally once it outgrows the visible area.
+  const pxPer = gran === 'month' ? 90 : 46;
+  const inner = document.getElementById('sdrTrendInner');
+  if (inner) inner.style.width = Math.max(760, keys.length * pxPer) + 'px';
 
   const meta     = keys.map(k => gran === 'month' ? _monthMeta(k) : _weekMeta(k));
   const genData  = keys.map(k => gen[k]  || 0);
