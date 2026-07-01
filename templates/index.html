@@ -4995,13 +4995,13 @@ function setTrendQuarter(v) { SDRP.trendQuarter = v; renderSdrTrendChart(); }
 function populateTrendQuarters() {
   const sel = document.getElementById('trendQuarter');
   if (!sel || !TREND_ROWS) return;
-  const qs = new Set();
-  TREND_ROWS.forEach(r => {
-    [r.generated_on, (r.zoom_status === 'Meeting Done' ? r.zoom_done_on : '')].forEach(d => {
-      if (d) qs.add(`${d.slice(0, 4)}-Q${Math.floor((Number(d.slice(5, 7)) - 1) / 3) + 1}`);
-    });
-  });
-  const opts = [...qs].sort();
+  // List ALL four quarters for every year present in the data — plus the current
+  // year — so Q3/Q4 2026 are selectable even before much data lands (the chart
+  // itself keeps extending week-by-week through the year as calls come in).
+  const years = new Set(TREND_ROWS.map(r => (r.generated_on || '').slice(0, 4)).filter(Boolean));
+  years.add(String(new Date().getFullYear()));
+  const opts = [];
+  [...years].sort().forEach(y => { for (let q = 1; q <= 4; q++) opts.push(`${y}-Q${q}`); });
   const cur = SDRP.trendQuarter || 'all';
   sel.innerHTML = `<option value="all">All quarters</option>` +
     opts.map(q => { const [y, qn] = q.split('-Q'); return `<option value="${q}">Q${qn} ${y}</option>`; }).join('');
