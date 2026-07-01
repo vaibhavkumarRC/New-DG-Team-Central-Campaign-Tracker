@@ -1209,6 +1209,7 @@ tfoot td {
             <button id="sql-all"    class="chip active" onclick="setRptPeriod('sql','all')">All</button>
             <button id="sql-7d"     class="chip"        onclick="setRptPeriod('sql','7d')">Last 7 Days</button>
             <button id="sql-30d"    class="chip"        onclick="setRptPeriod('sql','30d')">Last 30 Days</button>
+            <button id="sql-qtd"    class="chip"        onclick="setRptPeriod('sql','qtd')">QTD</button>
             <button id="sql-custom" class="chip"        onclick="setRptPeriod('sql','custom')">📅 Custom</button>
           </div>
           <div id="sqlCustomPicker" style="display:none;align-items:center;gap:6px">
@@ -5921,7 +5922,7 @@ function rptDateLabel(period, section) {
 function setRptPeriod(section, period) {
   RPT[section].period = period;
   // Update chip active states — mql/sql use 'all' instead of 'qtd'
-  const chips = ['mql','sql'].includes(section) ? ['all','7d','30d','custom'] : ['7d','30d','qtd','custom'];
+  const chips = ['mql','sql'].includes(section) ? ['all','7d','30d','qtd','custom'] : ['7d','30d','qtd','custom'];
   chips.forEach(p => {
     const el = document.getElementById(`${section}-${p}`);
     if(el) el.classList.toggle('active', p===period);
