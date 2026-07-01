@@ -1044,6 +1044,7 @@ tfoot td {
           <button id="mtg-all"    class="chip active" onclick="setMtgPeriod('all')">All</button>
           <button id="mtg-7d"     class="chip"        onclick="setMtgPeriod('7d')">Last 7 Days</button>
           <button id="mtg-30d"    class="chip"        onclick="setMtgPeriod('30d')">Last 30 Days</button>
+          <button id="mtg-qtd"    class="chip"        onclick="setMtgPeriod('qtd')">QTD</button>
           <button id="mtg-custom" class="chip"        onclick="setMtgPeriod('custom')">📅 Custom</button>
         </div>
         <div id="mtgCustomPicker" style="display:none;align-items:center;gap:6px">
@@ -4936,7 +4937,7 @@ const MTG = { data: null, filtered: null, sortKey: 'generated_on', sortDir: -1, 
 
 function setMtgPeriod(period) {
   MTG.period = period;
-  ['all','7d','30d','custom'].forEach(p => {
+  ['all','7d','30d','qtd','custom'].forEach(p => {
     const el = document.getElementById(`mtg-${p}`);
     if (el) el.classList.toggle('active', p === period);
   });
@@ -4953,6 +4954,10 @@ function setMtgPeriod(period) {
     } else if (period === '30d') {
       const s = new Date(today); s.setDate(s.getDate() - 30);
       lbl.textContent = `${fmt(s)} – ${fmt(today)}`;
+    } else if (period === 'qtd') {
+      const q = Math.floor(today.getMonth() / 3);
+      const s = new Date(today.getFullYear(), q * 3, 1);
+      lbl.textContent = `Q${q + 1} ${today.getFullYear()} · ${fmt(s)} – ${fmt(today)}`;
     } else if (period === 'all') {
       lbl.textContent = 'Since Apr 1, 2026';
     } else {
@@ -5746,6 +5751,13 @@ function applyMtgFilters() {
   } else if (MTG.period === '30d') {
     const s = new Date(today); s.setDate(s.getDate() - 30);
     dateStart = toYMD(s); dateEnd = toYMD(today);
+  } else if (MTG.period === 'qtd') {
+    // Quarter-to-date. Use LOCAL date parts so the start lands on the quarter
+    // boundary in IST (toISOString/UTC would shift it back a day).
+    const localYMD = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const q = Math.floor(today.getMonth() / 3);
+    dateStart = localYMD(new Date(today.getFullYear(), q * 3, 1));
+    dateEnd   = localYMD(today);
   } else if (MTG.period === 'custom') {
     dateStart = document.getElementById('mtgCustomStart')?.value || '';
     dateEnd   = document.getElementById('mtgCustomEnd')?.value   || '';
