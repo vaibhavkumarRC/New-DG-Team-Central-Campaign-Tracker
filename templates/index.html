@@ -5526,9 +5526,7 @@ function renderSdrPerfTable() {
   const arrow = k => SDRP.sortKey === k ? (SDRP.sortDir === -1 ? ' ↓' : ' ↑') : ' ↕';
   const numCell = (sdr, metric, val, color) =>
     val > 0
-      ? (isFrozen
-          ? `<td style="padding:9px 12px;text-align:center;color:${color};font-weight:800">${val}</td>`
-          : `<td style="padding:9px 12px;text-align:center"><a href="#" data-sdr="${escHtml(sdr)}" data-metric="${metric}" onclick="event.preventDefault();openSdrpModal(this.dataset.sdr,this.dataset.metric)" style="color:${color};font-weight:800;text-decoration:none;border-bottom:1px dotted ${color}55;cursor:pointer">${val}</a></td>`)
+      ? `<td style="padding:9px 12px;text-align:center"><a href="#" data-sdr="${escHtml(sdr)}" data-metric="${metric}" onclick="event.preventDefault();openSdrpModal(this.dataset.sdr,this.dataset.metric)" style="color:${color};font-weight:800;text-decoration:none;border-bottom:1px dotted ${color}55;cursor:pointer">${val}</a></td>`
       : `<td style="padding:9px 12px;text-align:center;color:var(--text-dim)">—</td>`;
 
   wrap.innerHTML = `
