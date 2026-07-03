@@ -13,6 +13,9 @@ BASE       = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR   = '/data' if os.path.isdir('/data') else BASE
 CAMPS_FILE    = os.path.join(DATA_DIR, 'campaigns.json')
 CACHE_FILE    = os.path.join(DATA_DIR, 'data_cache.json')
+# Frozen quarter snapshots live in the REPO (committed, version-controlled) so a
+# completed quarter's SDR numbers are locked and ship with every deploy.
+SNAPSHOTS_FILE = os.path.join(BASE, 'quarter_snapshots.json')
 SEGMENTS_FILE = os.path.join(DATA_DIR, 'segments.json')
 LEDGER_FILE   = os.path.join(DATA_DIR, 'meeting_ledger.json')
 
@@ -3254,6 +3257,17 @@ def api_sdr_s1():
     to  = (request.args.get('to')   or '').strip() or None
     stats = fetch_sdr_opp_stats(frm, to)
     return jsonify({'s1': {name: v['s1'] for name, v in stats.items()}})
+
+@app.route('/api/quarter-snapshots')
+def api_quarter_snapshots():
+    """Frozen (locked) SDR Performance numbers for completed quarters. The table
+    serves these for a frozen quarter so its meetings-generated / done / S1 stay a
+    fixed historical record instead of being live-recomputed each sync."""
+    try:
+        with open(SNAPSHOTS_FILE) as f:
+            return jsonify(json.load(f))
+    except Exception:
+        return jsonify({'frozen': [], 'snapshots': {}})
 
 @app.route('/api/meeting-leads')
 def api_meeting_leads():

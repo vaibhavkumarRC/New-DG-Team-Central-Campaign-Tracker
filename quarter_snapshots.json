@@ -1,0 +1,233 @@
+{
+  "frozen": [
+    "2026-Q1",
+    "2026-Q2"
+  ],
+  "snapshots": {
+    "2026-Q1": {
+      "Michelle B": {
+        "generated": 43,
+        "done": 14,
+        "s1": 1
+      },
+      "Shahana Abbasi": {
+        "generated": 56,
+        "done": 23,
+        "s1": 1
+      },
+      "Akil Krishna": {
+        "generated": 8,
+        "done": 4,
+        "s1": 0
+      },
+      "Aditya Dev Pandey": {
+        "generated": 3,
+        "done": 2,
+        "s1": 0
+      },
+      "Matt": {
+        "generated": 21,
+        "done": 20,
+        "s1": 0
+      },
+      "Ananya Rao": {
+        "generated": 39,
+        "done": 18,
+        "s1": 7
+      },
+      "Anurup Bhattacharjee": {
+        "generated": 20,
+        "done": 9,
+        "s1": 4
+      },
+      "Anushka HB": {
+        "generated": 9,
+        "done": 2,
+        "s1": 0
+      },
+      "Felix Sam": {
+        "generated": 7,
+        "done": 1,
+        "s1": 0
+      },
+      "Deborah Deborah": {
+        "generated": 7,
+        "done": 2,
+        "s1": 0
+      },
+      "Rithick S": {
+        "generated": 10,
+        "done": 5,
+        "s1": 4
+      },
+      "Lisa": {
+        "generated": 5,
+        "done": 5,
+        "s1": 0
+      },
+      "Isaac Bartels": {
+        "generated": 10,
+        "done": 2,
+        "s1": 4
+      },
+      "Samridhi Dutta": {
+        "generated": 10,
+        "done": 1,
+        "s1": 1
+      },
+      "Bianca": {
+        "generated": 34,
+        "done": 34,
+        "s1": 0
+      },
+      "Dushyant": {
+        "generated": 2,
+        "done": 2,
+        "s1": 0
+      },
+      "Hreeman Saha": {
+        "generated": 2,
+        "done": 2,
+        "s1": 2
+      },
+      "Abhishek": {
+        "generated": 12,
+        "done": 12,
+        "s1": 0
+      },
+      "Ibtesaam": {
+        "generated": 12,
+        "done": 1,
+        "s1": 1
+      },
+      "Ashish": {
+        "generated": 0,
+        "done": 0,
+        "s1": 1
+      }
+    },
+    "2026-Q2": {
+      "Ananya Rao": {
+        "generated": 45,
+        "done": 31,
+        "s1": 9
+      },
+      "Anurup Bhattacharjee": {
+        "generated": 48,
+        "done": 24,
+        "s1": 7
+      },
+      "Soham Saha": {
+        "generated": 31,
+        "done": 11,
+        "s1": 1
+      },
+      "Akhilesh Stan": {
+        "generated": 16,
+        "done": 6,
+        "s1": 2
+      },
+      "Aditya Dev Pandey": {
+        "generated": 12,
+        "done": 8,
+        "s1": 3
+      },
+      "Isaac Bartels": {
+        "generated": 8,
+        "done": 3,
+        "s1": 0
+      },
+      "Saka Thapa": {
+        "generated": 20,
+        "done": 9,
+        "s1": 1
+      },
+      "Sukhneet Sukhneet": {
+        "generated": 19,
+        "done": 5,
+        "s1": 1
+      },
+      "Rithick S": {
+        "generated": 10,
+        "done": 6,
+        "s1": 7
+      },
+      "Michelle B": {
+        "generated": 12,
+        "done": 3,
+        "s1": 1
+      },
+      "Samridhi Dutta": {
+        "generated": 8,
+        "done": 2,
+        "s1": 0
+      },
+      "Felix Sam": {
+        "generated": 10,
+        "done": 0,
+        "s1": 0
+      },
+      "Anushka HB": {
+        "generated": 10,
+        "done": 4,
+        "s1": 2
+      },
+      "Shahana Abbasi": {
+        "generated": 28,
+        "done": 12,
+        "s1": 1
+      },
+      "Jessica": {
+        "generated": 1,
+        "done": 1,
+        "s1": 0
+      },
+      "Akil Krishna": {
+        "generated": 15,
+        "done": 9,
+        "s1": 4
+      },
+      "Ibtesaam": {
+        "generated": 15,
+        "done": 7,
+        "s1": 8
+      },
+      "Dushyant": {
+        "generated": 1,
+        "done": 1,
+        "s1": 0
+      },
+      "Matt": {
+        "generated": 3,
+        "done": 3,
+        "s1": 0
+      },
+      "Bianca": {
+        "generated": 7,
+        "done": 6,
+        "s1": 0
+      },
+      "Abhishek": {
+        "generated": 13,
+        "done": 12,
+        "s1": 0
+      },
+      "Hursh": {
+        "generated": 1,
+        "done": 0,
+        "s1": 0
+      },
+      "Ashish Bhagra": {
+        "generated": 0,
+        "done": 0,
+        "s1": 3
+      },
+      "Sukhneeth": {
+        "generated": 0,
+        "done": 0,
+        "s1": 1
+      }
+    }
+  },
+  "note": "Locked snapshot of SDR Performance Table (meetings generated/done lead-based by Meeting_Generated_on; S1 opp-based by CreatedDate). Frozen 2026-07-02."
+}

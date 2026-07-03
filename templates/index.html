@@ -5037,6 +5037,15 @@ function loadTrendRows() {
     .finally(() => { TREND_FETCHING = false; });
 }
 
+// Frozen quarter snapshots — completed quarters whose SDR numbers are locked.
+let FROZEN_QUARTERS = { frozen: [], snapshots: {} };
+function loadQuarterSnapshots() {
+  fetch('/api/quarter-snapshots')
+    .then(r => r.json())
+    .then(d => { FROZEN_QUARTERS = d || { frozen: [], snapshots: {} }; renderSdrPerfTable(); })
+    .catch(() => {});
+}
+
 // Call-activity meetings (the trend chart's purple "Meeting Generated" line).
 // One row per qualifying outbound call Task (cold or conference), bucketed by
 // the call's IST date. Separate fetch from the lead-based green/blue lines.
@@ -5055,6 +5064,7 @@ function initSdrPerf() {
   buildSdrpFilterBar();
   loadTrendRows();
   loadCallMeetings();
+  loadQuarterSnapshots();
   if (MTG.data) { populateSdrpFilters(); populateSdrpTableQuarters(); renderSdrPerfTable(); return; }
   if (SDRP.fetching) return;
   SDRP.fetching = true;
@@ -5462,31 +5472,40 @@ function renderSdrPerfTable() {
   const wrap = document.getElementById('sdrpTableWrap');
   if (!wrap) return;
   renderSdrTrendChart();
-  const rows = sdrpFilteredRows();
 
-  // Aggregate per SDR (Meeting_Generated_by__c)
-  const agg = {};
-  rows.forEach(r => {
-    const n = r.generated_by || '—';
-    if (!agg[n]) agg[n] = { name: n, meetings: 0, done: 0, s1: 0 };
-    agg[n].meetings += 1;
-    if (SDRP_IS_DONE(r)) agg[n].done += 1;
-    if (SDRP_IS_S1(r))   agg[n].s1   += 1;
-  });
-  let list = Object.values(agg);
-
-  // S1 Created = opportunity-based count (SDR_Owner__c) from sdr_stats — matches
-  // the SDR cards, the S1 drill-down and the SFDC report. The lead-based tally
-  // (SDRP_IS_S1) under-reports because opps aren't always tied to a meeting lead.
-  // S1: quarter-specific opp count when a quarter is selected, else all-time (sdr_stats).
   const qSel = SDRP.tableQuarter;
-  const qS1  = (qSel && qSel !== 'all') ? (SDRP_Q_S1[qSel] || {}) : null;
-  const s1ByName = {};
-  ((S.data && S.data.sdr_stats) || []).forEach(x => { s1ByName[x.name] = x.s1_count || 0; });
-  list.forEach(s => {
-    if (qS1)                          s.s1 = qS1[s.name] || 0;
-    else if (s1ByName[s.name] != null) s.s1 = s1ByName[s.name];
-  });
+  // A frozen (completed) quarter is served from the locked snapshot — fixed
+  // numbers, not live-recomputed. Period/multi-select filters don't apply to it.
+  const snap = (FROZEN_QUARTERS.snapshots || {})[qSel];
+  const isFrozen = !!(snap && (FROZEN_QUARTERS.frozen || []).includes(qSel));
+
+  let list, totalMeetings;
+  if (isFrozen) {
+    list = Object.entries(snap).map(([name, v]) => ({ name, meetings: v.generated || 0, done: v.done || 0, s1: v.s1 || 0 }));
+    totalMeetings = list.reduce((a, s) => a + s.meetings, 0);
+  } else {
+    const rows = sdrpFilteredRows();
+    // Aggregate per SDR (Meeting_Generated_by__c)
+    const agg = {};
+    rows.forEach(r => {
+      const n = r.generated_by || '—';
+      if (!agg[n]) agg[n] = { name: n, meetings: 0, done: 0, s1: 0 };
+      agg[n].meetings += 1;
+      if (SDRP_IS_DONE(r)) agg[n].done += 1;
+      if (SDRP_IS_S1(r))   agg[n].s1   += 1;
+    });
+    list = Object.values(agg);
+    // S1 Created = opportunity-based count (SDR_Owner__c). Quarter-specific opp
+    // count when a quarter is selected, else all-time (sdr_stats).
+    const qS1  = (qSel && qSel !== 'all') ? (SDRP_Q_S1[qSel] || {}) : null;
+    const s1ByName = {};
+    ((S.data && S.data.sdr_stats) || []).forEach(x => { s1ByName[x.name] = x.s1_count || 0; });
+    list.forEach(s => {
+      if (qS1)                          s.s1 = qS1[s.name] || 0;
+      else if (s1ByName[s.name] != null) s.s1 = s1ByName[s.name];
+    });
+    totalMeetings = rows.length;
+  }
 
   list.sort((a, b) => {
     if (SDRP.sortKey === 'name') return String(a.name).localeCompare(String(b.name)) * SDRP.sortDir;
@@ -5494,7 +5513,7 @@ function renderSdrPerfTable() {
   });
 
   const cnt = document.getElementById('sdrpCount');
-  if (cnt) cnt.textContent = `· ${rows.length} meeting${rows.length !== 1 ? 's' : ''} · ${list.length} SDR${list.length !== 1 ? 's' : ''}`;
+  if (cnt) cnt.textContent = `· ${totalMeetings} meeting${totalMeetings !== 1 ? 's' : ''} · ${list.length} SDR${list.length !== 1 ? 's' : ''}` + (isFrozen ? ' · 🔒 Frozen' : '');
 
   if (!list.length) {
     wrap.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:12px">No meetings match the selected filters.</div>';
@@ -5507,7 +5526,9 @@ function renderSdrPerfTable() {
   const arrow = k => SDRP.sortKey === k ? (SDRP.sortDir === -1 ? ' ↓' : ' ↑') : ' ↕';
   const numCell = (sdr, metric, val, color) =>
     val > 0
-      ? `<td style="padding:9px 12px;text-align:center"><a href="#" data-sdr="${escHtml(sdr)}" data-metric="${metric}" onclick="event.preventDefault();openSdrpModal(this.dataset.sdr,this.dataset.metric)" style="color:${color};font-weight:800;text-decoration:none;border-bottom:1px dotted ${color}55;cursor:pointer">${val}</a></td>`
+      ? (isFrozen
+          ? `<td style="padding:9px 12px;text-align:center;color:${color};font-weight:800">${val}</td>`
+          : `<td style="padding:9px 12px;text-align:center"><a href="#" data-sdr="${escHtml(sdr)}" data-metric="${metric}" onclick="event.preventDefault();openSdrpModal(this.dataset.sdr,this.dataset.metric)" style="color:${color};font-weight:800;text-decoration:none;border-bottom:1px dotted ${color}55;cursor:pointer">${val}</a></td>`)
       : `<td style="padding:9px 12px;text-align:center;color:var(--text-dim)">—</td>`;
 
   wrap.innerHTML = `
