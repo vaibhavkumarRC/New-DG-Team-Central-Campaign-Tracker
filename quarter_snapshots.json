@@ -229,5 +229,1297 @@
       }
     }
   },
-  "note": "Locked snapshot of SDR Performance Table (meetings generated/done lead-based by Meeting_Generated_on; S1 opp-based by CreatedDate). Frozen 2026-07-02."
+  "note": "Locked snapshot of SDR Performance Table (meetings generated/done lead-based by Meeting_Generated_on; S1 opp-based by CreatedDate). Frozen 2026-07-02. | q2_cards frozen 2026-07-03 (SDR-wise Performance Card).",
+  "q2_cards": [
+    {
+      "name": "Soham Saha",
+      "campaigns": [
+        {
+          "meetings": 5,
+          "name": "Soham_POD_21may"
+        },
+        {
+          "meetings": 3,
+          "name": "Dinner_Texas_Soham"
+        },
+        {
+          "meetings": 2,
+          "name": "Campaign1_Activebuying_15june_Soham"
+        },
+        {
+          "meetings": 1,
+          "name": "Campaign1_Leadership_15june_Soham"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Soham_20May"
+        },
+        {
+          "meetings": 0,
+          "name": "Dinner_Austin_8thJune"
+        },
+        {
+          "meetings": 0,
+          "name": "Jobchange_Soham_12june"
+        },
+        {
+          "meetings": 0,
+          "name": "Trubridge_Soham_15june"
+        },
+        {
+          "meetings": 0,
+          "name": "Campaign1_Denials_15june_Soham"
+        },
+        {
+          "meetings": 0,
+          "name": "EcW_Soham_22june"
+        },
+        {
+          "meetings": 0,
+          "name": "JobChange_25June_Soham"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_2july_Soham"
+        }
+      ],
+      "calls": 4164,
+      "emails": 1470,
+      "leads": 3104,
+      "s1_count": 1,
+      "npv_generated": 300000.0,
+      "mGen": 31,
+      "mDone": 11,
+      "mNoShow": 2,
+      "mSql": 4
+    },
+    {
+      "name": "Akhilesh Stan",
+      "campaigns": [
+        {
+          "meetings": 3,
+          "name": "EcW_Akhilesh_22june"
+        },
+        {
+          "meetings": 2,
+          "name": "Akhilesh_POD_11May"
+        },
+        {
+          "meetings": 2,
+          "name": "Akhilesh_POD_20May"
+        },
+        {
+          "meetings": 2,
+          "name": "AthenaData_2june_Akhilesh"
+        },
+        {
+          "meetings": 2,
+          "name": "Jobchange_Akhilesh_12june"
+        },
+        {
+          "meetings": 1,
+          "name": "High Intent_Akhilesh_15 April"
+        },
+        {
+          "meetings": 1,
+          "name": "CAH_22 April_Akhilesh"
+        },
+        {
+          "meetings": 1,
+          "name": "EPICcampaign_Akhilesh_21May"
+        },
+        {
+          "meetings": 1,
+          "name": "HighIntent_Akhilesh_27may"
+        },
+        {
+          "meetings": 0,
+          "name": "Hiring Data_9 April_Akhilesh"
+        },
+        {
+          "meetings": 0,
+          "name": "Director Level Data_27 April_Akhilesh"
+        },
+        {
+          "meetings": 0,
+          "name": "HFMA Annual_Akhilesh"
+        },
+        {
+          "meetings": 0,
+          "name": "Hiring Signal_6May_Akhilesh"
+        },
+        {
+          "meetings": 0,
+          "name": "High Buying Intent_6May_Akhilesh"
+        },
+        {
+          "meetings": 0,
+          "name": "EPIC_Akhilesh_13May"
+        },
+        {
+          "meetings": 0,
+          "name": "Akhilesh_HiringData_13may"
+        },
+        {
+          "meetings": 0,
+          "name": "Akhilesh_HighIntent_13May"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Akhilesh_20May"
+        },
+        {
+          "meetings": 0,
+          "name": "Trubridge_Akhilesh_15june"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Akhilesh_17June"
+        },
+        {
+          "meetings": 0,
+          "name": "JobChange_25June_Akhilesh"
+        },
+        {
+          "meetings": 0,
+          "name": "Akhilesh_POD_25June"
+        }
+      ],
+      "calls": 7885,
+      "emails": 1092,
+      "leads": 7431,
+      "s1_count": 2,
+      "npv_generated": 310000.0,
+      "mGen": 16,
+      "mDone": 6,
+      "mNoShow": 4,
+      "mSql": 1
+    },
+    {
+      "name": "Saka Thapa",
+      "campaigns": [
+        {
+          "meetings": 5,
+          "name": "P1 Personas_Saka_29 April"
+        },
+        {
+          "meetings": 4,
+          "name": "Jobchange_Saka_12june"
+        },
+        {
+          "meetings": 2,
+          "name": "HighIntent_Saka_27may"
+        },
+        {
+          "meetings": 2,
+          "name": "HighIntent_Saka_10june"
+        },
+        {
+          "meetings": 2,
+          "name": "Trubridge_Saka_15june"
+        },
+        {
+          "meetings": 1,
+          "name": "Saka_POD_13May_HIM"
+        },
+        {
+          "meetings": 1,
+          "name": "HighIntent_Saka_20May"
+        },
+        {
+          "meetings": 1,
+          "name": "HighIntent_3june_Saka"
+        },
+        {
+          "meetings": 0,
+          "name": "Notable Health_Saka13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "Xsolis_Saka13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "Tennr_Saka13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "Thoughtful AI_Saka13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "Nym_Saka13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "High Intent_Saka_15 April"
+        },
+        {
+          "meetings": 0,
+          "name": "CAH_22 April_Saka"
+        },
+        {
+          "meetings": 0,
+          "name": "High Intent_23 April_Saka"
+        },
+        {
+          "meetings": 0,
+          "name": "High Intent Signal_Saka_29 April"
+        },
+        {
+          "meetings": 0,
+          "name": "New Data_Saka_6May"
+        },
+        {
+          "meetings": 0,
+          "name": "Saka_POD_11may"
+        },
+        {
+          "meetings": 0,
+          "name": "Saka-_HiringData_13May"
+        },
+        {
+          "meetings": 0,
+          "name": "FactorsData_Saka_15May"
+        },
+        {
+          "meetings": 0,
+          "name": "EPICcampaign_Saka_21May"
+        },
+        {
+          "meetings": 0,
+          "name": "EcW_Saka_22june"
+        }
+      ],
+      "calls": 8038,
+      "emails": 1189,
+      "leads": 6263,
+      "s1_count": 1,
+      "npv_generated": 200000.0,
+      "mGen": 21,
+      "mDone": 9,
+      "mNoShow": 7,
+      "mSql": 2
+    },
+    {
+      "name": "Ananya Rao",
+      "campaigns": [
+        {
+          "meetings": 3,
+          "name": "Ananya_POD_11May"
+        },
+        {
+          "meetings": 2,
+          "name": "2026 HFMA Leader Conf_Ananya_1st April"
+        },
+        {
+          "meetings": 2,
+          "name": "HFMA Annual_Ananya"
+        },
+        {
+          "meetings": 1,
+          "name": "CAH_22 April_Ananya"
+        },
+        {
+          "meetings": 1,
+          "name": "High Buying Intent_6May_Ananya"
+        },
+        {
+          "meetings": 1,
+          "name": "EPICcampaign_Ananya_21May"
+        },
+        {
+          "meetings": 1,
+          "name": "HighIntent_3june_Ananya"
+        },
+        {
+          "meetings": 1,
+          "name": "Jobchange_Ananya_12june"
+        },
+        {
+          "meetings": 1,
+          "name": "HighIntent_24june_Ananya"
+        },
+        {
+          "meetings": 0,
+          "name": "Athena Core Personas_Ananya"
+        },
+        {
+          "meetings": 0,
+          "name": "Comp Engagement_Ananya"
+        },
+        {
+          "meetings": 0,
+          "name": "Skilled Nursing Facility_Ananya_31 March"
+        },
+        {
+          "meetings": 0,
+          "name": "Athena Data for Ananya"
+        },
+        {
+          "meetings": 0,
+          "name": "P1 Data_7April_Ananya"
+        },
+        {
+          "meetings": 0,
+          "name": "High Buying Intent_9 April_Ananya"
+        },
+        {
+          "meetings": 0,
+          "name": "Hiring Signal_23 April_Ananya"
+        },
+        {
+          "meetings": 0,
+          "name": "Factors Engagement_24 April_Ananya"
+        },
+        {
+          "meetings": 0,
+          "name": "Ananya_POD_11May_Csuite"
+        },
+        {
+          "meetings": 0,
+          "name": "Ananya_HighIntent_13May"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Ananya_27may"
+        },
+        {
+          "meetings": 0,
+          "name": "AthenaData_2june_Ananya"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Ananya_10june"
+        },
+        {
+          "meetings": 0,
+          "name": "Trubridge_Ananya_15june"
+        },
+        {
+          "meetings": 0,
+          "name": "EcW_Ananya_22june"
+        },
+        {
+          "meetings": 0,
+          "name": "JobChange_25June_Ananya"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_2july_Ananya"
+        }
+      ],
+      "calls": 5608,
+      "emails": 2403,
+      "leads": 10114,
+      "s1_count": 9,
+      "npv_generated": 2195000.0,
+      "mGen": 45,
+      "mDone": 31,
+      "mNoShow": 11,
+      "mSql": 8
+    },
+    {
+      "name": "Sukhneet Sukhneet",
+      "campaigns": [
+        {
+          "meetings": 3,
+          "name": "Sukhneet_POD_Rest_13May"
+        },
+        {
+          "meetings": 1,
+          "name": "New Data 23 March_Sukhneet"
+        },
+        {
+          "meetings": 1,
+          "name": "CAH_22 April_Sukhneet"
+        },
+        {
+          "meetings": 1,
+          "name": "Sukhneet_POD_RCM_13May"
+        },
+        {
+          "meetings": 1,
+          "name": "Sukhneet_POD_FandA_13May"
+        },
+        {
+          "meetings": 1,
+          "name": "Sukhneet_POD_Csuite_13May"
+        },
+        {
+          "meetings": 1,
+          "name": "Dinner_Texas_Sukhneet_27may"
+        },
+        {
+          "meetings": 1,
+          "name": "HighIntent_3june_Sukhneet"
+        },
+        {
+          "meetings": 0,
+          "name": "High Buying Intent_Sukhneet_6April"
+        },
+        {
+          "meetings": 0,
+          "name": "High Buying Intent_9 April_Sukhneet"
+        },
+        {
+          "meetings": 0,
+          "name": "New Data_22 April_Sukhneet"
+        },
+        {
+          "meetings": 0,
+          "name": "Hiring Data_29 April_Sukhneet"
+        },
+        {
+          "meetings": 0,
+          "name": "HFMA Annual_Sukhneet"
+        },
+        {
+          "meetings": 0,
+          "name": "New Data_7May_Sukhneet"
+        },
+        {
+          "meetings": 0,
+          "name": "Sukhneet_POD_11May"
+        },
+        {
+          "meetings": 0,
+          "name": "Dinner_Kansas_Sukhneet"
+        },
+        {
+          "meetings": 0,
+          "name": "EPICcampaign_Sukhneet_21May"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Sukhneet_27may"
+        },
+        {
+          "meetings": 0,
+          "name": "AthenaData_2june_Sukhneet"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Sukhneet_10june"
+        },
+        {
+          "meetings": 0,
+          "name": "Campaign2_ActiveBuying_Sukhneet_15june"
+        },
+        {
+          "meetings": 0,
+          "name": "Campaign2_Leadership_Sukhneet_15june"
+        },
+        {
+          "meetings": 0,
+          "name": "Campaign2_Denials_Sukhneet_15june"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Sukhneet_17June"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_24june_Sukhneet"
+        }
+      ],
+      "calls": 9827,
+      "emails": 1106,
+      "leads": 16024,
+      "s1_count": 1,
+      "npv_generated": 90000.0,
+      "mGen": 20,
+      "mDone": 5,
+      "mNoShow": 8,
+      "mSql": 1
+    },
+    {
+      "name": "Shahana Abbasi",
+      "campaigns": [
+        {
+          "meetings": 2,
+          "name": "Jess_Single_site_CH_11may"
+        },
+        {
+          "meetings": 2,
+          "name": "FQHC_Shahana_POD_28May"
+        },
+        {
+          "meetings": 1,
+          "name": "Jess_Small_RH_11May"
+        },
+        {
+          "meetings": 1,
+          "name": "EPIC_Sahana_13May"
+        },
+        {
+          "meetings": 1,
+          "name": "EPICcampaign_Shahana_21May"
+        },
+        {
+          "meetings": 1,
+          "name": "HighIntent_Shahana_27may"
+        },
+        {
+          "meetings": 1,
+          "name": "Ambulatory_POD_Shahana"
+        },
+        {
+          "meetings": 1,
+          "name": "AthenaData_2june_Shahana"
+        },
+        {
+          "meetings": 0,
+          "name": "Athena Core Personas_Shahana"
+        },
+        {
+          "meetings": 0,
+          "name": "Comp Engagement_Shahana"
+        },
+        {
+          "meetings": 0,
+          "name": "2026 LUGPA Conf_Shahana"
+        },
+        {
+          "meetings": 0,
+          "name": "P1 Data_7April_Shahana"
+        },
+        {
+          "meetings": 0,
+          "name": "Akasa_Shahana13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "Clarium Health_Shahana13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "Brellium_Shahana13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "Arbital Health_Shahana13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "Candid Health_Shahana13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "CodaMetrix_Shahana13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "2026 ACDIS Conference_Shahana"
+        },
+        {
+          "meetings": 0,
+          "name": "Jess_Ncaccounts_11May"
+        },
+        {
+          "meetings": 0,
+          "name": "Shahana_HighIntent_13May"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Shahana_20May"
+        },
+        {
+          "meetings": 0,
+          "name": "Jobchange_Shahana_12june"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Shahana_17June"
+        },
+        {
+          "meetings": 0,
+          "name": "EcW_Shahana_22june"
+        },
+        {
+          "meetings": 0,
+          "name": "JobChange_25June_Shahana"
+        }
+      ],
+      "calls": 11438,
+      "emails": 3951,
+      "leads": 11047,
+      "s1_count": 1,
+      "npv_generated": 75000.0,
+      "mGen": 28,
+      "mDone": 12,
+      "mNoShow": 13,
+      "mSql": 2
+    },
+    {
+      "name": "Anurup Bhattacharjee",
+      "campaigns": [
+        {
+          "meetings": 3,
+          "name": "HighIntent_Anurup_17June"
+        },
+        {
+          "meetings": 2,
+          "name": "EPICcampaign_Anurup_21May"
+        },
+        {
+          "meetings": 1,
+          "name": "Fathom_Anurup13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "New Data 23 March_Anurup"
+        },
+        {
+          "meetings": 0,
+          "name": "P1 Data_7April_Anurup"
+        },
+        {
+          "meetings": 0,
+          "name": "Pain Point_9 April_Anurup"
+        },
+        {
+          "meetings": 0,
+          "name": "Navina_Anurup13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "NexHealth_Anurup13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "Hyro_Anurup13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "GeBBS_Anurup13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "Humata Health_Anurup13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "Collectly_Anurup13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "Fabric_Anurup13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "Fourier Health_Anurup13 April"
+        },
+        {
+          "meetings": 0,
+          "name": "CAH_22 April_Anurup"
+        },
+        {
+          "meetings": 0,
+          "name": "Anurup_HiringData_13May"
+        },
+        {
+          "meetings": 0,
+          "name": "FactorsData_Anurup_15May"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Anurup_20May"
+        },
+        {
+          "meetings": 0,
+          "name": "2026 HFMA Post Conference Anurup"
+        }
+      ],
+      "calls": 2872,
+      "emails": 481,
+      "leads": 6158,
+      "s1_count": 8,
+      "npv_generated": 4450000.0,
+      "mGen": 49,
+      "mDone": 24,
+      "mNoShow": 5,
+      "mSql": 7
+    },
+    {
+      "name": "Michelle B",
+      "campaigns": [
+        {
+          "meetings": 2,
+          "name": "P1 Data_7April_Michelle"
+        },
+        {
+          "meetings": 2,
+          "name": "Michelle_POD_9june"
+        },
+        {
+          "meetings": 1,
+          "name": "CAH_22 April_Michelle"
+        },
+        {
+          "meetings": 1,
+          "name": "EPIC_Michelle_13May"
+        },
+        {
+          "meetings": 1,
+          "name": "HighIntent_3june_Michelle"
+        },
+        {
+          "meetings": 1,
+          "name": "HighIntent_Michelle_10june"
+        },
+        {
+          "meetings": 0,
+          "name": "New Data 23 March_Michelle"
+        },
+        {
+          "meetings": 0,
+          "name": "New Data_29 April_Michelle"
+        },
+        {
+          "meetings": 0,
+          "name": "Ambulatory_POD_Michelle"
+        },
+        {
+          "meetings": 0,
+          "name": "FQHC_Michelle_POD_28May"
+        },
+        {
+          "meetings": 0,
+          "name": "Trubridge_Michelle_15june"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_24june_Michelle"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_2july_Michelle"
+        }
+      ],
+      "calls": 10105,
+      "emails": 3802,
+      "leads": 8897,
+      "s1_count": 1,
+      "npv_generated": 250000.0,
+      "mGen": 12,
+      "mDone": 3,
+      "mNoShow": 5,
+      "mSql": 0
+    },
+    {
+      "name": "Felix Sam",
+      "campaigns": [
+        {
+          "meetings": 5,
+          "name": "Felix_POD_27May"
+        },
+        {
+          "meetings": 1,
+          "name": "P1 Data_7April_Felix"
+        },
+        {
+          "meetings": 0,
+          "name": "New Data 23 March_Felix"
+        },
+        {
+          "meetings": 0,
+          "name": "CAH_22 April_Felix"
+        },
+        {
+          "meetings": 0,
+          "name": "New Data_29 April_Felix"
+        },
+        {
+          "meetings": 0,
+          "name": "Felix_POD_11May"
+        },
+        {
+          "meetings": 0,
+          "name": "Dinner_Texas_Felix"
+        },
+        {
+          "meetings": 0,
+          "name": "Felix_HighIntent_13May"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Felix_20May"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Felix_27may"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Felix_10june"
+        },
+        {
+          "meetings": 0,
+          "name": "staffing_labor_strain_Felix_18thJune"
+        }
+      ],
+      "calls": 7469,
+      "emails": 678,
+      "leads": 13457,
+      "s1_count": 0,
+      "npv_generated": 0.0,
+      "mGen": 11,
+      "mDone": 0,
+      "mNoShow": 1,
+      "mSql": 1
+    },
+    {
+      "name": "Samridhi Dutta",
+      "campaigns": [
+        {
+          "meetings": 2,
+          "name": "Samridhi_POD_11May"
+        },
+        {
+          "meetings": 2,
+          "name": "Samridhi_POD_2june"
+        },
+        {
+          "meetings": 1,
+          "name": "New Data_Samridhi_5 May"
+        },
+        {
+          "meetings": 1,
+          "name": "EPIC_Samridhi_13May"
+        },
+        {
+          "meetings": 0,
+          "name": "New Data 23 March_Samridhi"
+        },
+        {
+          "meetings": 0,
+          "name": "P1 Data_7April_Samridhi"
+        },
+        {
+          "meetings": 0,
+          "name": "CAH_22 April_Samridhi"
+        },
+        {
+          "meetings": 0,
+          "name": "Samridhi_HiringData_13May"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_24june_Samridhi"
+        },
+        {
+          "meetings": 0,
+          "name": "JobChange_25June_Samridhi"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_2july_Samridhi"
+        }
+      ],
+      "calls": 11111,
+      "emails": 2165,
+      "leads": 16784,
+      "s1_count": 0,
+      "npv_generated": 0.0,
+      "mGen": 8,
+      "mDone": 2,
+      "mNoShow": 3,
+      "mSql": 0
+    },
+    {
+      "name": "Rithick S",
+      "campaigns": [
+        {
+          "meetings": 2,
+          "name": "New Data_30 April_Rithick"
+        },
+        {
+          "meetings": 1,
+          "name": "AthenaData_2june_Rithick"
+        },
+        {
+          "meetings": 1,
+          "name": "denials_revenue_leakage_Rithick_18thJune"
+        },
+        {
+          "meetings": 0,
+          "name": "Athena Core Personas_Rithik"
+        },
+        {
+          "meetings": 0,
+          "name": "Comp Engagement_Rithik"
+        },
+        {
+          "meetings": 0,
+          "name": "Rehabilitation_Rithick_31 March"
+        },
+        {
+          "meetings": 0,
+          "name": "P1 Data_7April_Rithik"
+        },
+        {
+          "meetings": 0,
+          "name": "Rithick_POD_11May"
+        },
+        {
+          "meetings": 0,
+          "name": "EPIC_Rithick_13May"
+        },
+        {
+          "meetings": 0,
+          "name": "Rithick_HighIntent_13May"
+        },
+        {
+          "meetings": 0,
+          "name": "FactorsData_Rithik_15May"
+        },
+        {
+          "meetings": 0,
+          "name": "EPICcampaign_Rithick_21May"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_3june_Rithick"
+        },
+        {
+          "meetings": 0,
+          "name": "Rithick_POD_RCM_june4"
+        },
+        {
+          "meetings": 0,
+          "name": "Jobchange_Rithick_12june"
+        },
+        {
+          "meetings": 0,
+          "name": "Trubridge_Rithik_15june"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Rithik_17June"
+        },
+        {
+          "meetings": 0,
+          "name": "EcW_Rithik_22june"
+        }
+      ],
+      "calls": 13522,
+      "emails": 2852,
+      "leads": 13164,
+      "s1_count": 7,
+      "npv_generated": 1875000.0,
+      "mGen": 10,
+      "mDone": 6,
+      "mNoShow": 2,
+      "mSql": 1
+    },
+    {
+      "name": "Isaac Bartels",
+      "campaigns": [
+        {
+          "meetings": 1,
+          "name": "New Data 23 March_Issac"
+        },
+        {
+          "meetings": 1,
+          "name": "CAH_22 April_Issac"
+        },
+        {
+          "meetings": 1,
+          "name": "EPICcampaign_Isaac_21May"
+        },
+        {
+          "meetings": 1,
+          "name": "Isaac_POD_28May"
+        },
+        {
+          "meetings": 1,
+          "name": "JobChange_25June_Isaac"
+        },
+        {
+          "meetings": 0,
+          "name": "P1 Data_7April_Isaac"
+        },
+        {
+          "meetings": 0,
+          "name": "New Data_29 April_Isaac"
+        },
+        {
+          "meetings": 0,
+          "name": "Isaac_HighIntent_13May"
+        },
+        {
+          "meetings": 0,
+          "name": "Hiring_Isaac_20may"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Isaac_17June"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_2july_Isaac"
+        }
+      ],
+      "calls": 7751,
+      "emails": 617,
+      "leads": 7585,
+      "s1_count": 0,
+      "npv_generated": 0.0,
+      "mGen": 8,
+      "mDone": 3,
+      "mNoShow": 3,
+      "mSql": 2
+    },
+    {
+      "name": "Akil Krishna",
+      "campaigns": [
+        {
+          "meetings": 2,
+          "name": "P1 Data_7April_Akil"
+        },
+        {
+          "meetings": 1,
+          "name": "EPICcampaign_Akil_21May"
+        },
+        {
+          "meetings": 0,
+          "name": "Athena Core Personas_Akil"
+        },
+        {
+          "meetings": 0,
+          "name": "Comp Engagement_Akil"
+        },
+        {
+          "meetings": 0,
+          "name": "2026 LUGPA Conf_Akil"
+        },
+        {
+          "meetings": 0,
+          "name": "High Buying Intent_9 April_Akil"
+        },
+        {
+          "meetings": 0,
+          "name": "TruBridge Leads_Akil_20 April"
+        },
+        {
+          "meetings": 0,
+          "name": "CAH_22 April_Akil"
+        },
+        {
+          "meetings": 0,
+          "name": "High Intent Signal_Akil_29 April"
+        },
+        {
+          "meetings": 0,
+          "name": "Factors Engagement_4 May_Akil"
+        },
+        {
+          "meetings": 0,
+          "name": "HFMA Annual_Akil"
+        },
+        {
+          "meetings": 0,
+          "name": "2026 ACDIS_Post Conference_Akil"
+        },
+        {
+          "meetings": 0,
+          "name": "TruBridge_NewNumber_Akil_12May"
+        },
+        {
+          "meetings": 0,
+          "name": "TruBridge_Akil_18May"
+        },
+        {
+          "meetings": 0,
+          "name": "AthenaData_2june_Akil"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_3june_Akil"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_24june_Akil"
+        }
+      ],
+      "calls": 6499,
+      "emails": 1450,
+      "leads": 3973,
+      "s1_count": 4,
+      "npv_generated": 1250000.0,
+      "mGen": 15,
+      "mDone": 9,
+      "mNoShow": 6,
+      "mSql": 2
+    },
+    {
+      "name": "Anushka HB",
+      "campaigns": [
+        {
+          "meetings": 2,
+          "name": "Anushka_POD_11May"
+        },
+        {
+          "meetings": 1,
+          "name": "P1 Data_7April_Anushka"
+        },
+        {
+          "meetings": 0,
+          "name": "New Data 23 March_Anushka"
+        },
+        {
+          "meetings": 0,
+          "name": "New Data_Anushka_5 May"
+        },
+        {
+          "meetings": 0,
+          "name": "EPIC_Anushka_13May"
+        },
+        {
+          "meetings": 0,
+          "name": "Anushka_POD_29May"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_3june_Anushka"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_Anushka_10june"
+        },
+        {
+          "meetings": 0,
+          "name": "denials_revenue_leakage_Anushka_18thJune"
+        },
+        {
+          "meetings": 0,
+          "name": "Epic_FQHC:CAH:PG:Specialties_Anushka_22june"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_24june_Anushka"
+        },
+        {
+          "meetings": 0,
+          "name": "HighIntent_2july_Anushka"
+        }
+      ],
+      "calls": 6694,
+      "emails": 1196,
+      "leads": 8777,
+      "s1_count": 2,
+      "npv_generated": 190000.0,
+      "mGen": 10,
+      "mDone": 4,
+      "mNoShow": 6,
+      "mSql": 0
+    },
+    {
+      "name": "Ibtesaam",
+      "campaigns": [],
+      "calls": 0,
+      "emails": 0,
+      "leads": 0,
+      "s1_count": 8,
+      "npv_generated": 1540000.0,
+      "mGen": 15,
+      "mDone": 7,
+      "mNoShow": 0,
+      "mSql": 2
+    },
+    {
+      "name": "Aditya Dev Pandey",
+      "campaigns": [],
+      "calls": 0,
+      "emails": 0,
+      "leads": 0,
+      "s1_count": 3,
+      "npv_generated": 668000.0,
+      "mGen": 13,
+      "mDone": 8,
+      "mNoShow": 0,
+      "mSql": 1
+    },
+    {
+      "name": "Hreeman Saha",
+      "campaigns": [
+        {
+          "meetings": 0,
+          "name": "New Data 23 March_Hreeman"
+        }
+      ],
+      "calls": 1053,
+      "emails": 358,
+      "leads": 1844,
+      "s1_count": 0,
+      "npv_generated": 0.0,
+      "mGen": 0,
+      "mDone": 0,
+      "mNoShow": 0,
+      "mSql": 0
+    },
+    {
+      "name": "Deborah Deborah",
+      "campaigns": [
+        {
+          "meetings": 0,
+          "name": "New Data 23 March_Deborah"
+        }
+      ],
+      "calls": 2493,
+      "emails": 163,
+      "leads": 2146,
+      "s1_count": 0,
+      "npv_generated": 0.0,
+      "mGen": 0,
+      "mDone": 0,
+      "mNoShow": 0,
+      "mSql": 0
+    },
+    {
+      "name": "Hursh",
+      "campaigns": [
+        {
+          "meetings": 0,
+          "name": "Infusion Center Data_Hursh_23 March"
+        }
+      ],
+      "calls": 760,
+      "emails": 717,
+      "leads": 444,
+      "s1_count": 0,
+      "npv_generated": 0.0,
+      "mGen": 1,
+      "mDone": 0,
+      "mNoShow": 0,
+      "mSql": 0
+    },
+    {
+      "name": "Bianca",
+      "campaigns": [],
+      "calls": 0,
+      "emails": 0,
+      "leads": 0,
+      "s1_count": 0,
+      "npv_generated": 0.0,
+      "mGen": 7,
+      "mDone": 6,
+      "mNoShow": 0,
+      "mSql": 0
+    },
+    {
+      "name": "Matt",
+      "campaigns": [],
+      "calls": 0,
+      "emails": 0,
+      "leads": 0,
+      "s1_count": 0,
+      "npv_generated": 0.0,
+      "mGen": 3,
+      "mDone": 3,
+      "mNoShow": 0,
+      "mSql": 0
+    }
+  ]
 }

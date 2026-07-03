@@ -859,10 +859,12 @@ tfoot td {
       </div>
     </div>
     <!-- SDR CARDS -->
-    <div style="display:flex;align-items:baseline;gap:10px;margin:6px 0 14px">
+    <div style="display:flex;align-items:center;gap:10px;margin:6px 0 14px">
       <div style="font-size:15px;font-weight:800;color:var(--text)">📊 Q2 2026 — SDR-wise Performance Card</div>
+      <span style="font-size:11px;color:var(--text-dim)">🔒 Frozen</span>
+      <button id="sdrCardsToggle" onclick="toggleSdrCards()" style="margin-left:auto;background:var(--gold);color:#0a0a0a;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">Show all cards ▾</button>
     </div>
-    <div class="sdr-grid" id="sdrGrid"></div>
+    <div class="sdr-grid" id="sdrGrid" style="display:none"></div>
     <div id="sdrEmpty" class="empty" style="display:none">
       <div class="empty-icon">👥</div>
       No SDR data yet. Sync data from Salesforce first.
@@ -3445,17 +3447,29 @@ function renderLeaderboard(containerId, sdrs) {
     </div>`;
 }
 
+function toggleSdrCards() {
+  const g = document.getElementById('sdrGrid');
+  const b = document.getElementById('sdrCardsToggle');
+  if (!g) return;
+  const show = g.style.display === 'none';
+  g.style.display = show ? '' : 'none';
+  if (b) b.textContent = show ? 'Hide cards ▴' : 'Show all cards ▾';
+}
+
 function renderSDR() {
-  const src  = S.data;  // SDR tab always shows all data — period filter is Dashboard-only
-  const sdrs = (src.sdr_stats || []).filter(s => !HIDDEN_SDR_CARDS.has(s.name));
+  const src  = S.data || {};  // SDR tab always shows all data — period filter is Dashboard-only
+  // Q2 2026 cards are FROZEN — served from the locked snapshot so their numbers
+  // never drift. Falls back to live sdr_stats only if the snapshot isn't loaded.
+  const frozen = (FROZEN_QUARTERS && FROZEN_QUARTERS.q2_cards) || null;
+  const sdrs = ((frozen && frozen.length ? frozen : (src.sdr_stats || []))).filter(s => !HIDDEN_SDR_CARDS.has(s.name));
   initSdrPerf();  // performance table is live-SFDC-driven, independent of sdr_stats
   if(!sdrs.length){ q('sdrEmpty').style.display='block'; q('sdrGrid').innerHTML=''; return; }
   q('sdrEmpty').style.display='none';
 
-  // Meeting-derived numbers come from the live SFDC meeting-leads data so the
-  // cards always match the SDR Performance Table above (All view). Falls back
-  // to campaign-ledger stats only until the live data finishes loading.
-  const live = sdrpLiveStats() || {};
+  // Meeting-derived numbers: from the frozen snapshot for Q2, else live SFDC data.
+  const live = (frozen && frozen.length)
+    ? Object.fromEntries(sdrs.map(s => [s.name, { meetings: s.mGen || 0, done: s.mDone || 0, noshow: s.mNoShow || 0, sql: s.mSql || 0 }]))
+    : (sdrpLiveStats() || {});
   const liveRank = s => (live[s.name] ? live[s.name].meetings : (s.meetings || 0));
   const sortedSdrs = [...sdrs].sort((a, b) => liveRank(b) - liveRank(a));
 
@@ -5043,7 +5057,7 @@ let FROZEN_QUARTERS = { frozen: [], snapshots: {} };
 function loadQuarterSnapshots() {
   fetch('/api/quarter-snapshots')
     .then(r => r.json())
-    .then(d => { FROZEN_QUARTERS = d || { frozen: [], snapshots: {} }; renderSdrPerfTable(); })
+    .then(d => { FROZEN_QUARTERS = d || { frozen: [], snapshots: {} }; renderSdrPerfTable(); if (S.activeTab === 'sdr') renderSDR(); })
     .catch(() => {});
 }
 
