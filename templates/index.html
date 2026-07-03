@@ -5187,14 +5187,17 @@ function setSdrpPeriod(p) {
 
 // Quarter filter for the SDR Performance Table (separate from the trend chart's).
 // Opportunity-based S1 for the selected quarter, fetched on demand and cached.
-const SDRP_Q_S1 = {};   // quarter key -> { sdrName: s1Count }
-function loadQuarterS1(qkey, cb) {
-  if (qkey === 'all' || SDRP_Q_S1[qkey]) { if (cb) cb(); return; }
-  const [f, t] = quarterBounds(qkey);
-  fetch(`/api/sdr-s1?from=${f}&to=${t}`)
+// Opp-based S1 scoped to whatever date window the table is showing — a selected
+// quarter OR a period button (QTD / Last 7 / Last 30 / Custom). Cached per window.
+const SDRP_WIN_S1 = {};   // 'from|to' -> { sdrName: s1Count } (or 'loading')
+function loadWindowS1(from, to) {
+  const key = `${from}|${to}`;
+  if (SDRP_WIN_S1[key]) return;   // already loaded or in-flight
+  SDRP_WIN_S1[key] = 'loading';
+  fetch(`/api/sdr-s1?from=${from}&to=${to}`)
     .then(r => r.json())
-    .then(d => { SDRP_Q_S1[qkey] = d.s1 || {}; if (cb) cb(); })
-    .catch(() => { SDRP_Q_S1[qkey] = {}; if (cb) cb(); });
+    .then(d => { SDRP_WIN_S1[key] = d.s1 || {}; renderSdrPerfTable(); })
+    .catch(() => { delete SDRP_WIN_S1[key]; });
 }
 function setSdrpTableQuarter(v) {
   SDRP.tableQuarter = v;
@@ -5204,7 +5207,7 @@ function setSdrpTableQuarter(v) {
     const cs = document.getElementById('sdrpCustomStart'), ce = document.getElementById('sdrpCustomEnd');
     if (cs) cs.style.display = 'none'; if (ce) ce.style.display = 'none';
   }
-  loadQuarterS1(v, renderSdrPerfTable);   // fetch quarter S1 (if needed) then render
+  renderSdrPerfTable();   // render triggers the windowed S1 fetch as needed
 }
 function populateSdrpTableQuarters() {
   const sel = document.getElementById('sdrpQuarter');
@@ -5498,11 +5501,19 @@ function renderSdrPerfTable() {
     list = Object.values(agg);
     // S1 Created = opportunity-based count (SDR_Owner__c). Quarter-specific opp
     // count when a quarter is selected, else all-time (sdr_stats).
-    const qS1  = (qSel && qSel !== 'all') ? (SDRP_Q_S1[qSel] || {}) : null;
+    // S1 scoped to the table's date window (a selected quarter OR a period button
+    // like QTD). All-time (sdr_stats) only when there's no window (All + All).
+    const [s1f, s1t] = sdrpTableBounds();
+    let winS1 = null;
+    if (s1f && s1t) {
+      const key = `${s1f}|${s1t}`;
+      if (SDRP_WIN_S1[key] && SDRP_WIN_S1[key] !== 'loading') winS1 = SDRP_WIN_S1[key];
+      else loadWindowS1(s1f, s1t);
+    }
     const s1ByName = {};
     ((S.data && S.data.sdr_stats) || []).forEach(x => { s1ByName[x.name] = x.s1_count || 0; });
     list.forEach(s => {
-      if (qS1)                          s.s1 = qS1[s.name] || 0;
+      if (winS1)                        s.s1 = winS1[s.name] || 0;
       else if (s1ByName[s.name] != null) s.s1 = s1ByName[s.name];
     });
     totalMeetings = rows.length;
@@ -5581,8 +5592,7 @@ function openSdrpModal(sdr, metric) {
 // S1 cell in the SDR table opens the rich per-SDR detail modal, scoped to the
 // table's selected quarter (so the Opportunities tab matches the S1 count).
 function openSdrpS1Detail(sdr) {
-  const q = SDRP.tableQuarter;
-  const [f, t] = (q && q !== 'all') ? quarterBounds(q) : ['', ''];
+  const [f, t] = sdrpTableBounds();   // same window as the S1 column (quarter or period)
   openSdrDetailModal(sdr, f, t);
 }
 
