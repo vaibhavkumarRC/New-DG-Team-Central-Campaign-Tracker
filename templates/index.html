@@ -1043,10 +1043,10 @@ tfoot td {
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;align-items:center">
         <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Period</span>
         <div style="display:flex;gap:4px">
-          <button id="mtg-all"    class="chip active" onclick="setMtgPeriod('all')">All</button>
+          <button id="mtg-all"    class="chip"        onclick="setMtgPeriod('all')">All</button>
           <button id="mtg-7d"     class="chip"        onclick="setMtgPeriod('7d')">Last 7 Days</button>
           <button id="mtg-30d"    class="chip"        onclick="setMtgPeriod('30d')">Last 30 Days</button>
-          <button id="mtg-qtd"    class="chip"        onclick="setMtgPeriod('qtd')">QTD</button>
+          <button id="mtg-qtd"    class="chip active" onclick="setMtgPeriod('qtd')">QTD</button>
           <button id="mtg-custom" class="chip"        onclick="setMtgPeriod('custom')">📅 Custom</button>
         </div>
         <div id="mtgCustomPicker" style="display:none;align-items:center;gap:6px">
@@ -1129,8 +1129,8 @@ tfoot td {
           <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Period</span>
           <div style="display:flex;gap:4px">
             <button id="mql-7d"     class="chip"       onclick="setRptPeriod('mql','7d')">7D</button>
-            <button id="mql-30d"    class="chip active" onclick="setRptPeriod('mql','30d')">30D</button>
-            <button id="mql-qtd"    class="chip"       onclick="setRptPeriod('mql','qtd')">QTD</button>
+            <button id="mql-30d"    class="chip"       onclick="setRptPeriod('mql','30d')">30D</button>
+            <button id="mql-qtd"    class="chip active" onclick="setRptPeriod('mql','qtd')">QTD</button>
             <button id="mql-custom" class="chip"       onclick="setRptPeriod('mql','custom')">📅 Custom</button>
           </div>
           <div id="mqlCustomPicker" style="display:none;align-items:center;gap:6px">
@@ -1208,10 +1208,10 @@ tfoot td {
         <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
           <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Period</span>
           <div style="display:flex;gap:4px">
-            <button id="sql-all"    class="chip active" onclick="setRptPeriod('sql','all')">All</button>
+            <button id="sql-all"    class="chip"        onclick="setRptPeriod('sql','all')">All</button>
             <button id="sql-7d"     class="chip"        onclick="setRptPeriod('sql','7d')">Last 7 Days</button>
             <button id="sql-30d"    class="chip"        onclick="setRptPeriod('sql','30d')">Last 30 Days</button>
-            <button id="sql-qtd"    class="chip"        onclick="setRptPeriod('sql','qtd')">QTD</button>
+            <button id="sql-qtd"    class="chip active" onclick="setRptPeriod('sql','qtd')">QTD</button>
             <button id="sql-custom" class="chip"        onclick="setRptPeriod('sql','custom')">📅 Custom</button>
           </div>
           <div id="sqlCustomPicker" style="display:none;align-items:center;gap:6px">
@@ -1348,8 +1348,8 @@ tfoot td {
           <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Period</span>
           <div style="display:flex;gap:4px">
             <button id="s1r-7d"  class="chip"        onclick="setRptPeriod('s1r','7d')">7D</button>
-            <button id="s1r-30d" class="chip active"  onclick="setRptPeriod('s1r','30d')">30D</button>
-            <button id="s1r-qtd" class="chip"        onclick="setRptPeriod('s1r','qtd')">QTD</button>
+            <button id="s1r-30d" class="chip"         onclick="setRptPeriod('s1r','30d')">30D</button>
+            <button id="s1r-qtd" class="chip active" onclick="setRptPeriod('s1r','qtd')">QTD</button>
           </div>
           <span id="s1rDateRange" style="font-size:10.5px;color:var(--text-dim);white-space:nowrap"></span>
         </div>
@@ -4560,9 +4560,9 @@ function closeSdrDetailModal(e) {
 // ── SDR REPORTING 2026 (MQL / SQL / S1) ──────────────────────────────────────
 
 const RPT = {
-  mql:  { period:'30d', data:null, filtered:null, sortKey:'date', sortDir:-1, customStart:'', customEnd:'' },
-  sql:  { period:'all', data:null, filtered:null, sortKey:'date', sortDir:-1, customStart:'', customEnd:'' },
-  s1r:  { period:'30d', data:null, filtered:null, sortKey:'date', sortDir:-1 },
+  mql:  { period:'qtd', data:null, filtered:null, sortKey:'date', sortDir:-1, customStart:'', customEnd:'' },
+  sql:  { period:'qtd', data:null, filtered:null, sortKey:'date', sortDir:-1, customStart:'', customEnd:'' },
+  s1r:  { period:'qtd', data:null, filtered:null, sortKey:'date', sortDir:-1 },
 };
 
 // ── Meeting Generation Funnel ─────────────────────────────────────────────────
@@ -4949,7 +4949,7 @@ function renderMgfModalTable() {
 }
 
 // ── Total Meeting Generated by SDRs ──────────────────────────────────────────
-const MTG = { data: null, filtered: null, sortKey: 'generated_on', sortDir: -1, period: 'all', customStart: '', customEnd: '' };
+const MTG = { data: null, filtered: null, sortKey: 'generated_on', sortDir: -1, period: 'qtd', customStart: '', customEnd: '' };
 
 function setMtgPeriod(period) {
   MTG.period = period;
