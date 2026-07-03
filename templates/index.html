@@ -5053,12 +5053,18 @@ function loadTrendRows() {
 }
 
 // Frozen quarter snapshots — completed quarters whose SDR numbers are locked.
+// Fetch ONCE (guarded) — renderSDR() calls initSdrPerf() which calls this, so
+// without the guard the success callback (which re-renders) would loop forever.
 let FROZEN_QUARTERS = { frozen: [], snapshots: {} };
+let FROZEN_LOADED = false, FROZEN_FETCHING = false;
 function loadQuarterSnapshots() {
+  if (FROZEN_LOADED || FROZEN_FETCHING) return;
+  FROZEN_FETCHING = true;
   fetch('/api/quarter-snapshots')
     .then(r => r.json())
-    .then(d => { FROZEN_QUARTERS = d || { frozen: [], snapshots: {} }; renderSdrPerfTable(); if (S.activeTab === 'sdr') renderSDR(); })
-    .catch(() => {});
+    .then(d => { FROZEN_QUARTERS = d || { frozen: [], snapshots: {} }; FROZEN_LOADED = true; renderSdrPerfTable(); if (S.activeTab === 'sdr') renderSDR(); })
+    .catch(() => {})
+    .finally(() => { FROZEN_FETCHING = false; });
 }
 
 // Call-activity meetings (the trend chart's purple "Meeting Generated" line).
@@ -5452,6 +5458,7 @@ function renderSdrTrendChart() {
     ] },
     options: {
       responsive: true, maintainAspectRatio: false,
+      animation: false,   // no re-animation on the 10s data poll (was flickering up/down)
       interaction: { mode: 'index', intersect: false },
       onHover: (evt, els) => { const t = evt && evt.native && evt.native.target; if (t) t.style.cursor = els.length ? 'pointer' : 'default'; },
       onClick: (evt, _els, chart) => {
