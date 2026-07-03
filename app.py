@@ -4153,7 +4153,12 @@ def api_reporting_s1():
     """Return Opportunities filtered by period (CreatedDate), grouped for SDR Reporting tab.
     Includes LeadSource (Source) field for grouping."""
     period = request.args.get('period', '30d').strip()
-    start, end = period_dates(period)
+    custom_start = request.args.get('start', '').strip()
+    custom_end   = request.args.get('end',   '').strip()
+    if custom_start and custom_end:
+        start, end = custom_start, custom_end
+    else:
+        start, end = period_dates(period)
 
     dt = ''
     if start: dt += f" AND CreatedDate >= {start}T00:00:00Z"
