@@ -1047,6 +1047,8 @@ tfoot td {
           <button id="mtg-7d"     class="chip"        onclick="setMtgPeriod('7d')">Last 7 Days</button>
           <button id="mtg-30d"    class="chip"        onclick="setMtgPeriod('30d')">Last 30 Days</button>
           <button id="mtg-qtd"    class="chip active" onclick="setMtgPeriod('qtd')">QTD</button>
+          <button id="mtg-q1"     class="chip"        onclick="setMtgPeriod('q1')">🔒 Q1 2026</button>
+          <button id="mtg-q2"     class="chip"        onclick="setMtgPeriod('q2')">🔒 Q2 2026</button>
           <button id="mtg-custom" class="chip"        onclick="setMtgPeriod('custom')">📅 Custom</button>
         </div>
         <div id="mtgCustomPicker" style="display:none;align-items:center;gap:6px">
@@ -1131,6 +1133,8 @@ tfoot td {
             <button id="mql-7d"     class="chip"       onclick="setRptPeriod('mql','7d')">7D</button>
             <button id="mql-30d"    class="chip"       onclick="setRptPeriod('mql','30d')">30D</button>
             <button id="mql-qtd"    class="chip active" onclick="setRptPeriod('mql','qtd')">QTD</button>
+            <button id="mql-q1"     class="chip"       onclick="setRptPeriod('mql','q1')">🔒 Q1</button>
+            <button id="mql-q2"     class="chip"       onclick="setRptPeriod('mql','q2')">🔒 Q2</button>
             <button id="mql-custom" class="chip"       onclick="setRptPeriod('mql','custom')">📅 Custom</button>
           </div>
           <div id="mqlCustomPicker" style="display:none;align-items:center;gap:6px">
@@ -1212,6 +1216,8 @@ tfoot td {
             <button id="sql-7d"     class="chip"        onclick="setRptPeriod('sql','7d')">Last 7 Days</button>
             <button id="sql-30d"    class="chip"        onclick="setRptPeriod('sql','30d')">Last 30 Days</button>
             <button id="sql-qtd"    class="chip active" onclick="setRptPeriod('sql','qtd')">QTD</button>
+            <button id="sql-q1"     class="chip"        onclick="setRptPeriod('sql','q1')">🔒 Q1</button>
+            <button id="sql-q2"     class="chip"        onclick="setRptPeriod('sql','q2')">🔒 Q2</button>
             <button id="sql-custom" class="chip"        onclick="setRptPeriod('sql','custom')">📅 Custom</button>
           </div>
           <div id="sqlCustomPicker" style="display:none;align-items:center;gap:6px">
@@ -1350,6 +1356,8 @@ tfoot td {
             <button id="s1r-7d"  class="chip"        onclick="setRptPeriod('s1r','7d')">7D</button>
             <button id="s1r-30d" class="chip"         onclick="setRptPeriod('s1r','30d')">30D</button>
             <button id="s1r-qtd" class="chip active" onclick="setRptPeriod('s1r','qtd')">QTD</button>
+            <button id="s1r-q1"  class="chip"        onclick="setRptPeriod('s1r','q1')">🔒 Q1</button>
+            <button id="s1r-q2"  class="chip"        onclick="setRptPeriod('s1r','q2')">🔒 Q2</button>
           </div>
           <span id="s1rDateRange" style="font-size:10.5px;color:var(--text-dim);white-space:nowrap"></span>
         </div>
@@ -4953,7 +4961,7 @@ const MTG = { data: null, filtered: null, sortKey: 'generated_on', sortDir: -1, 
 
 function setMtgPeriod(period) {
   MTG.period = period;
-  ['all','7d','30d','qtd','custom'].forEach(p => {
+  ['all','7d','30d','qtd','q1','q2','custom'].forEach(p => {
     const el = document.getElementById(`mtg-${p}`);
     if (el) el.classList.toggle('active', p === period);
   });
@@ -4974,6 +4982,10 @@ function setMtgPeriod(period) {
       const q = Math.floor(today.getMonth() / 3);
       const s = new Date(today.getFullYear(), q * 3, 1);
       lbl.textContent = `Q${q + 1} ${today.getFullYear()} · ${fmt(s)} – ${fmt(today)}`;
+    } else if (period === 'q1') {
+      lbl.textContent = 'Q1 2026 (Jan–Mar) · 🔒 Frozen';
+    } else if (period === 'q2') {
+      lbl.textContent = 'Q2 2026 (Apr–Jun) · 🔒 Frozen';
     } else if (period === 'all') {
       lbl.textContent = 'Since Apr 1, 2026';
     } else {
@@ -5065,6 +5077,28 @@ function loadQuarterSnapshots() {
     .then(d => { FROZEN_QUARTERS = d || { frozen: [], snapshots: {} }; FROZEN_LOADED = true; renderSdrPerfTable(); if (S.activeTab === 'sdr') renderSDR(); })
     .catch(() => {})
     .finally(() => { FROZEN_FETCHING = false; });
+}
+
+// Frozen Q1/Q2 record snapshots for the 4 SDR Reporting tables (fetched once).
+let REPORTING_SNAP = { frozen: [], tables: {} };
+let RSNAP_LOADED = false, RSNAP_FETCHING = false;
+function loadReportingSnapshots() {
+  if (RSNAP_LOADED || RSNAP_FETCHING) return;
+  RSNAP_FETCHING = true;
+  fetch('/api/reporting-snapshots')
+    .then(r => r.json())
+    .then(d => {
+      REPORTING_SNAP = d || { frozen: [], tables: {} }; RSNAP_LOADED = true;
+      // Re-render any table already showing a frozen quarter (selected before load).
+      if (rptFrozenKey(MTG.period)) applyMtgFilters();
+      ['mql','sql','s1r'].forEach(sec => { if (rptFrozenKey(RPT[sec].period)) fetchRptSection(sec); });
+    })
+    .catch(() => {})
+    .finally(() => { RSNAP_FETCHING = false; });
+}
+// A frozen-quarter period value → snapshot quarter key, else null.
+function rptFrozenKey(period) {
+  return period === 'q1' ? '2026-Q1' : period === 'q2' ? '2026-Q2' : null;
 }
 
 // Call-activity meetings (the trend chart's purple "Meeting Generated" line).
@@ -5796,7 +5830,9 @@ document.addEventListener('click', (e) => {
 });
 
 function applyMtgFilters() {
-  const data = MTG.data || [];
+  // Frozen Q1/Q2 → the locked snapshot (no date-bounds filter; the data IS the quarter).
+  const fk = (MTG.period === 'q1') ? '2026-Q1' : (MTG.period === 'q2') ? '2026-Q2' : null;
+  const data = fk ? (((REPORTING_SNAP.tables.meetings || {})[fk]) || []) : (MTG.data || []);
   const byF = document.getElementById('mtgFilterGeneratedBy')?.value || '';
   // every multi-select must pass: empty set = no filtering on that field
   const mselPass = r => Object.values(MTG_MSEL).every(cfg => cfg.sel.size === 0 || cfg.sel.has(r[cfg.field]));
@@ -5969,6 +6005,10 @@ function rptDateLabel(period, section) {
     const m=today.getMonth(); const qm=Math.floor(m/3)*3;
     const s=new Date(today.getFullYear(),qm,1);
     return `${fmt(s)} – ${fmt(today)}`;
+  } else if(period==='q1') {
+    return 'Q1 2026 (Jan–Mar) · 🔒 Frozen';
+  } else if(period==='q2') {
+    return 'Q2 2026 (Apr–Jun) · 🔒 Frozen';
   } else if(period==='custom' && section) {
     const cs = RPT[section]?.customStart;
     const ce = RPT[section]?.customEnd;
@@ -5981,7 +6021,7 @@ function rptDateLabel(period, section) {
 function setRptPeriod(section, period) {
   RPT[section].period = period;
   // Update chip active states — mql/sql use 'all' instead of 'qtd'
-  const chips = ['mql','sql'].includes(section) ? ['all','7d','30d','qtd','custom'] : ['7d','30d','qtd','custom'];
+  const chips = ['mql','sql'].includes(section) ? ['all','7d','30d','qtd','q1','q2','custom'] : ['7d','30d','qtd','q1','q2','custom'];
   chips.forEach(p => {
     const el = document.getElementById(`${section}-${p}`);
     if(el) el.classList.toggle('active', p===period);
@@ -6012,6 +6052,7 @@ function applyRptCustomDate(section) {
 }
 
 function renderReportingTab() {
+  loadReportingSnapshots();   // frozen Q1/Q2 data for the reporting tables
   // Initialize date labels
   ['mql','sql','s1r'].forEach(sec => {
     const el = document.getElementById(`${sec}DateRange`);
@@ -6026,6 +6067,18 @@ function renderReportingTab() {
 
 function fetchRptSection(section) {
   const period = RPT[section].period;
+
+  // Frozen Q1/Q2 — serve the locked snapshot instead of fetching live.
+  const fk = rptFrozenKey(period);
+  if (fk) {
+    const rows = ((REPORTING_SNAP.tables[section] || {})[fk]) || [];
+    if(section==='mql') { RPT.mql.data = rows; renderMql(); }
+    else if(section==='sql') { RPT.sql.data = rows; renderSql(); }
+    else if(section==='s1r') { RPT.s1r.data = rows; renderS1r(); }
+    updateFunnel();
+    return;
+  }
+
   showRptState(section, 'loading');
 
   let url = '';

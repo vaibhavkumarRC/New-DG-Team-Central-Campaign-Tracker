@@ -16,6 +16,8 @@ CACHE_FILE    = os.path.join(DATA_DIR, 'data_cache.json')
 # Frozen quarter snapshots live in the REPO (committed, version-controlled) so a
 # completed quarter's SDR numbers are locked and ship with every deploy.
 SNAPSHOTS_FILE = os.path.join(BASE, 'quarter_snapshots.json')
+# Frozen Q1/Q2 record snapshots for the SDR Reporting tables (meetings/mql/sql/s1).
+REPORTING_SNAPSHOTS_FILE = os.path.join(BASE, 'reporting_snapshots.json')
 SEGMENTS_FILE = os.path.join(DATA_DIR, 'segments.json')
 LEDGER_FILE   = os.path.join(DATA_DIR, 'meeting_ledger.json')
 
@@ -3278,6 +3280,16 @@ def api_quarter_snapshots():
             return jsonify(json.load(f))
     except Exception:
         return jsonify({'frozen': [], 'snapshots': {}})
+
+@app.route('/api/reporting-snapshots')
+def api_reporting_snapshots():
+    """Frozen Q1/Q2 record snapshots for the SDR Reporting tables (Total Meetings,
+    MQL, SQL, S1) so those quarters show a fixed historical record."""
+    try:
+        with open(REPORTING_SNAPSHOTS_FILE) as f:
+            return jsonify(json.load(f))
+    except Exception:
+        return jsonify({'frozen': [], 'tables': {}})
 
 @app.route('/api/meeting-leads')
 def api_meeting_leads():
