@@ -5570,11 +5570,62 @@ function renderSdrPerfTable() {
 const SDRP_METRIC_LABEL = { meetings: '🤝 Meetings Generated', done: '✅ Meetings Done', s1: '🏆 S1 Created' };
 
 function openSdrpModal(sdr, metric) {
+  // S1 is opportunity-based (SDR_Owner__c on Opportunities) — drill down into the
+  // actual opps so the list matches the count, not lead-based S1-Converted rows.
+  if (metric === 's1') { openSdrpS1Modal(sdr); return; }
   let rows = sdrpFilteredRows();
   if (sdr !== '__ALL__') rows = rows.filter(r => r.generated_by === sdr);
   if (metric === 'done') rows = rows.filter(SDRP_IS_DONE);
-  if (metric === 's1')   rows = rows.filter(SDRP_IS_S1);
   _sdrpLeadModal(`${SDRP_METRIC_LABEL[metric]} — ${sdr === '__ALL__' ? 'All SDRs' : sdr}`, rows);
+}
+
+// Opportunity-based S1 drill-down — fetches the real S1 opps for the table's S1
+// window (the selected quarter, else all-time), so the click matches the number.
+function openSdrpS1Modal(sdr) {
+  const q = SDRP.tableQuarter;
+  const [f, t] = (q && q !== 'all') ? quarterBounds(q) : ['', ''];
+  const url = '/api/s1-opps' + (f ? `?from=${f}&to=${t}` : '');
+  const title = `🏆 S1 Created — ${sdr === '__ALL__' ? 'All SDRs' : sdr}`;
+  document.getElementById('sdrpModalTitle').textContent = title;
+  document.getElementById('sdrpModalSub').textContent   = 'Loading opportunities…';
+  document.getElementById('sdrpModalBody').innerHTML     = '';
+  document.getElementById('sdrpOverlay').style.display   = 'flex';
+  fetch(url)
+    .then(r => r.json())
+    .then(d => {
+      let opps = d.opps || [];
+      if (sdr !== '__ALL__') opps = opps.filter(o => o.sdr === sdr);
+      _sdrpOppModal(title, opps);
+    })
+    .catch(() => { document.getElementById('sdrpModalBody').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:12px">Failed to load opportunities.</div>'; });
+}
+
+function _sdrpOppModal(title, opps) {
+  opps = opps.slice().sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')));
+  document.getElementById('sdrpModalTitle').textContent = title;
+  document.getElementById('sdrpModalSub').textContent   = `${opps.length} S1 opportunit${opps.length !== 1 ? 'ies' : 'y'} · click a row to open in Salesforce`;
+  document.getElementById('sdrpModalBody').innerHTML = opps.length === 0
+    ? '<div style="text-align:center;padding:24px;color:var(--text-dim);font-size:12px">No S1 opportunities.</div>'
+    : `<table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:7px 10px;color:var(--text-muted);font-size:10.5px;font-weight:700">OPPORTUNITY</th>
+          <th style="text-align:left;padding:7px 10px;color:var(--text-muted);font-size:10.5px;font-weight:700">ACCOUNT</th>
+          <th style="text-align:left;padding:7px 10px;color:var(--text-muted);font-size:10.5px;font-weight:700">SDR OWNER</th>
+          <th style="text-align:left;padding:7px 10px;color:var(--text-muted);font-size:10.5px;font-weight:700">STAGE</th>
+          <th style="text-align:left;padding:7px 10px;color:var(--text-muted);font-size:10.5px;font-weight:700">CREATED</th>
+        </tr></thead>
+        <tbody>${opps.map(o => `
+          <tr onclick="${o.sf_url ? `window.open('${o.sf_url}','_blank')` : ''}" title="${o.sf_url ? 'Open in Salesforce' : ''}"
+              style="${o.sf_url ? 'cursor:pointer;' : ''}border-bottom:1px solid var(--border)"
+              onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background=''">
+            <td style="padding:7px 10px;font-weight:600">${o.sf_url ? `<span style="color:var(--gold-light)">${escHtml(o.name)} <span style="font-size:10px;opacity:.6">↗</span></span>` : escHtml(o.name)}</td>
+            <td style="padding:7px 10px;color:var(--text-muted)">${escHtml(o.account)}</td>
+            <td style="padding:7px 10px;color:var(--text-muted)">${escHtml(o.sdr)}</td>
+            <td style="padding:7px 10px;color:var(--text-muted);font-size:11px">${escHtml(o.stage)}</td>
+            <td style="padding:7px 10px;color:var(--text-muted);white-space:nowrap">${o.created || '—'}</td>
+          </tr>`).join('')}</tbody>
+      </table>`;
+  document.getElementById('sdrpOverlay').style.display = 'flex';
 }
 
 // Drill-down for a clicked point on the weekly trend chart: that week's

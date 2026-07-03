@@ -3258,6 +3258,36 @@ def api_sdr_s1():
     stats = fetch_sdr_opp_stats(frm, to)
     return jsonify({'s1': {name: v['s1'] for name, v in stats.items()}})
 
+@app.route('/api/s1-opps')
+def api_s1_opps():
+    """The actual S1 Opportunity records behind the S1 count — used by the S1
+    drill-down so the click matches the number. Same filter as fetch_sdr_opp_stats
+    (SDR_Owner__c set, Opportunity CreatedDate in the window). ?from=&to=YYYY-MM-DD."""
+    frm = (request.args.get('from') or '').strip()
+    to  = (request.args.get('to')   or '').strip()
+    start = f"{frm}T00:00:00Z" if frm else NPV_START_DATE
+    end_clause = f" AND CreatedDate <= {to}T23:59:59Z" if to else ""
+    q = ("SELECT Id, Name, SDR_Owner__c, Account.Name, StageName, CreatedDate, Amount "
+         "FROM Opportunity "
+         f"WHERE SDR_Owner__c != null AND CreatedDate >= {start}{end_clause} "
+         "ORDER BY CreatedDate DESC LIMIT 5000")
+    result = soql(q)
+    opps = []
+    for r in (result.get('records', []) if result else []):
+        acct = r.get('Account') or {}
+        oid  = r.get('Id') or ''
+        opps.append({
+            'id':      oid,
+            'name':    r.get('Name') or '—',
+            'sdr':     norm_sdr(r.get('SDR_Owner__c') or '—'),
+            'account': (acct.get('Name') if isinstance(acct, dict) else '') or '—',
+            'stage':   r.get('StageName') or '—',
+            'created': (r.get('CreatedDate') or '')[:10],
+            'amount':  r.get('Amount') or 0,
+            'sf_url':  f"{SF_BASE_URL}/lightning/r/Opportunity/{oid}/view" if oid else '',
+        })
+    return jsonify({'opps': opps, 'total': len(opps)})
+
 @app.route('/api/quarter-snapshots')
 def api_quarter_snapshots():
     """Frozen (locked) SDR Performance numbers for completed quarters. The table
