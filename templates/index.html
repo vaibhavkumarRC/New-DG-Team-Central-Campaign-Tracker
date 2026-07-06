@@ -1918,14 +1918,34 @@ const SDR_TARGETS = {
   'Saka Thapa':           { meeting_done: 16, s1: 5, npv: 1080000 },
 };
 
-const POD_TEAMS = [
-  'Lisa - Ananya; Anurup',
-  'Matt - Isaac; Saka; Akil',
-  'Bianca - Akhilesh; Anushka',
-  'Abhishek - Sukhneet; Soham',
-  'Jessica - Shahana; Michelle',
-  'Hursh - Samridhi; Rithick; Felix',
+const POD_TEAM_GROUPS = [
+  { label: 'Q3 2026 PODs', pods: [
+    'Matt - Akil; Isaac',
+    'Lisa - Anurup; Sukhneet',
+    'Abhishek - Soham; Ananya',
+    'Bianca - Akhilesh; Anushka',
+    'Jessica - Saka; Michelle',
+    'Hursh - Rithick; Samridhi; Felix',
+  ]},
+  { label: 'Q2 2026 PODs', pods: [
+    'Lisa - Ananya; Anurup',
+    'Matt - Isaac; Saka; Akil',
+    'Bianca - Akhilesh; Anushka',
+    'Abhishek - Sukhneet; Soham',
+    'Jessica - Shahana; Michelle',
+    'Hursh - Samridhi; Rithick; Felix',
+  ]},
 ];
+// Flat, de-duped list for any non-dropdown use.
+const POD_TEAMS = [...new Set(POD_TEAM_GROUPS.flatMap(g => g.pods))];
+// Grouped <optgroup> options for the POD dropdowns (cur = value to pre-select).
+function podTeamOptionsHTML(cur) {
+  return POD_TEAM_GROUPS.map(g =>
+    `<optgroup label="${esc(g.label)}">` +
+    g.pods.map(p => `<option value="${esc(p)}"${p === cur ? ' selected' : ''}>${esc(p)}</option>`).join('') +
+    '</optgroup>'
+  ).join('');
+}
 
 // ── STATE ────────────────────────────────────────────────────────────────────
 const S = {
@@ -2213,7 +2233,7 @@ function setDashTypeFilter(val) {
 }
 
 function populatePodDropdowns() {
-  const opts = POD_TEAMS.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+  const opts = podTeamOptionsHTML();
 
   // Dashboard filter
   const dashPod = q('dashPodSelect');
@@ -3664,8 +3684,7 @@ function renderManage() {
   // Populate POD dropdown (keep current selection)
   if(podSel) {
     const cur = podSel.value;
-    podSel.innerHTML = '<option value="">All PODs</option>' +
-      POD_TEAMS.map(p=>`<option value="${esc(p)}"${p===cur?'selected':''}>${esc(p)}</option>`).join('');
+    podSel.innerHTML = '<option value="">All PODs</option>' + podTeamOptionsHTML(cur);
   }
 
   // Populate Segment dropdown from live campaign data (keep current selection)
@@ -4345,8 +4364,7 @@ function openEditModal(id) {
   const podTeam = c.pod_team || '';
   const editPodEl = q('editPodTeamSelect');
   if(editPodEl) {
-    editPodEl.innerHTML = '<option value="">— Select POD —</option>' +
-      POD_TEAMS.map(p => `<option value="${esc(p)}" ${p===podTeam?'selected':''}>${esc(p)}</option>`).join('');
+    editPodEl.innerHTML = '<option value="">— Select POD —</option>' + podTeamOptionsHTML(podTeam);
   }
 
   q('editOverlay').classList.add('open');
