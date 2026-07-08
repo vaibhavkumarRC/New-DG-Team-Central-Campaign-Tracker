@@ -3675,6 +3675,21 @@ function renderSDR() {
     });
     const statBy = {};
     (src.sdr_stats || []).forEach(s => statBy[s.name] = s);
+    // Q3-only Calls/Emails/Leads: sum ONLY the SDR's Q3 campaigns (start_date in Q3),
+    // so nothing from Q1/Q2 campaigns leaks in. S1/NPV come from statBy (already
+    // Q3-scoped by backend NPV_START_DATE).
+    const q3Camp = {};
+    (src.campaigns || []).forEach(c => {
+      const sd = c.start_date || '';
+      if (sd < '2026-07-01' || sd > '2026-09-30') return;
+      const owner = (c.sdr_owner || '').trim();
+      if (!owner) return;
+      const m = q3Camp[owner] || (q3Camp[owner] = { calls: 0, emails: 0, leads: 0, camps: 0 });
+      m.calls  += c.total_calls  || 0;
+      m.emails += c.total_emails || 0;
+      m.leads  += c.total_leads  || 0;
+      m.camps  += 1;
+    });
     const tbar = (achieved, target, color) => {
       if (!target) return '';
       const pct = Math.min(100, (achieved / target * 100)).toFixed(1);
@@ -3684,7 +3699,8 @@ function renderSDR() {
     const roster = Object.keys(SDR_TARGETS_Q3).map(name => {
       const lv = q3Live[name] || { mGen: 0, mDone: 0, mNoShow: 0, mSql: 0 };
       const st = statBy[name] || {};
-      return { name, ...lv, calls: st.calls || 0, emails: st.emails || 0, leads: st.leads || 0,
+      const cs = q3Camp[name] || { calls: 0, emails: 0, leads: 0 };
+      return { name, ...lv, calls: cs.calls, emails: cs.emails, leads: cs.leads,
                s1: st.s1_count || 0, npv: st.npv_generated || 0, tgt: SDR_TARGETS_Q3[name] };
     }).sort((a, b) => b.mGen - a.mGen);
 
