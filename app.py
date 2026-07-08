@@ -346,7 +346,7 @@ def save_segments(segs):
         json.dump(segs, f)
 SF_ORG      = os.environ.get('SF_ORG',      'vaibhavkumar@rapidclaims.ai')
 SF_BASE_URL = os.environ.get('SF_BASE_URL', 'https://data-page-6243.my.salesforce.com')
-NPV_START_DATE = '2026-04-01T00:00:00Z'   # Opportunities created after 31 March 2026
+NPV_START_DATE = '2026-07-01T00:00:00Z'   # Q3 2026: Opportunities created after 30 June 2026
 
 # ── Admin access ──────────────────────────────────────────────────────────────
 # Set ADMIN_TOKEN env-var to override the default before sharing the URL.

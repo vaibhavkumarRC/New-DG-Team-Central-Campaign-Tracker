@@ -869,12 +869,12 @@ tfoot td {
       <div class="empty-icon">👥</div>
       No SDR data yet. Sync data from Salesforce first.
     </div>
-    <!-- Q3 2026 — placeholder cards (filled once Q3 targets are provided) -->
+    <!-- Q3 2026 — live cards vs Q3 targets -->
     <div id="sdrQ3Section" style="margin-top:34px">
       <div style="display:flex;align-items:baseline;gap:10px;margin:6px 0 4px">
         <div style="font-size:15px;font-weight:800;color:var(--text)">📊 Q3 2026 — SDR-wise Performance Card</div>
       </div>
-      <div style="font-size:11px;color:var(--text-dim);margin-bottom:14px">⏳ Awaiting Q3 2026 targets — these cards will be filled once the Q3 targets are provided.</div>
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:14px">Live Q3 numbers vs each SDR's Q3 target. Meeting funnel from 1 Jul 2026; S1 &amp; NPV count deals created after 30 Jun 2026. Click a card for the detail breakdown.</div>
       <div class="sdr-grid" id="sdrGridQ3"></div>
     </div>
   </div>
@@ -1470,6 +1470,7 @@ tfoot td {
                 <option>Samridhi Dutta</option>
                 <option>Shahana Abbasi</option>
                 <option>Soham Saha</option>
+                <option>SriRam</option>
                 <option>Sukhneet Sukhneet</option>
               </select>
             </div>
@@ -1817,6 +1818,7 @@ tfoot td {
             <option>Samridhi Dutta</option>
             <option>Shahana Abbasi</option>
             <option>Soham Saha</option>
+            <option>SriRam</option>
             <option>Sukhneet Sukhneet</option>
           </select>
         </div>
@@ -1916,6 +1918,26 @@ const SDR_TARGETS = {
   'Akhilesh Stan':        { meeting_done: 16, s1: 5, npv: 1080000 },
   'Sukhneet Sukhneet':    { meeting_done: 18, s1: 6, npv: 1300000 },
   'Saka Thapa':           { meeting_done: 16, s1: 5, npv: 1080000 },
+};
+
+// Q3 2026 targets — adds a Meeting Generated target. Roster defines who gets a Q3
+// card (Shahana left; SriRam is new in Matt's POD). S1/NPV count deals created
+// after 30 Jun 2026 (backend NPV_START_DATE = 2026-07-01).
+const SDR_TARGETS_Q3 = {
+  'Akil Krishna':         { meeting_generated: 25, meeting_done: 18, s1: 6, npv: 1300000 },
+  'Ananya Rao':           { meeting_generated: 25, meeting_done: 18, s1: 6, npv: 1300000 },
+  'Soham Saha':           { meeting_generated: 25, meeting_done: 18, s1: 6, npv: 1300000 },
+  'SriRam':               { meeting_generated: 12, meeting_done:  8, s1: 6, npv:  600000 },
+  'Michelle B':           { meeting_generated: 25, meeting_done: 18, s1: 6, npv: 1300000 },
+  'Isaac Bartels':        { meeting_generated: 25, meeting_done: 18, s1: 6, npv: 1300000 },
+  'Felix Sam':            { meeting_generated: 25, meeting_done: 18, s1: 6, npv:  800000 },
+  'Anurup Bhattacharjee': { meeting_generated: 25, meeting_done: 18, s1: 6, npv: 1300000 },
+  'Anushka HB':           { meeting_generated: 25, meeting_done: 18, s1: 6, npv: 1300000 },
+  'Samridhi Dutta':       { meeting_generated: 25, meeting_done: 18, s1: 6, npv:  800000 },
+  'Rithick S':            { meeting_generated: 25, meeting_done: 18, s1: 6, npv:  800000 },
+  'Sukhneet Sukhneet':    { meeting_generated: 25, meeting_done: 18, s1: 6, npv: 1300000 },
+  'Akhilesh Stan':        { meeting_generated: 25, meeting_done: 18, s1: 6, npv: 1300000 },
+  'Saka Thapa':           { meeting_generated: 25, meeting_done: 18, s1: 6, npv: 1300000 },
 };
 
 const POD_TEAM_GROUPS = [
@@ -3636,27 +3658,69 @@ function renderSDR() {
     </div>`;
   }).join('');
 
-  // Q3 2026 — empty placeholder cards (same SDRs), filled once Q3 targets exist.
+  // Q3 2026 — live cards vs the Q3 targets. Roster = SDR_TARGETS_Q3 keys (SriRam
+  // added; Shahana off). Meeting funnel is Q3-only (Meeting_Generated_on ≥ Jul 1);
+  // S1/NPV come from sdr_stats (backend NPV_START_DATE = Jul 1 = Q3 deals).
   const q3 = document.getElementById('sdrGridQ3');
   if (q3) {
-    const dash = (lbl, sz) => `<div class="sdr-stat"><div class="sdr-stat-val" style="color:var(--text-dim);font-size:${sz}px">—</div><div class="sdr-stat-lbl">${lbl}</div></div>`;
-    q3.innerHTML = sortedSdrs.map(s => `
-    <div class="sdr-card" style="opacity:.7">
-      <div class="sdr-card-header">
-        <div class="sdr-avatar" style="filter:grayscale(.5)">${initials(s.name)}</div>
-        <div>
-          <div class="sdr-card-name">${esc(s.name)}</div>
-          <div class="sdr-card-camps" style="color:var(--text-dim)">Q3 2026 · pending</div>
+    const q3Live = {};
+    (MTG.data || []).forEach(r => {
+      if ((r.generated_on || '') < '2026-07-01') return;
+      const n = r.generated_by || '—';
+      const m = q3Live[n] || (q3Live[n] = { mGen: 0, mDone: 0, mNoShow: 0, mSql: 0 });
+      m.mGen++;
+      if (SDRP_IS_DONE(r))                m.mDone++;
+      if (r.status === 'Meeting No Show') m.mNoShow++;
+      if (r.lead_status === 'SQL')        m.mSql++;
+    });
+    const statBy = {};
+    (src.sdr_stats || []).forEach(s => statBy[s.name] = s);
+    const tbar = (achieved, target, color) => {
+      if (!target) return '';
+      const pct = Math.min(100, (achieved / target * 100)).toFixed(1);
+      const col = parseFloat(pct) >= 100 ? 'var(--green)' : parseFloat(pct) >= 60 ? 'var(--amber)' : 'var(--red)';
+      return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;margin-bottom:4px"><span style="color:var(--text-muted);font-weight:600">${achieved} <span style="color:var(--text-dim);font-weight:400">/ ${target} target</span></span><span style="font-weight:700;color:${col}">${pct}%</span></div><div style="background:var(--surface3);border-radius:4px;height:6px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${col};border-radius:4px;transition:width .8s ease"></div></div></div>`;
+    };
+    const roster = Object.keys(SDR_TARGETS_Q3).map(name => {
+      const lv = q3Live[name] || { mGen: 0, mDone: 0, mNoShow: 0, mSql: 0 };
+      const st = statBy[name] || {};
+      return { name, ...lv, calls: st.calls || 0, emails: st.emails || 0, leads: st.leads || 0,
+               s1: st.s1_count || 0, npv: st.npv_generated || 0, tgt: SDR_TARGETS_Q3[name] };
+    }).sort((a, b) => b.mGen - a.mGen);
+
+    q3.innerHTML = roster.map((s, i) => {
+      const t = s.tgt;
+      const npvPct = t.npv ? Math.min(100, (s.npv / t.npv * 100)).toFixed(1) : '0';
+      const npvCol = parseFloat(npvPct) >= 100 ? 'var(--green)' : parseFloat(npvPct) >= 60 ? 'var(--amber)' : 'var(--red)';
+      return `
+      <div class="sdr-card" onclick="openSdrDetailModal('${esc(s.name).replace(/'/g,"\\'")}','2026-07-01','2026-09-30')">
+        <div class="sdr-card-header">
+          <div class="sdr-avatar">${initials(s.name)}</div>
+          <div><div class="sdr-card-name">${esc(s.name)}</div><div class="sdr-card-camps">Q3 2026</div></div>
+          <div style="margin-left:auto;font-size:11px;color:var(--text-dim)">#${i + 1}</div>
         </div>
-      </div>
-      <div class="sdr-stats-row" style="gap:10px;margin-bottom:10px">
-        ${dash('Mtg Gen',17)}${dash('Mtg Done',17)}${dash('No Show',17)}${dash('SQL',17)}
-      </div>
-      <div class="sdr-stats-row" style="gap:10px;margin-bottom:12px">
-        ${dash('Calls',15)}${dash('Emails',15)}${dash('Leads',15)}${dash('S1',15)}
-      </div>
-      <div style="border-top:1px solid var(--border);padding-top:12px;text-align:center;color:var(--text-dim);font-size:11px">⏳ Awaiting Q3 2026 targets</div>
-    </div>`).join('');
+        <div class="sdr-stats-row" style="gap:10px;margin-bottom:10px">
+          <div class="sdr-stat"><div class="sdr-stat-val" style="color:var(--green);font-size:17px">${fmt(s.mGen)}</div><div class="sdr-stat-lbl">Mtg Gen</div></div>
+          <div class="sdr-stat"><div class="sdr-stat-val" style="color:#34D399;font-size:17px">${fmt(s.mDone)}</div><div class="sdr-stat-lbl">Mtg Done</div></div>
+          <div class="sdr-stat"><div class="sdr-stat-val" style="color:var(--red);font-size:17px">${fmt(s.mNoShow)}</div><div class="sdr-stat-lbl">No Show</div></div>
+          <div class="sdr-stat"><div class="sdr-stat-val" style="color:#A78BFA;font-size:17px">${fmt(s.mSql)}</div><div class="sdr-stat-lbl">SQL</div></div>
+        </div>
+        <div class="sdr-stats-row" style="gap:10px;margin-bottom:12px">
+          <div class="sdr-stat"><div class="sdr-stat-val" style="color:var(--purple);font-size:15px">${fmt(s.calls)}</div><div class="sdr-stat-lbl">Calls</div></div>
+          <div class="sdr-stat"><div class="sdr-stat-val" style="color:var(--amber);font-size:15px">${fmt(s.emails)}</div><div class="sdr-stat-lbl">Emails</div></div>
+          <div class="sdr-stat"><div class="sdr-stat-val" style="color:var(--blue);font-size:15px">${fmt(s.leads)}</div><div class="sdr-stat-lbl">Leads</div></div>
+          <div class="sdr-stat"><div class="sdr-stat-val" style="color:#F472B6;font-size:15px">${fmt(s.s1)}</div><div class="sdr-stat-lbl">S1</div></div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px;margin-bottom:4px">
+          <div style="font-size:10px;font-weight:700;color:var(--text-dim);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">Target Progress</div>
+          <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">Meeting Generated</div>${tbar(s.mGen, t.meeting_generated, '#A78BFA')}
+          <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">Meeting Done</div>${tbar(s.mDone, t.meeting_done, '#34D399')}
+          <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">S1 Created</div>${tbar(s.s1, t.s1, '#F472B6')}
+          <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">NPV Generated</div>
+          <div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;margin-bottom:4px"><span style="color:var(--text-muted);font-weight:600">${fmtCurrency(s.npv)} <span style="color:var(--text-dim);font-weight:400">/ ${fmtCurrency(t.npv)}</span></span><span style="font-weight:700;color:${npvCol}">${npvPct}%</span></div><div style="background:var(--surface3);border-radius:4px;height:6px;overflow:hidden"><div style="width:${npvPct}%;height:100%;background:${npvCol};border-radius:4px;transition:width .8s ease"></div></div></div>
+        </div>
+      </div>`;
+    }).join('');
   }
 }
 
