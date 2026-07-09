@@ -1668,6 +1668,37 @@ def api_cache_disk():
         return jsonify({'error': str(e)})
 
 
+@app.route('/api/campaign-lead-ids')
+@require_admin
+def api_campaign_lead_ids():
+    """Return the frozen ledger lead_ids for a campaign (by ?id= or ?campaign= name).
+    This is the historical enrollment — every Lead ever in the campaign — even if
+    the lead's Campaign__c was later cleared/reassigned."""
+    cid  = (request.args.get('id') or '').strip()
+    name = (request.args.get('campaign') or '').strip().lower()
+    camps = load_campaigns()
+    match = None
+    for c in camps:
+        if (cid and str(c.get('id')) == cid) or (name and (c.get('name') or '').strip().lower() == name):
+            match = c
+            break
+    if not match:
+        return jsonify({'error': 'campaign not found', 'id': cid, 'campaign': name}), 404
+    with _ledger_lock:
+        ledger = load_ledger()
+    entry = ledger.get(match['id'], {})
+    lead_ids = entry.get('lead_ids', [])
+    return jsonify({
+        'campaign':   match['name'],
+        'id':         match['id'],
+        'status':     match.get('status'),
+        'start_date': match.get('start_date'),
+        'end_date':   match.get('end_date'),
+        'count':      len(lead_ids),
+        'lead_ids':   lead_ids,
+    })
+
+
 @app.route('/api/debug-campaign-metrics')
 @require_admin
 def api_debug_campaign_metrics():
