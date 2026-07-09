@@ -1,18 +1,30 @@
 FROM python:3.11-slim
 
-# Install Node.js 20 (required for Salesforce CLI)
+# ── Node 22 LTS (maintained until April 2027) ────────────────────────────────
+# The Salesforce CLI's jsforce dependency uses undici 8.x, which requires
+# Node >= 22. On Node 20 (EOL April 2026) the CLI crashes at load with
+# "TypeError: webidl.util.markAsUncloneable is not a function" — the root
+# cause of the 9 Jul 2026 production outage (verified by local reproduction).
 RUN apt-get update && apt-get install -y curl gnupg && \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Salesforce CLI globally.
-# Pinned to a specific version so builds are reproducible AND to bust any stale
-# Docker cache layer. A stale cached layer had @jsforce/jsforce-node pulling the
-# broken undici 8.0.3 (TypeError: webidl.util.markAsUncloneable is not a function),
-# which crashed the sf CLI at startup. A clean install of this version resolves
-# jsforce-node 3.10.x -> undici 8.5.0 (past the 8.0.3 regression). Bump deliberately.
+# ── Salesforce CLI — PINNED for reproducible builds; bump deliberately ──────
+# (verified working on Node 22.23.1 on 9 Jul 2026)
 RUN npm install -g @salesforce/cli@2.144.0
+
+# ── Build-time smoke test ────────────────────────────────────────────────────
+# Exercise the same heavy jsforce/undici code path that start.sh's
+# `sf org login sfdx-url` hits at container startup. With a dummy auth URL a
+# HEALTHY CLI answers INVALID_SFDX_AUTH_URL; a broken CLI throws before it can
+# validate anything. If this fails, the BUILD fails — and Railway keeps the
+# previous deployment running instead of shipping a crash-looping container.
+RUN sf --version && \
+    echo dummy > /tmp/smoke_auth.txt && \
+    (sf org login sfdx-url --sfdx-url-file /tmp/smoke_auth.txt --no-prompt 2>&1 || true) | tee /tmp/smoke.log && \
+    rm -f /tmp/smoke_auth.txt && \
+    grep -q "INVALID_SFDX_AUTH_URL" /tmp/smoke.log && rm /tmp/smoke.log
 
 WORKDIR /app
 COPY requirements.txt .

@@ -3,3 +3,9 @@ builder = "DOCKERFILE"
 
 [deploy]
 restartPolicyType = "on_failure"
+# Zero-downtime guard: Railway only switches traffic to a new deployment after
+# "/" answers 200. If a new container crashes at startup (for ANY reason), the
+# deployment is marked failed and the PREVIOUS one keeps serving — a runtime
+# safety net on top of the Dockerfile's build-time sf smoke test.
+healthcheckPath = "/"
+healthcheckTimeout = 300
