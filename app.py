@@ -85,22 +85,29 @@ def merge_leads_into_ledger(campaign_id, lead_ids):
             save_ledger(ledger)
         return entry['lead_ids']
 
-def prune_leads_from_ledger(campaign_id, remove_ids):
-    """Remove reassigned Lead IDs from a campaign's frozen ledger — BOTH the
-    lead_ids list AND the meetings dict. When a lead moves to a different ACTIVE
-    campaign it must stop counting here entirely (leads, calls, AND meetings),
-    otherwise its meeting shows up under both the old and the new campaign.
+def prune_leads_from_ledger(campaign_id, remove_ids, keep_meeting_ids=()):
+    """Remove reassigned Lead IDs from a campaign's frozen ledger.
+
+    lead_ids are ALWAYS removed (so leads/calls/emails stop double-counting
+    across two active campaigns). Each lead's meetings entry is removed too,
+    EXCEPT for ids in keep_meeting_ids: a meeting is a one-time historical
+    event earned while the lead was in THIS campaign, so it stays credited
+    here when the lead's NEW campaign window doesn't cover the meeting date
+    (otherwise the meeting would count nowhere). The caller decides
+    keep_meeting_ids; the invariant is that every meeting counts in exactly
+    one campaign — never zero, never two.
     Only called for Active campaigns (see campaign_metrics); Completed/Paused
     campaigns are never pruned, so they keep their full frozen history."""
     rm = set(remove_ids)
     if not rm:
         return
+    keep = set(keep_meeting_ids)
     with _ledger_lock:
         ledger = load_ledger()
         entry  = _get_or_create_entry(ledger, campaign_id)
         kept     = [lid for lid in entry['lead_ids'] if lid not in rm]
         meetings = entry.get('meetings') or {}
-        dropped_m = [lid for lid in meetings if lid in rm]
+        dropped_m = [lid for lid in meetings if lid in rm and lid not in keep]
         if len(kept) != len(entry['lead_ids']) or dropped_m:
             entry['lead_ids'] = kept
             for lid in dropped_m:
@@ -108,21 +115,23 @@ def prune_leads_from_ledger(campaign_id, remove_ids):
             entry['meetings'] = meetings
             save_ledger(ledger)
 
-def _moved_lead_ids(stale_ids, this_campaign_name):
-    """Of stale_ids (frozen but no longer in this campaign), return those whose
-    current Campaign__c is a DIFFERENT non-blank campaign — i.e. truly reassigned
-    elsewhere. Leads with a blank/null Campaign__c are NOT returned: they were
-    removed from all campaigns (not reassigned) and stay frozen so this campaign
-    keeps credit for activity logged while they were members."""
-    moved = []
+def _moved_leads_map(stale_ids, this_campaign_name):
+    """Of stale_ids (frozen but no longer in this campaign), return
+    {lead_id: new_campaign_name} for those whose current Campaign__c is a
+    DIFFERENT non-blank campaign — i.e. truly reassigned elsewhere. Leads with
+    a blank/null Campaign__c are NOT returned: they were removed from all
+    campaigns (not reassigned) and stay frozen so this campaign keeps credit
+    for activity logged while they were members."""
+    moved = {}
     nm = esc(this_campaign_name)
     for i in range(0, len(stale_ids), _BATCH_SIZE):
         batch   = stale_ids[i:i + _BATCH_SIZE]
         ids_str = ','.join(f"'{x}'" for x in batch)
-        res = soql(f"SELECT Id FROM Lead WHERE Id IN ({ids_str}) "
+        res = soql(f"SELECT Id, Campaign__c FROM Lead WHERE Id IN ({ids_str}) "
                    f"AND Campaign__c != null AND Campaign__c != '{nm}'",
                    paginate=False)
-        moved.extend(r['Id'] for r in (res or {}).get('records', []))
+        for r in (res or {}).get('records', []):
+            moved[r['Id']] = (r.get('Campaign__c') or '').strip()
     return moved
 
 def merge_meetings_into_ledger(campaign_id, sf_records, start=None, end=None):
@@ -1004,13 +1013,37 @@ def campaign_metrics(c, start_override=None, end_override=None):
         # its meeting lingered, so scan the meetings dict too — otherwise that
         # orphaned meeting keeps showing under the old campaign.
         _entry  = load_ledger().get(c['id']) or {}
-        mtg_keys = list((_entry.get('meetings') or {}).keys())
+        _mtgs   = _entry.get('meetings') or {}
+        mtg_keys = list(_mtgs.keys())
         cand    = set(frozen_lead_ids) | set(mtg_keys)
         stale   = [lid for lid in cand if lid not in cur_set]
         if stale:
-            moved = _moved_lead_ids(stale, c['name'])
+            moved = _moved_leads_map(stale, c['name'])
             if moved:
-                prune_leads_from_ledger(c['id'], moved)
+                # A moved lead's MEETING stays credited to THIS campaign unless
+                # its new campaign's window covers the meeting date (then it
+                # moves and counts there instead). Every meeting counts in
+                # exactly one campaign — never zero, never two. New campaigns
+                # not tracked on the dashboard can't count it, so keep it here.
+                windows = {(cc.get('name') or '').strip():
+                           ((cc.get('start_date') or '').strip(),
+                            (cc.get('end_date') or '').strip())
+                           for cc in load_campaigns()}
+                keep_mtg = []
+                for lid, new_name in moved.items():
+                    m = _mtgs.get(lid)
+                    if not m:
+                        continue
+                    mdate = (m.get('date') or '')[:10]
+                    win = windows.get(new_name)
+                    counted_in_new = bool(
+                        win and mdate
+                        and (not win[0] or mdate >= win[0])
+                        and (not win[1] or mdate <= win[1])
+                    )
+                    if not counted_in_new:
+                        keep_mtg.append(lid)
+                prune_leads_from_ledger(c['id'], list(moved), keep_meeting_ids=keep_mtg)
                 mv = set(moved)
                 frozen_lead_ids = [lid for lid in frozen_lead_ids if lid not in mv]
 
