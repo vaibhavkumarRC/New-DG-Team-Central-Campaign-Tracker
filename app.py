@@ -1621,7 +1621,13 @@ def auto_complete_campaigns():
     Paused campaigns are left untouched. Also back-fills missing end_date with
     start_date + 14 days."""
     camps   = load_campaigns()
-    today   = date.today()
+    # Use IST (org/business timezone), NOT the server's UTC date. end_date is an
+    # IST calendar day, so a campaign must flip to Completed at 00:00 IST the day
+    # after it ends. date.today() (UTC) leaves it Active until UTC rolls over
+    # (05:30 IST) — and since the 5 AM IST sync fires at 23:30 UTC (still "yesterday"
+    # in UTC), a campaign would otherwise stay Active a full extra day, until the
+    # 5 PM IST sync. _ist_today() is the same helper the freeze logic already uses.
+    today   = datetime.strptime(_ist_today(), '%Y-%m-%d').date()
     changed = False
     for c in camps:
         # Back-fill end_date if missing but start_date exists
