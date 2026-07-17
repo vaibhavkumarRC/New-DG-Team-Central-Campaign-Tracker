@@ -1582,6 +1582,7 @@ tfoot td {
       </div>
       <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
         <input class="search-box" id="meetingsSearch" type="search" placeholder="Search name / company…" style="max-width:220px;margin:0" oninput="filterMeetingsTable()">
+        <button class="btn btn-ghost btn-sm" id="meetingsExportBtn" onclick="exportMeetingsCSV()" title="Download the rows shown below as CSV">⬇ Export CSV</button>
         <button class="modal-close" onclick="closeMeetingsModal()">×</button>
       </div>
     </div>
@@ -2790,7 +2791,7 @@ function renderDashboard() {
             const aE  = c.emails_per_emailed_lead || 0;
             return `<tr onclick="openModal('${c.id}')" style="cursor:pointer">
               <td class="td-center" style="color:var(--text-dim)">${i+1}</td>
-              <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;font-weight:600" title="${esc(c.name)}">${esc(c.name)}</td>
+              <td style="font-weight:600" title="${esc(c.name)}">${esc(c.name)}</td>
               <td style="text-align:center;color:var(--text-muted);font-size:11px;white-space:nowrap">${esc(c.sdr_owner||'—')}</td>
               <td style="text-align:center;color:var(--text-muted);font-size:11px;white-space:nowrap">${c.start_date?fmtDay(c.start_date):'—'}</td>
               <td style="text-align:center;font-size:11px;white-space:nowrap"><span style="color:var(--text-muted)">${c.end_date?fmtDay(c.end_date):'—'}</span>${_endBadge(c)}</td>
@@ -4123,6 +4124,38 @@ async function quickAddCampaign() {
 
 // ── MEETINGS LEADS MODAL ─────────────────────────────────────────────────────
 let _meetingsAllLeads = [];
+// The rows currently rendered in the modal (after the search box narrows them).
+// Export CSV uses this so the file always matches exactly what's on screen.
+let _meetingsShownLeads = [];
+
+// Download the meetings-modal rows as CSV: Salesforce Lead ID, Name, Title,
+// Company, Campaign, SDR.
+function exportMeetingsCSV() {
+  const rows = _meetingsShownLeads || [];
+  if (!rows.length) { alert('No meetings to export.'); return; }
+  // Prefer the explicit id from the API; fall back to parsing the Salesforce URL
+  // so this still works on any older cached payload without an id.
+  const leadId = l => l.id || (((l.sf_url || '').match(/\/Lead\/(\w+)\//) || [])[1] || '');
+  // '—' is the API's placeholder for a blank field — export it as empty.
+  const cell = v => {
+    const s = (v == null ? '' : String(v)) === '—' ? '' : (v == null ? '' : String(v));
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [['Salesforce Lead ID','Name','Title','Company','Campaign','SDR'].join(',')];
+  rows.forEach(l => lines.push(
+    [leadId(l), l.name, l.title, l.company, l.campaign, l.sdr].map(cell).join(',')
+  ));
+  // Leading BOM so Excel reads UTF-8 (accented names/companies) correctly.
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `meetings_generated_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 async function openMeetingsModal(campaignName, sdrFilter, segmentFilter, podFilter, startDate, endDate, campStatus, campaignType) {
   q('meetingsOverlay').classList.add('open');
@@ -4178,6 +4211,7 @@ function filterMeetingsTable() {
 }
 
 function renderMeetingsTable(leads) {
+  _meetingsShownLeads = leads || [];   // keep Export CSV in sync with the table
   if(!leads.length){
     q('meetingsTableWrap').innerHTML = '<div class="empty" style="padding:40px"><div class="empty-icon">🤝</div>No meetings found.</div>';
     return;

@@ -215,6 +215,7 @@ def meetings_leads_from_ledger(meetings, start=None, end=None):
     rows.sort(key=lambda x: x[1].get('date',''), reverse=True)
     return [
         {
+            'id':      lid,   # Salesforce Lead Id (the ledger key) — used by CSV export
             'name':    d.get('name','—'),
             'title':   d.get('title','—'),
             'company': d.get('company','—'),
@@ -223,7 +224,7 @@ def meetings_leads_from_ledger(meetings, start=None, end=None):
             'sf_url':  d.get('sf_url',''),
             'campaign': '',  # will be filled by caller
         }
-        for _, d in rows
+        for lid, d in rows
     ]
 
 # SOQL IN-clause helper — batches large ID lists to stay within query limits
@@ -2486,6 +2487,7 @@ def api_meetings_leads():
     for r in records:
         lid = r.get('Id') or ''
         leads.append({
+            'id':      lid,   # Salesforce Lead Id — used by CSV export
             'name':    r.get('Name') or '—',
             'title':   r.get('Title') or '—',
             'company': r.get('Company') or '—',
