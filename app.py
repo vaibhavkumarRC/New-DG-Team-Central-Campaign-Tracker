@@ -3078,16 +3078,52 @@ def _li_stage_leads(subject, with_detail):
 
 
 def _li_lead_detail(ids):
-    """Batched Lead lookup → {id: {Id,Name,Company,Campaign__c}} (15- & 18-char keys)."""
+    """Batched Lead lookup → {id: {Id,Name,Title,Company,Campaign__c}} (15- & 18-char keys)."""
     out, ids = {}, [i for i in ids if i]
     for i in range(0, len(ids), _BATCH_SIZE):
         batch   = ids[i:i + _BATCH_SIZE]
         ids_str = ','.join(f"'{x}'" for x in batch)
-        res = soql(f"SELECT Id, Name, Company, Campaign__c FROM Lead WHERE Id IN ({ids_str})",
+        res = soql(f"SELECT Id, Name, Title, Company, Campaign__c FROM Lead WHERE Id IN ({ids_str})",
                    paginate=False)
         for r in (res or {}).get('records', []):
             out[r['Id']] = r
             out[r['Id'][:15]] = r
+    return out
+
+
+# Subject markers per LinkedIn stage — mirror the LI_*_SUBJ LIKE patterns above.
+# Each marker is unique (no marker is a substring of another), so one combined
+# Task scan can be bucketed into the four stages in Python.
+_LI_STAGE_MARKERS = (
+    ('accepted',  'CONNECTION_REQUEST_ACCEPTED'),
+    ('sent',      'CONNECTION_REQUEST_SENT'),
+    ('msg_reply', 'HeyReach - MESSAGE_REPLY_RECEIVED'),
+    ('msg_sent',  'HeyReach - MESSAGE_SENT'),
+)
+
+def _li_all_stage_dates():
+    """{WhoId: {stage: 'YYYY-MM-DD'}} — LATEST task date per lead per stage, from
+    ONE combined scan (same cost as a single _li_stage_leads call).
+
+    Uses each stage's EXACT subject, not the cumulative one: a date is reported
+    only when that action was actually logged. So a lead that only has a reply
+    task gets a reply date and blanks for the upstream stages, rather than the
+    reply's date being misreported as the 'sent' date."""
+    combined = f"({LI_SENT_SUBJ}) OR ({LI_ACC_SUBJ}) OR ({LI_MSG_SUBJ}) OR ({LI_REPLY_SUBJ})"
+    res = soql(f"SELECT WhoId, ActivityDate, Subject FROM Task WHERE ({combined}) "
+               f"AND ActivityDate != null ORDER BY ActivityDate DESC", paginate=True)
+    out = {}
+    for r in (res or {}).get('records', []):
+        wid  = r.get('WhoId')
+        subj = r.get('Subject') or ''
+        if not wid:
+            continue
+        for stage, marker in _LI_STAGE_MARKERS:
+            if marker in subj:
+                per = out.setdefault(wid, {})
+                if stage not in per:      # first occurrence = latest (ORDER BY DESC)
+                    per[stage] = (r.get('ActivityDate') or '')[:10]
+                break
     return out
 
 
@@ -3114,10 +3150,29 @@ def api_linkedin_leads():
         return jsonify(empty)
     names_in = ','.join("'" + esc(n) + "'" for n in names)
 
+    # SDR for a lead = the owner of the campaign it's currently enrolled in.
+    sdr_by_camp = {(c.get('name') or '').strip(): (c.get('sdr_owner') or '').strip()
+                   for c in camps_by_id.values()}
+    # Actual per-stage LinkedIn dates for every lead (one combined scan) so the
+    # CSV export can carry all four dates regardless of which card was clicked.
+    stage_dates = _li_all_stage_dates()
+
     def row(ld, wid, info=None):
-        r = {'name': ld.get('Name') or '—', 'company': ld.get('Company') or '—',
+        lid   = ld.get('Id') or wid or ''
+        cname = (ld.get('Campaign__c') or '').strip()
+        sd    = (stage_dates.get(wid) or stage_dates.get(lid)
+                 or stage_dates.get(lid[:15]) or {})
+        r = {'id': lid,
+             'name': ld.get('Name') or '—', 'title': ld.get('Title') or '—',
+             'company': ld.get('Company') or '—',
              'campaign': ld.get('Campaign__c') or '—',
-             'sf_url': f"{SF_BASE_URL}/lightning/r/Lead/{wid}/view" if wid else ''}
+             'sdr': sdr_by_camp.get(cname) or '—',
+             # blank when that action was never logged for this lead
+             'li_sent_date':     sd.get('sent', ''),
+             'li_accepted_date': sd.get('accepted', ''),
+             'li_msg_sent_date': sd.get('msg_sent', ''),
+             'li_reply_date':    sd.get('msg_reply', ''),
+             'sf_url': f"{SF_BASE_URL}/lightning/r/Lead/{lid}/view" if lid else ''}
         if info is not None:
             r.update({'subject': info.get('subject') or '—',
                       'content': info.get('content') or '',
@@ -3144,7 +3199,7 @@ def api_linkedin_leads():
         enrolled_count  = cnt(soql(f"SELECT COUNT(Id) FROM Lead WHERE Campaign__c IN ({names_in})",
                                    paginate=False))
         remaining_count = max(enrolled_count - len(done_ids), 0)
-        res = soql(f"SELECT Id, Name, Company, Campaign__c FROM Lead "
+        res = soql(f"SELECT Id, Name, Title, Company, Campaign__c FROM Lead "
                    f"WHERE Campaign__c IN ({names_in}) LIMIT {_LI_LIST_CAP + len(done_ids) + 50}",
                    paginate=False)
         for r in (res or {}).get('records', []):

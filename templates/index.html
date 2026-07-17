@@ -1630,6 +1630,7 @@ tfoot td {
       </div>
       <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
         <input class="search-box" id="liSearch" type="search" placeholder="Search name / company…" style="max-width:200px;margin:0" oninput="renderLiActiveTab()">
+        <button class="btn btn-ghost btn-sm" id="liExportBtn" onclick="exportLinkedInCSV()" title="Download the rows shown below as CSV">⬇ Export CSV</button>
         <button class="modal-close" onclick="closeLinkedInModal()">×</button>
       </div>
     </div>
@@ -3189,6 +3190,26 @@ function renderLiActiveTab(){
   if(S.liTab === 'remaining') renderLiRemTable(); else renderLiDoneTable();
 }
 
+// Rows currently rendered in the LinkedIn modal (active tab + search filter).
+let _liShownRows = [];
+
+// Download the LinkedIn-modal rows as CSV. Always carries all four stage dates
+// (sent / accepted / msg sent / reply) regardless of which card was clicked; a
+// date is blank when that action was never logged for the lead.
+function exportLinkedInCSV() {
+  const rows = _liShownRows || [];
+  if (!rows.length) { alert('No leads to export.'); return; }
+  const tab = (S.liTab === 'remaining') ? 'remaining' : 'done';
+  _csvDownload(
+    `linkedin_${S.liType || 'sent'}_${tab}_${_csvToday()}.csv`,
+    ['Salesforce Lead ID','Name','Title','Company','Campaign','SDR',
+     'LinkedIn Req Sent Date','LinkedIn Req Accepted Date',
+     'LinkedIn Msgs Sent Date','LinkedIn Replies Date'],
+    rows.map(r => [_csvLeadId(r), r.name, r.title, r.company, r.campaign, r.sdr,
+                   r.li_sent_date, r.li_accepted_date, r.li_msg_sent_date, r.li_reply_date])
+  );
+}
+
 function _liNameCell(r){
   return r.sf_url
     ? `<span style="color:var(--gold-light);cursor:pointer" onclick="window.open('${r.sf_url}','_blank')">${esc(r.name)} <span style="font-size:10px;opacity:.6">↗</span></span>`
@@ -3200,6 +3221,7 @@ function renderLiDoneTable(){
   const term = (q('liSearch')?.value || '').toLowerCase();
   let rows = S.liDone || [];
   if(term) rows = rows.filter(r => (r.name+' '+r.company+' '+r.campaign).toLowerCase().includes(term));
+  _liShownRows = rows;   // keep Export CSV in sync with the table
   if(!rows.length){
     q('liDoneTableWrap').innerHTML = `<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:13px">No leads here yet.</div>`;
     return;
@@ -3227,6 +3249,7 @@ function renderLiRemTable(){
   const term = (q('liSearch')?.value || '').toLowerCase();
   let rows = S.liRemaining || [];
   if(term) rows = rows.filter(r => (r.name+' '+r.company+' '+r.campaign).toLowerCase().includes(term));
+  _liShownRows = rows;   // keep Export CSV in sync with the table
   if(!rows.length){
     q('liRemTableWrap').innerHTML = `<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:13px">None remaining — all caught up. 🎉</div>`;
     return;
@@ -4128,33 +4151,39 @@ let _meetingsAllLeads = [];
 // Export CSV uses this so the file always matches exactly what's on screen.
 let _meetingsShownLeads = [];
 
+// ── Shared CSV export helpers (used by the meetings + LinkedIn modals) ───────
+// Salesforce Lead Id: prefer the explicit id from the API, else parse it out of
+// the record URL so this still works on an older cached payload without an id.
+const _csvLeadId = l => l.id || (((l.sf_url || '').match(/\/Lead\/(\w+)\//) || [])[1] || '');
+// '—' is the API's placeholder for a blank field — export it as empty.
+const _csvCell = v => {
+  const s = (v == null || String(v) === '—') ? '' : String(v);
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+};
+// header: array of column names. rows: array of value-arrays (same length).
+function _csvDownload(filename, header, rows) {
+  const lines = [header.map(_csvCell).join(',')];
+  rows.forEach(r => lines.push(r.map(_csvCell).join(',')));
+  // Leading BOM so Excel reads UTF-8 (accented names/companies) correctly.
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+const _csvToday = () => new Date().toISOString().slice(0, 10);
+
 // Download the meetings-modal rows as CSV: Salesforce Lead ID, Name, Title,
 // Company, Campaign, SDR.
 function exportMeetingsCSV() {
   const rows = _meetingsShownLeads || [];
   if (!rows.length) { alert('No meetings to export.'); return; }
-  // Prefer the explicit id from the API; fall back to parsing the Salesforce URL
-  // so this still works on any older cached payload without an id.
-  const leadId = l => l.id || (((l.sf_url || '').match(/\/Lead\/(\w+)\//) || [])[1] || '');
-  // '—' is the API's placeholder for a blank field — export it as empty.
-  const cell = v => {
-    const s = (v == null ? '' : String(v)) === '—' ? '' : (v == null ? '' : String(v));
-    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  };
-  const lines = [['Salesforce Lead ID','Name','Title','Company','Campaign','SDR'].join(',')];
-  rows.forEach(l => lines.push(
-    [leadId(l), l.name, l.title, l.company, l.campaign, l.sdr].map(cell).join(',')
-  ));
-  // Leading BOM so Excel reads UTF-8 (accented names/companies) correctly.
-  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = `meetings_generated_${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  _csvDownload(
+    `meetings_generated_${_csvToday()}.csv`,
+    ['Salesforce Lead ID','Name','Title','Company','Campaign','SDR'],
+    rows.map(l => [_csvLeadId(l), l.name, l.title, l.company, l.campaign, l.sdr])
+  );
 }
 
 async function openMeetingsModal(campaignName, sdrFilter, segmentFilter, podFilter, startDate, endDate, campStatus, campaignType) {
