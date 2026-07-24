@@ -2404,6 +2404,7 @@ def api_meetings_leads():
     Optional ?start=YYYY-MM-DD&end=YYYY-MM-DD overrides campaign date range
     (used when a period filter is active on the dashboard)."""
     camp      = request.args.get('campaign', '').strip()
+    sdr       = request.args.get('sdr',      '').strip()
     segment   = request.args.get('segment',  '').strip()
     pod_team  = request.args.get('pod_team', '').strip()
     campaign_type = request.args.get('campaign_type', '').strip()
@@ -2444,6 +2445,13 @@ def api_meetings_leads():
         # All campaigns view — serve entirely from the frozen ledger (no SOQL).
         # This is instant regardless of how many campaigns exist.
         camps_cfg = load_campaigns()
+        # SDR filter mirrors the dashboard KPI card: the card counts meetings in
+        # campaigns OWNED by the selected SDR (cpsBase filters on sdr_owner), so
+        # the modal must include the same campaigns — otherwise it shows all
+        # meetings while the card shows only that SDR's. norm_sdr handles aliases.
+        if sdr:
+            camps_cfg = [c for c in camps_cfg
+                         if norm_sdr((c.get('sdr_owner') or '').strip()) == norm_sdr(sdr)]
         if segment:
             camps_cfg = [c for c in camps_cfg if (c.get('segment') or '').strip() == segment]
         if pod_team:

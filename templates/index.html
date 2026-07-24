@@ -4190,8 +4190,9 @@ async function openMeetingsModal(campaignName, sdrFilter, segmentFilter, podFilt
   q('meetingsOverlay').classList.add('open');
   q('meetingsSearch').value = '';
   const periodNote = startDate ? ` · ${fmtDay(startDate)} – ${fmtDay(endDate||startDate)}` : '';
-  const subLabel = campaignName ? `Campaign: ${campaignName}`
-    : (segmentFilter ? `Segment: ${segmentFilter}` : (podFilter ? `POD: ${podFilter}` : 'All campaigns')) + periodNote + ' · loading…';
+  const _ctxLabel = campaignName ? `Campaign: ${campaignName}`
+    : (sdrFilter ? `SDR: ${sdrFilter}` : (segmentFilter ? `Segment: ${segmentFilter}` : (podFilter ? `POD: ${podFilter}` : 'All campaigns')));
+  const subLabel = _ctxLabel + (campaignName ? '' : periodNote) + ' · loading…';
   q('meetingsModalSub').textContent = subLabel;
   q('meetingsTableWrap').innerHTML = `
     <div style="padding:40px;text-align:center;color:var(--text-dim)">
@@ -4219,8 +4220,8 @@ async function openMeetingsModal(campaignName, sdrFilter, segmentFilter, podFilt
     const d   = await r.json();
     _meetingsAllLeads = d.leads || [];
     const ctx = campaignName ? `Campaign: ${campaignName}`
-      : (segmentFilter ? `Segment: ${segmentFilter}` : (podFilter ? `POD: ${podFilter}` : 'All campaigns'));
-    q('meetingsModalSub').textContent = `${ctx}${periodNote} · ${_meetingsAllLeads.length} meetings`;
+      : (sdrFilter ? `SDR: ${sdrFilter}` : (segmentFilter ? `Segment: ${segmentFilter}` : (podFilter ? `POD: ${podFilter}` : 'All campaigns')));
+    q('meetingsModalSub').textContent = `${ctx}${campaignName?'':periodNote} · ${_meetingsAllLeads.length} meetings`;
     renderMeetingsTable(_meetingsAllLeads);
   } catch(e) {
     q('meetingsTableWrap').innerHTML = `<div style="padding:30px;color:var(--red);text-align:center">Failed to load: ${e.message}</div>`;
