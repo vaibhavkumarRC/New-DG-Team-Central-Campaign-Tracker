@@ -21,6 +21,52 @@ REPORTING_SNAPSHOTS_FILE = os.path.join(BASE, 'reporting_snapshots.json')
 SEGMENTS_FILE = os.path.join(DATA_DIR, 'segments.json')
 LEDGER_FILE   = os.path.join(DATA_DIR, 'meeting_ledger.json')
 
+# ── Data durability (Tier 0) ─────────────────────────────────────────────────
+# The critical data files (meeting_ledger.json especially — its meeting
+# attribution can't be rebuilt from Salesforce) are protected by three things:
+#   1. Atomic writes: every save goes to a temp file + fsync + os.replace, so a
+#      crash/SIGTERM (Railway redeploy) mid-write can never leave a half-written
+#      or truncated file.
+#   2. Rolling on-volume backups: after each full sync a timestamped copy is kept
+#      under /data/backups (last _BACKUP_KEEP retained).
+#   3. Off-box backups: the same files are pushed to a private GitHub repo so
+#      they survive even a total loss of the Railway volume.
+BACKUP_DIR   = os.path.join(DATA_DIR, 'backups')
+_BACKUP_KEEP = 14   # rolling on-volume copies to keep (~1 week at 2 syncs/day)
+BACKUP_REPO  = os.environ.get('BACKUP_REPO', 'vaibhavkumarRC/data-backups')
+
+def _atomic_write_json(path, data, **dump_kwargs):
+    """Write JSON atomically: temp file (unique per thread) → fsync → os.replace.
+    The destination is never left partially written if the process dies mid-write."""
+    tmp = f'{path}.{os.getpid()}.{threading.get_ident()}.tmp'
+    try:
+        with open(tmp, 'w') as f:
+            json.dump(data, f, **dump_kwargs)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)          # atomic on the same filesystem
+    finally:
+        if os.path.exists(tmp):
+            try: os.remove(tmp)
+            except Exception: pass
+
+def _newest_valid_backup(prefix):
+    """Parse and return the newest READABLE rolling backup whose name starts with
+    `prefix` (e.g. 'meeting_ledger.'), or None if there are no valid backups.
+    Timestamped names sort chronologically, so reverse-sort = newest first."""
+    try:
+        names = sorted((n for n in os.listdir(BACKUP_DIR)
+                        if n.startswith(prefix) and n.endswith('.bak')), reverse=True)
+    except Exception:
+        return None
+    for name in names:
+        try:
+            with open(os.path.join(BACKUP_DIR, name)) as f:
+                return json.load(f)
+        except Exception:
+            continue
+    return None
+
 # ── Campaign ledger ────────────────────────────────────────────────────────────
 # Stores two frozen datasets per campaign so metrics remain correct even after
 # leads are reassigned to a different campaign:
@@ -53,12 +99,94 @@ def load_ledger():
             with open(LEDGER_FILE) as f:
                 return json.load(f)
         except Exception:
-            pass
+            # Corrupt/unreadable ledger — do NOT silently return {}: the next
+            # save would overwrite history with a near-empty ledger. Self-heal
+            # from the newest good rolling backup instead. The next legitimate
+            # save (atomic, under the lock) then rewrites a clean main file.
+            restored = _newest_valid_backup('meeting_ledger.json.')
+            if restored is not None:
+                print('[ledger] CRITICAL: meeting_ledger.json unreadable — '
+                      'restored from newest rolling backup')
+                return restored
+            # No backup to fall back on: fail LOUD rather than destroy the
+            # (recoverable) corrupt file by overwriting it with {}.
+            print('[ledger] CRITICAL: meeting_ledger.json unreadable AND no '
+                  'valid backup exists — refusing to load empty')
+            raise RuntimeError('meeting_ledger.json is corrupt and no backup exists')
     return {}
 
 def save_ledger(ledger):
-    with open(LEDGER_FILE, 'w') as f:
-        json.dump(ledger, f)
+    _atomic_write_json(LEDGER_FILE, ledger)
+
+def backup_data_files():
+    """Snapshot the critical data files after a successful sync:
+      1) rolling timestamped copies on the /data volume (fast local safety net)
+      2) push to the private off-box GitHub repo (survives total volume loss)
+    Best-effort: never raises into the sync path."""
+    import shutil
+    stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    for path in (LEDGER_FILE, CAMPS_FILE, SEGMENTS_FILE):
+        try:
+            if not os.path.exists(path):
+                continue
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+            base = os.path.basename(path)                       # e.g. meeting_ledger.json
+            shutil.copy2(path, os.path.join(BACKUP_DIR, f'{base}.{stamp}.bak'))
+            _prune_backups(f'{base}.', _BACKUP_KEEP)
+        except Exception as e:
+            print(f'[backup] local backup failed for {path}: {e}')
+    try:
+        _github_backup(stamp)
+    except Exception as e:
+        print(f'[backup] github backup step failed: {e}')
+
+def _prune_backups(prefix, keep):
+    try:
+        names = sorted(n for n in os.listdir(BACKUP_DIR)
+                       if n.startswith(prefix) and n.endswith('.bak'))
+        for old in names[:-keep]:
+            try: os.remove(os.path.join(BACKUP_DIR, old))
+            except Exception: pass
+    except Exception:
+        pass
+
+def _github_backup(stamp):
+    """Push each data file to the private BACKUP_REPO via the GitHub contents
+    API (overwrites the same path → full commit history = versioned restore
+    points). No-op unless BACKUP_GITHUB_TOKEN is set, so the app runs fine
+    before off-box backups are configured."""
+    import base64
+    import urllib.error as _urllib_err
+    token = os.environ.get('BACKUP_GITHUB_TOKEN', '').strip()
+    if not token:
+        return   # not configured yet — graceful no-op
+    hdrs = {'Authorization': f'Bearer {token}',
+            'Accept': 'application/vnd.github+json',
+            'User-Agent': 'dg-dashboard-backup'}
+    for path in (LEDGER_FILE, CAMPS_FILE, SEGMENTS_FILE):
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, 'rb') as f:
+                content_b64 = base64.b64encode(f.read()).decode()
+            base = os.path.basename(path)
+            url  = f'https://api.github.com/repos/{BACKUP_REPO}/contents/{base}'
+            # Need the current file's blob sha to update it (404 = new file).
+            sha = None
+            try:
+                with _urllib_req.urlopen(_urllib_req.Request(url, headers=hdrs), timeout=15) as r:
+                    sha = json.loads(r.read()).get('sha')
+            except _urllib_err.HTTPError as e:
+                if e.code != 404:
+                    raise
+            body = {'message': f'backup {base} @ {stamp}', 'content': content_b64}
+            if sha:
+                body['sha'] = sha
+            put = _urllib_req.Request(url, method='PUT', data=json.dumps(body).encode(),
+                                      headers={**hdrs, 'Content-Type': 'application/json'})
+            _urllib_req.urlopen(put, timeout=20)
+        except Exception as e:
+            print(f'[backup] github backup failed for {os.path.basename(path)}: {e}')
 
 def _get_or_create_entry(ledger, campaign_id):
     if campaign_id not in ledger:
@@ -352,8 +480,7 @@ def load_segments():
     return []
 
 def save_segments(segs):
-    with open(SEGMENTS_FILE, 'w') as f:
-        json.dump(segs, f)
+    _atomic_write_json(SEGMENTS_FILE, segs)
 SF_ORG      = os.environ.get('SF_ORG',      'vaibhavkumar@rapidclaims.ai')
 SF_BASE_URL = os.environ.get('SF_BASE_URL', 'https://data-page-6243.my.salesforce.com')
 NPV_START_DATE = '2026-07-01T00:00:00Z'   # Q3 2026: Opportunities created after 30 June 2026
@@ -1502,15 +1629,21 @@ def _run_sync():
     cache['sync_progress'] = 100
 
     persist_cache()
+    # After a successful full sync the ledger is fully up to date — snapshot the
+    # critical data files (rolling on-volume + off-box GitHub). Best-effort.
+    try:
+        backup_data_files()
+    except Exception as e:
+        print(f'[backup] backup_data_files failed: {e}')
 
 def persist_cache():
     """Write the in-memory campaign cache to disk so single-campaign syncs and
     cache patches survive app restarts/deploys (otherwise cards revert to the
     last full-sync snapshot after every Railway deploy)."""
     try:
-        with open(CACHE_FILE, 'w') as f:
-            json.dump({'campaigns': cache['campaigns'], 'sdr_stats': cache['sdr_stats'],
-                       'totals': cache['totals'], 'last_sync': cache['last_sync']}, f)
+        _atomic_write_json(CACHE_FILE, {
+            'campaigns': cache['campaigns'], 'sdr_stats': cache['sdr_stats'],
+            'totals': cache['totals'], 'last_sync': cache['last_sync']})
     except Exception as e:
         print(f'[cache] save error: {e}')
 
@@ -1593,8 +1726,7 @@ def load_campaigns():
     return []
 
 def save_campaigns(data):
-    with open(CAMPS_FILE, 'w') as f:
-        json.dump(data, f, indent=2)
+    _atomic_write_json(CAMPS_FILE, data, indent=2)
 
 def effective_end_date(c):
     """Return the effective end date for a campaign as a date object.
