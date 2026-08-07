@@ -468,6 +468,30 @@ def _agg_sdr_count_for_ids(lead_ids, extra_filter):
                 agg[key] += int(rec.get('expr0', 0) or 0)
     return {'records': [{'Meeting_Generated_by__c': k, 'expr0': v} for k, v in agg.items()]}
 
+def _agg_disposition_for_ids(lead_ids, dt_task, min_dur=None):
+    """{CallDisposition: count} of [Nooks Call] connect-disposition Tasks over the
+    given lead IDs (batched), optionally restricted to CallDurationInSeconds >=
+    min_dur. Used by the funnel drop-off breakdown: called once for ALL connects
+    and once with the conversation threshold — the difference per disposition is
+    the 'connected but never became a conversation' population."""
+    out = {}
+    if not lead_ids:
+        return out
+    dur = f" AND CallDurationInSeconds >= {int(min_dur)}" if min_dur else ""
+    for i in range(0, len(lead_ids), _BATCH_SIZE):
+        batch   = lead_ids[i:i + _BATCH_SIZE]
+        ids_str = ','.join(f"'{lid}'" for lid in batch)
+        res = soql(f"SELECT CallDisposition, COUNT(Id) FROM Task "
+                   f"WHERE Subject LIKE '[Nooks Call]%' "
+                   f"AND CallDisposition IN ({CONNECT_DISPOSITIONS}) "
+                   f"AND WhoId IN ({ids_str}){dt_task}{dur} "
+                   f"GROUP BY CallDisposition", paginate=False)
+        for rec in (res or {}).get('records', []):
+            d = (rec.get('CallDisposition') or '').strip()
+            if d:
+                out[d] = out.get(d, 0) + int(rec.get('expr0', 0) or 0)
+    return out
+
 DEFAULT_SEGMENTS = ['EPIC Campaign', 'TruBridge Campaign', 'Factors Data', 'Hiring Data', 'High Intent Data']
 
 def load_segments():
@@ -1311,6 +1335,11 @@ def campaign_metrics(c, start_override=None, end_override=None):
             f_lireply = ex.submit(_count_distinct_who_for_ids, current_lead_ids, li_reply_cum, '')
             f_ucalled = ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, call_subj,  dt_task)
             f_uemailed= ex.submit(_count_distinct_who_for_ids, frozen_lead_ids, email_subj, dt_task)
+            # Funnel drop-off (Tier 1): connect-disposition counts, total + ≥60s.
+            # Raw facts only — the reason-bucket mapping lives in the frontend so
+            # frozen campaigns can be re-bucketed later without re-querying.
+            f_dispall = ex.submit(_agg_disposition_for_ids, frozen_lead_ids, dt_task)
+            f_dispcnv = ex.submit(_agg_disposition_for_ids, frozen_lead_ids, dt_task, CONVERSATION_THRESHOLD_SECS)
 
             # All frozen — use lead IDs from ledger so counts don't drift
             # when a lead is reassigned to a different campaign
@@ -1335,6 +1364,10 @@ def campaign_metrics(c, start_override=None, end_override=None):
         li_msg_reply         = f_lireply.result()
         unique_leads_called  = f_ucalled.result()
         unique_leads_emailed = f_uemailed.result()
+        # {disposition: [total_connects, conversations]} — conversations ⊆ total
+        _disp_all = f_dispall.result()
+        _disp_cnv = f_dispcnv.result()
+        call_dispositions = {d: [n, _disp_cnv.get(d, 0)] for d, n in _disp_all.items()}
         results['meeting_done']   = f_done.result()   # int
         results['meeting_noshow'] = f_noshow.result() # int
         results['sql_gen']        = f_sql.result()    # int
@@ -1401,6 +1434,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
         'calls_per_called_lead':    calls_per_called_lead,
         'emails_per_emailed_lead':  emails_per_emailed_lead,
         'meetings':           total_meetings,
+        'call_dispositions':  call_dispositions,
         's1_created':         int(manual_s1) if has_manual_s1 else cnt(results.get('s1')),
         's1_is_manual':       has_manual_s1,
         'meeting_done':       results.get('meeting_done', 0),
@@ -1605,6 +1639,7 @@ def _run_sync():
             r['total_conversations']   = old.get('total_conversations', 0)
             r['unique_leads_called']   = old.get('unique_leads_called', 0)
             r['calls_per_called_lead'] = old.get('calls_per_called_lead', 0)
+            r['call_dispositions']     = old.get('call_dispositions', {})
         if r.get('total_emails', 0) == 0 and old.get('total_emails', 0) > 0:
             r['total_emails']             = old['total_emails']
             r['unique_leads_emailed']     = old.get('unique_leads_emailed', 0)
@@ -3076,6 +3111,97 @@ def api_nooks_call_detail():
         'meetings_generated':len(meeting_leads),
         'meeting_leads':     meeting_leads,
     })
+
+
+# CONNECT_DISPOSITIONS as a Python set, for validating drill-down requests.
+_CONNECT_DISP_SET = {s.strip().strip("'") for s in CONNECT_DISPOSITIONS.split("','")}
+
+def _trim_nooks_notes(desc):
+    """Extract the readable Nooks AI summary from a Task Description.
+    Raw format: "[Nooks] [Sequence: <name>]\\nCall Notes: ---...Nooks AI summary 🔮---\\n- bullet..."
+    Returns the bullet text only, capped for payload size."""
+    if not desc:
+        return ''
+    txt = desc
+    i = txt.find('Call Notes:')
+    if i >= 0:
+        txt = txt[i + len('Call Notes:'):]
+    # Drop the decorative summary banner if present
+    txt = txt.replace('-----------Nooks AI summary 🔮-----------', '').strip()
+    return txt[:600]
+
+
+@app.route('/api/campaign-dropoff')
+def api_campaign_dropoff():
+    """Funnel drop-off data for one campaign, from its frozen ledger leads.
+
+    Two modes:
+      ?campaign=<name>                      → aggregate {disposition: [total, conversations]}
+                                              (used when a frozen campaign's cached row
+                                              predates this feature — Tasks are immutable
+                                              history, so live recompute equals what the
+                                              sync would have stored)
+      ?campaign=<name>&stage=a|b&disps=x,y  → per-call rows for the drill-down modal
+                                              (stage a = connects under the conversation
+                                              threshold, stage b = conversations)
+    """
+    camp = (request.args.get('campaign') or '').strip()
+    if not camp:
+        return jsonify({'error': 'campaign is required'}), 400
+    c = next((x for x in load_campaigns() if x.get('name') == camp), None)
+    if not c:
+        return jsonify({'error': 'campaign not found'}), 404
+    start = (c.get('start_date') or '').strip()
+    end   = (c.get('end_date') or '').strip()
+    dt_task = ''
+    if start: dt_task += f" AND ActivityDate >= {start}"
+    if end:   dt_task += f" AND ActivityDate <= {end}"
+
+    with _ledger_lock:
+        entry = load_ledger().get(c.get('id', ''), {})
+    lead_ids = entry.get('lead_ids', []) if isinstance(entry, dict) else []
+
+    stage = (request.args.get('stage') or '').strip().lower()
+    disps = [d.strip() for d in (request.args.get('disps') or '').split(',') if d.strip()]
+    if not stage:
+        # Aggregate mode — same computation the sync stores in call_dispositions.
+        disp_all = _agg_disposition_for_ids(lead_ids, dt_task)
+        disp_cnv = _agg_disposition_for_ids(lead_ids, dt_task, CONVERSATION_THRESHOLD_SECS)
+        return jsonify({'campaign': camp,
+                        'dispositions': {d: [n, disp_cnv.get(d, 0)] for d, n in disp_all.items()}})
+
+    # Detail mode
+    disps = [d for d in disps if d in _CONNECT_DISP_SET]
+    if stage not in ('a', 'b') or not disps or not lead_ids:
+        return jsonify({'campaign': camp, 'calls': []})
+    dur = (f" AND CallDurationInSeconds >= {CONVERSATION_THRESHOLD_SECS}" if stage == 'b' else
+           f" AND (CallDurationInSeconds < {CONVERSATION_THRESHOLD_SECS} OR CallDurationInSeconds = null)")
+    disps_in = ','.join("'" + esc(d) + "'" for d in disps)
+    calls, cap = [], 400
+    for i in range(0, len(lead_ids), _BATCH_SIZE):
+        if len(calls) >= cap:
+            break
+        batch   = lead_ids[i:i + _BATCH_SIZE]
+        ids_str = ','.join(f"'{lid}'" for lid in batch)
+        res = soql(f"SELECT Id, WhoId, Who.Name, Owner.Name, CallDisposition, "
+                   f"CallDurationInSeconds, ActivityDate, Description FROM Task "
+                   f"WHERE Subject LIKE '[Nooks Call]%' AND CallDisposition IN ({disps_in}) "
+                   f"AND WhoId IN ({ids_str}){dt_task}{dur} "
+                   f"ORDER BY ActivityDate DESC LIMIT 500", paginate=False)
+        for r in (res or {}).get('records', []):
+            wid = r.get('WhoId') or ''
+            sobj = 'Lead' if wid.startswith('00Q') else 'Contact'
+            calls.append({
+                'lead':        ((r.get('Who') or {}).get('Name')) or '—',
+                'sdr':         norm_sdr(((r.get('Owner') or {}).get('Name')) or '') or '—',
+                'disposition': r.get('CallDisposition') or '—',
+                'duration':    r.get('CallDurationInSeconds') or 0,
+                'date':        r.get('ActivityDate') or '',
+                'summary':     _trim_nooks_notes(r.get('Description')),
+                'sf_url':      f"{SF_BASE_URL}/lightning/r/{sobj}/{wid}/view" if wid else '',
+            })
+    calls.sort(key=lambda x: x['date'], reverse=True)
+    return jsonify({'campaign': camp, 'calls': calls[:cap], 'total': len(calls)})
 
 
 def _activity_trend(subject_filter):

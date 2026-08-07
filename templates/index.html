@@ -1736,6 +1736,20 @@ tfoot td {
 </div>
 
 <!-- ── SDR DETAIL MODAL ── -->
+<!-- Funnel drop-off drill-down (Tier 1) -->
+<div class="modal-overlay" id="dropoffOverlay" onclick="closeDropoffDetail(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:820px">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title" id="dropoffDetailTitle">Drop-off detail</div>
+        <div class="modal-sub"  id="dropoffDetailSub"></div>
+      </div>
+      <button class="modal-close" onclick="closeDropoffDetail()" style="margin-left:auto">×</button>
+    </div>
+    <div class="modal-body" id="dropoffDetailBody" style="max-height:60vh;overflow-y:auto"></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="sdrDetailOverlay" onclick="closeSdrDetailModal(event)">
   <div class="modal-box" onclick="event.stopPropagation()" style="max-width:960px">
     <div class="modal-hdr">
@@ -3955,6 +3969,12 @@ function openModal(id) {
       ${metricRow('S1 / Leads', s1Rate, 'S1s ÷ Leads')}
     </div>
 
+    <div class="modal-section" id="dropoffSection" style="display:none">
+      <div class="modal-section-title">🔍 Why didn't they convert?</div>
+      <div id="dropoffBody"><div style="padding:14px;color:var(--text-dim);font-size:12px">Loading…</div></div>
+      <div style="margin-top:8px;font-size:10px;color:var(--text-dim)">Based on Nooks call dispositions (from 15 Apr 2026) · click a reason to see the calls</div>
+    </div>
+
     ${(c.sdr_breakdown||[]).length ? `
     <div class="modal-section">
       <div class="modal-section-title">SDR Breakdown (Meetings Generated)</div>
@@ -3974,6 +3994,180 @@ function openModal(id) {
   if(editBtn) editBtn.onclick = () => { closeModal(); openEditModal(c.id); };
 
   q('modalOverlay').classList.add('open');
+  renderDropoffSection(c);
+}
+
+// ── Funnel drop-off (Tier 1) ─────────────────────────────────────────────────
+// Reason buckets for the two funnel stages. The backend stores/returns RAW
+// {disposition: [total_connects, conversations]} facts; the interpretation
+// (bucketing, colors, action tags) lives here so frozen campaigns can be
+// re-bucketed later without re-querying Salesforce.
+const DROPOFF_BOOKED_DISPS = ['Answered - Booked Meeting','Meeting','Meeting Generated- Cold','Meeting Generated- Conference'];
+const DROPOFF_STAGE_A = [   // connects that never became a conversation (< 60s)
+  {key:'brush',    label:'Early Brush-off',  color:'#EF4444', act:'Coachable — openers',      disps:['Not Interested','Prospect Disconnected']},
+  {key:'objection',label:'Objection Raised', color:'#F43F5E', act:'Review objection',         disps:['Objection: Already Have Solution','Objection: Asked to Send Info','Objection: Not A Priority']},
+  {key:'timing',   label:'Bad Timing',       color:'#F59E0B', act:'Recoverable — retry',      disps:['Busy - Call Later']},
+  {key:'followup', label:'Follow-Up Open',   color:'#FBBF24', act:'Recoverable — follow up',  disps:['Answered - Follow Up Required','Strong Follow up']},
+  {key:'wrongper', label:'Wrong Person',     color:'#60A5FA', act:'Find the right contact',   disps:['Answered - Wrong Person, No Referral']},
+  {key:'baddata',  label:'Bad Data',         color:'#64748B', act:'List hygiene',             disps:['Wrong Number','Answered - No Longer with Company','Retired']},
+  {key:'blocked',  label:'Blocked (DNC)',    color:'#334155', act:'Suppress',                 disps:['DNC']},
+  {key:'referral', label:'Referral Won',     color:'#10B981', act:'Work the referral',        disps:['Answered - Wrong Person, Gave Referral']},
+  {key:'booked',   label:'Booked Anyway',    color:'#22C55E', act:'Win — booked on a short call', disps:DROPOFF_BOOKED_DISPS},
+  {key:'other',    label:'Unclassified',     color:'#475569', act:'No reason logged',         disps:['Connected']},
+];
+const DROPOFF_STAGE_B = [   // conversations (≥ 60s) that didn't book a meeting
+  {key:'rejected', label:'Rejected',            color:'#EF4444', act:'Pitch / market signal',    disps:['Not Interested','Objection: Not A Priority','Prospect Disconnected']},
+  {key:'competitor',label:'Competitor In Place',color:'#F43F5E', act:'Positioning intel',        disps:['Objection: Already Have Solution']},
+  {key:'info',     label:'Wants Info First',    color:'#F59E0B', act:'Send + follow-up SLA',     disps:['Objection: Asked to Send Info']},
+  {key:'followup', label:'Follow-Up Open',      color:'#FBBF24', act:'Coachable — close on the call', disps:['Answered - Follow Up Required','Strong Follow up','Busy - Call Later']},
+  {key:'wrongper', label:'Wrong Person',        color:'#60A5FA', act:'Find the right contact',   disps:['Answered - Wrong Person, No Referral']},
+  {key:'referral', label:'Referral Won',        color:'#10B981', act:'Work the referral',        disps:['Answered - Wrong Person, Gave Referral']},
+  {key:'baddata',  label:'Bad Data',            color:'#64748B', act:'List hygiene',             disps:['Answered - No Longer with Company','Wrong Number']},
+  {key:'blocked',  label:'Blocked',             color:'#334155', act:'Suppress',                 disps:['DNC','Retired']},
+  {key:'booked',   label:'Booked ✓',            color:'#22C55E', act:'Converted',                disps:DROPOFF_BOOKED_DISPS},
+  {key:'other',    label:'Unclassified',        color:'#475569', act:'No reason logged',         disps:['Connected']},
+];
+
+let _dropoffCampaign = null;   // campaign name for the open modal's drill-downs
+let _dropoffDisp = null;       // {disposition: [total, conversations]} for the open campaign
+
+async function renderDropoffSection(c) {
+  const sec = q('dropoffSection'), body = q('dropoffBody');
+  if (!sec || !body) return;
+  _dropoffCampaign = c.name;
+  _dropoffDisp = null;
+  let disp = c.call_dispositions;
+  if (!disp) {
+    // Cached row predates this feature (e.g. a campaign frozen before it
+    // shipped) — compute live once from immutable Task history.
+    sec.style.display = '';
+    try {
+      const r = await fetch(`/api/campaign-dropoff?campaign=${encodeURIComponent(c.name)}`);
+      disp = (await r.json()).dispositions || {};
+    } catch (e) {
+      body.innerHTML = `<div style="padding:12px;color:var(--text-dim);font-size:12px">Could not load drop-off data.</div>`;
+      return;
+    }
+  }
+  const totalConnects = Object.values(disp).reduce((a, v) => a + (v[0] || 0), 0);
+  if (!totalConnects) { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+  _dropoffDisp = disp;   // kept for the drill-down's per-disposition table
+
+  // Stage A: bucket the SHORT portion (total - conversations) of each disposition.
+  const shortOf = d => Math.max(0, (disp[d] ? disp[d][0] : 0) - (disp[d] ? disp[d][1] : 0));
+  const convOf  = d => (disp[d] ? disp[d][1] : 0);
+  const totalConvos = Object.keys(disp).reduce((a, d) => a + convOf(d), 0);
+  const bookedConvos = DROPOFF_BOOKED_DISPS.reduce((a, d) => a + convOf(d), 0);
+  const a = DROPOFF_STAGE_A.map(b => ({...b, n: b.disps.reduce((s, d) => s + shortOf(d), 0)})).filter(b => b.n > 0);
+  const b = DROPOFF_STAGE_B.map(bk => ({...bk, n: bk.disps.reduce((s, d) => s + convOf(d), 0)})).filter(bk => bk.n > 0);
+  body.innerHTML = _dropoffStage('a', `📞 Connects that never became a conversation`,
+                     totalConnects - totalConvos, totalConnects, 'connects', a)
+                 + _dropoffStage('b', `💬 Conversations and where they went`,
+                     totalConvos - bookedConvos, totalConvos, 'conversations', b);
+}
+
+function _dropoffStage(stage, title, lost, universe, noun, buckets) {
+  if (!universe) return '';
+  const sum = buckets.reduce((a, b) => a + b.n, 0) || 1;
+  const bar = buckets.map(b =>
+    `<div title="${esc(b.label)}: ${b.n} (${Math.round(b.n / sum * 100)}%) — ${esc(b.act)}"
+          onclick="openDropoffDetail('${stage}','${b.key}')"
+          style="width:${Math.max(2, b.n / sum * 100)}%;background:${b.color};height:100%;cursor:pointer"></div>`).join('');
+  const top = buckets.slice().sort((x, y) => y.n - x.n).slice(0, 3).map(b =>
+    `<div onclick="openDropoffDetail('${stage}','${b.key}')" style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer">
+       <span style="width:9px;height:9px;border-radius:2px;background:${b.color};flex:none"></span>
+       <span style="font-size:12px;font-weight:600">${esc(b.label)}</span>
+       <span style="font-size:12px;color:var(--text-muted)">${fmt(b.n)} · ${Math.round(b.n / sum * 100)}%</span>
+       <span style="font-size:10.5px;color:var(--text-dim);margin-left:auto">${esc(b.act)} ↗</span>
+     </div>`).join('');
+  return `<div style="margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+      <span style="font-size:12px;font-weight:700">${title}</span>
+      <span style="font-size:11px;color:var(--text-dim)">${fmt(sum)} of ${fmt(universe)} ${noun}</span>
+    </div>
+    <div style="display:flex;height:14px;border-radius:5px;overflow:hidden;background:var(--surface3)">${bar}</div>
+    <div style="margin-top:6px">${top}</div>
+  </div>`;
+}
+
+// Per-disposition summary table for one bucket. `calls` counts come from the
+// aggregate the section already holds; `leadsBy` (distinct leads per
+// disposition) is filled in once the call rows have loaded.
+function _dropoffDispTable(stage, bucket, leadsBy, totalLeads) {
+  if (!_dropoffDisp) return '';
+  const cnt = d => {
+    const v = _dropoffDisp[d] || [0, 0];
+    return stage === 'a' ? Math.max(0, (v[0] || 0) - (v[1] || 0)) : (v[1] || 0);
+  };
+  const rows = bucket.disps.map(d => ({d, n: cnt(d)})).filter(x => x.n > 0)
+                           .sort((x, y) => y.n - x.n);
+  if (!rows.length) return '';
+  const total = rows.reduce((a, x) => a + x.n, 0);
+  return `<table style="width:100%;font-size:11.5px;margin-bottom:6px">
+    <thead><tr>
+      <th style="text-align:left;padding:6px 8px;color:var(--text-muted)">Disposition</th>
+      <th style="text-align:right;padding:6px 8px;color:var(--text-muted)">Calls</th>
+      <th style="text-align:right;padding:6px 8px;color:var(--text-muted)">Leads</th>
+    </tr></thead>
+    <tbody>${rows.map(x => `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:6px 8px;font-weight:600">${esc(x.d)}</td>
+      <td style="padding:6px 8px;text-align:right;font-weight:700">${fmt(x.n)}</td>
+      <td style="padding:6px 8px;text-align:right;color:var(--text-muted)">${leadsBy ? fmt(leadsBy[x.d] || 0) : '…'}</td>
+    </tr>`).join('')}
+    <tr style="border-top:1px solid var(--border)">
+      <td style="padding:6px 8px;color:var(--text-dim)">Total</td>
+      <td style="padding:6px 8px;text-align:right;font-weight:800">${fmt(total)}</td>
+      <td style="padding:6px 8px;text-align:right;color:var(--text-muted)">${totalLeads != null ? fmt(totalLeads) : '…'}</td>
+    </tr></tbody>
+  </table>`;
+}
+
+async function openDropoffDetail(stage, bucketKey) {
+  const bucket = (stage === 'a' ? DROPOFF_STAGE_A : DROPOFF_STAGE_B).find(b => b.key === bucketKey);
+  if (!bucket || !_dropoffCampaign) return;
+  q('dropoffDetailTitle').textContent = `${bucket.label} — ${stage === 'a' ? 'short connects' : 'conversations'}`;
+  q('dropoffDetailSub').textContent = `${_dropoffCampaign} · ${bucket.act}`;
+  q('dropoffDetailBody').innerHTML = _dropoffDispTable(stage, bucket, null) +
+    `<div style="padding:30px;text-align:center;color:var(--text-dim)"><div class="spinner" style="width:22px;height:22px;margin:0 auto 10px"></div>Loading calls…</div>`;
+  q('dropoffOverlay').classList.add('open');
+  try {
+    const url = `/api/campaign-dropoff?campaign=${encodeURIComponent(_dropoffCampaign)}&stage=${stage}&disps=${encodeURIComponent(bucket.disps.join(','))}`;
+    const d = await (await fetch(url)).json();
+    const rows = d.calls || [];
+    if (!rows.length) {
+      q('dropoffDetailBody').innerHTML = _dropoffDispTable(stage, bucket, null) +
+        `<div style="padding:26px;text-align:center;color:var(--text-dim);font-size:12px">No calls found.</div>`;
+      return;
+    }
+    // Distinct leads per disposition (and overall union), from the loaded rows
+    const leadSets = {}, allLeads = new Set();
+    rows.forEach(r => {
+      const key = r.sf_url || r.lead;
+      (leadSets[r.disposition] = leadSets[r.disposition] || new Set()).add(key);
+      allLeads.add(key);
+    });
+    const leadsBy = {};
+    Object.keys(leadSets).forEach(k => leadsBy[k] = leadSets[k].size);
+    q('dropoffDetailBody').innerHTML = _dropoffDispTable(stage, bucket, leadsBy, allLeads.size) + rows.map(r => `
+      <div style="padding:10px 2px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-weight:700;font-size:12.5px;${r.sf_url ? 'color:var(--gold-light);cursor:pointer' : ''}"
+                ${r.sf_url ? `onclick="window.open('${r.sf_url}','_blank')"` : ''}>${esc(r.lead)} ${r.sf_url ? '<span style="font-size:10px;opacity:.6">↗</span>' : ''}</span>
+          <span style="font-size:11px;color:var(--text-muted)">${esc(r.sdr)}</span>
+          <span style="font-size:10.5px;color:var(--text-dim)">${esc(r.disposition)}</span>
+          <span style="font-size:10.5px;color:var(--text-dim);margin-left:auto">${r.duration}s · ${esc(r.date)}</span>
+        </div>
+        ${r.summary ? `<div style="margin-top:5px;font-size:11.5px;color:var(--text-muted);line-height:1.45;white-space:pre-wrap">${esc(r.summary)}</div>` : ''}
+      </div>`).join('');
+  } catch (e) {
+    q('dropoffDetailBody').innerHTML = `<div style="padding:26px;text-align:center;color:var(--red);font-size:12px">Failed to load: ${esc(String(e))}</div>`;
+  }
+}
+
+function closeDropoffDetail(ev) {
+  if (ev && ev.target !== ev.currentTarget) return;
+  q('dropoffOverlay').classList.remove('open');
 }
 
 function metricRow(label, val, hint) {
@@ -6701,7 +6895,7 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click',()=>switchTab(btn.dataset.tab));
 });
 
-document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeModal(); closeMeetingsModal(); closeEditModal(); closeSdrDetailModal(); closeNooksModal(); } });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeModal(); closeMeetingsModal(); closeEditModal(); closeSdrDetailModal(); closeNooksModal(); closeDropoffDetail(); } });
 
 initAdminMode();
 fetchData();
