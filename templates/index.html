@@ -3994,7 +3994,7 @@ function openModal(id) {
   if(editBtn) editBtn.onclick = () => { closeModal(); openEditModal(c.id); };
 
   q('modalOverlay').classList.add('open');
-  renderDropoffSection(c);
+  if (SHOW_DROPOFF) renderDropoffSection(c);
 }
 
 // ── Funnel drop-off (Tier 1) ─────────────────────────────────────────────────
@@ -4003,6 +4003,7 @@ function openModal(id) {
 // (bucketing, colors, action tags) lives here so frozen campaigns can be
 // re-bucketed later without re-querying Salesforce.
 const DROPOFF_BOOKED_DISPS = ['Answered - Booked Meeting','Meeting','Meeting Generated- Cold','Meeting Generated- Conference'];
+const SHOW_DROPOFF = {{ 'true' if show_dropoff else 'false' }};  // prod: off pending Vaibhav's review
 const DROPOFF_STAGE_A = [   // connects that never became a conversation (< 60s)
   {key:'brush',    label:'Early Brush-off',  color:'#EF4444', act:'Coachable — openers',      disps:['Not Interested','Prospect Disconnected']},
   {key:'objection',label:'Objection Raised', color:'#F43F5E', act:'Review objection',         disps:['Objection: Already Have Solution','Objection: Asked to Send Info','Objection: Not A Priority']},

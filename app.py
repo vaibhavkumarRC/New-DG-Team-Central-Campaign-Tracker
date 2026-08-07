@@ -1827,7 +1827,11 @@ def auto_complete_campaigns():
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    # Drop-off UI is being reviewed locally (Vaibhav, 7 Aug 2026): hidden in
+    # prod until approved. Backend capture + /api/campaign-dropoff stay live
+    # so disposition history keeps accumulating. Local: SHOW_DROPOFF=1.
+    return render_template('index.html',
+                           show_dropoff=os.environ.get('SHOW_DROPOFF') == '1')
 
 @app.route('/api/data')
 def api_data():
