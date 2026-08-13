@@ -1378,6 +1378,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
     else:
         total_calls = total_connects = total_conversations = total_emails = unique_leads_called = unique_leads_emailed = 0
         li_sent = li_accepted = li_msg_sent = li_msg_reply = 0
+        call_dispositions = {}
 
     total_leads = len(frozen_lead_ids)  # use frozen count so it never shrinks
 
