@@ -962,6 +962,10 @@ SFDC_NAME_MAP = {
     'Shahana Abbasi':        'Shahana Abbasi',
     'Soham':                 'Soham Saha',
     'Soham Saha':            'Soham Saha',
+    'Sriram':                'SriRam',
+    'Sriram Parthiban':      'SriRam',
+    'SriRam':                'SriRam',
+    'Sukhneeth':             'Sukhneet Sukhneet',   # typo seen on opps 13 Aug 2026
     'Sukhneet':              'Sukhneet Sukhneet',
     # ── Other / alumni SDRs ───────────────────────────────────────────────────
     'Felix':                 'Felix Sam',
@@ -1019,7 +1023,9 @@ KNOWN_SDRS = {
     'samrudhi':  'Samridhi Dutta',
     'shahana':   'Shahana Abbasi',
     'soham':     'Soham Saha',
+    'sriram':    'SriRam',
     'sukhneet':  'Sukhneet Sukhneet',
+    'sukhneeth': 'Sukhneet Sukhneet',
     # Other / alumni
     'felix':     'Felix Sam',
     'hursh':     'Hursh',
