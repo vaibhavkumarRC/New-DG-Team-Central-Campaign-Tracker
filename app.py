@@ -1209,7 +1209,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
     if current_lead_ids:
         # Only query meeting details for leads currently in this campaign
         mtg_res = soql(
-            f"SELECT Id, Meeting_Generated_on__c, Meeting_Scheduled_On__c, Meeting_Generated_by__c, "
+            f"SELECT Id, Meeting_Generated_on__c, Meeting_Scheduled_on__c, Meeting_Generated_by__c, "
             f"Name, Title, Company FROM Lead "
             f"WHERE Campaign__c = '{n}' AND Meeting_Generated_on__c != null LIMIT 2000"
         )
@@ -1417,8 +1417,8 @@ def campaign_metrics(c, start_override=None, end_override=None):
     # campaign generated no meetings). Once a Completed campaign passes this date, the
     # next sync freezes it (zero queries). Never let it move EARLIER than a previously
     # stored value, so a reassigned-away lead can't shorten the window.
-    _sched   = [(r.get('Meeting_Scheduled_On__c') or '')[:10]
-                for r in sf_meeting_records if r.get('Meeting_Scheduled_On__c')]
+    _sched   = [(r.get('Meeting_Scheduled_on__c') or '')[:10]
+                for r in sf_meeting_records if r.get('Meeting_Scheduled_on__c')]
     _anchor  = max(_sched + ([end] if end else []), default='')
     _new_sd  = _plus_days(_anchor, _SETTLE_BUFFER_DAYS) if _anchor else ''
     _prev_sd = (_prev_campaign_result(c['id']) or {}).get('settled_date') or ''
@@ -3674,7 +3674,7 @@ def api_meeting_leads():
     date_clause = f"Meeting_Generated_on__c >= {frm}" if valid_from else "Meeting_Generated_on__c > 2026-03-31"
     q = (
         "SELECT Id, FirstName, LastName, Title, Company, Status, "
-        "Meeting_Status__c, Meeting_Generated_on__c, Meeting_Scheduled_On__c, "
+        "Meeting_Status__c, Meeting_Generated_on__c, Meeting_Scheduled_on__c, "
         "Meeting_Generated_by__c, Meeting_Source__c, Meeting_Channel__c, "
         "Meeting_Type__c, Zoom_Meeting_Link_URL__c, Seller_Name__c, "
         "Zoom_Meeting_Status__c, Zoom_Meeting_Done_Date__c "
@@ -3701,7 +3701,10 @@ def api_meeting_leads():
             'status':       r.get('Meeting_Status__c')        or '—',
             'lead_status':  r.get('Status')                   or '—',
             'generated_on': (r.get('Meeting_Generated_on__c') or '')[:10],
-            'scheduled_on': (r.get('Meeting_Scheduled_On__c') or '')[:10],
+            # IST calendar date: the field is a UTC datetime and the team (and the
+            # SFDC report filters this is checked against) works in IST — a 22:00 UTC
+            # meeting is next-day IST. 12 of 154 Q3 meetings sit in that window.
+            'scheduled_on': _ist_date(r.get('Meeting_Scheduled_on__c')),
             'generated_by': norm_sdr(r.get('Meeting_Generated_by__c') or '—'),
             'source':       r.get('Meeting_Source__c')        or '—',
             'channel':      r.get('Meeting_Channel__c')       or '—',
@@ -4339,7 +4342,7 @@ def api_meeting_funnel():
         ids_str = ','.join(f"'{lid}'" for lid in batch)
         lq = (f"SELECT Id, FirstName, LastName, Title, Company, "
               f"Meeting_Generated_by__c, Meeting_Generated_on__c, Meeting_Source__c, "
-              f"Meeting_Scheduled_On__c, Zoom_Meeting_Link_URL__c, Seller_Name__c "
+              f"Meeting_Scheduled_on__c, Zoom_Meeting_Link_URL__c, Seller_Name__c "
               f"FROM Lead WHERE Id IN ({ids_str})")
         res = soql(lq, paginate=False)
         for lr in (res or {}).get('records', []):
@@ -4376,7 +4379,7 @@ def api_meeting_funnel():
             mtg_by  = ld.get('Meeting_Generated_by__c')  or ''
             mtg_on  = (ld.get('Meeting_Generated_on__c') or '')[:10]
             mtg_src = ld.get('Meeting_Source__c')        or ''
-            mtg_sched = ld.get('Meeting_Scheduled_On__c') or ''   # scheduled meeting datetime (UTC)
+            mtg_sched = ld.get('Meeting_Scheduled_on__c') or ''   # scheduled meeting datetime (UTC)
             zoom    = ld.get('Zoom_Meeting_Link_URL__c') or ''
             seller  = ld.get('Seller_Name__c')           or ''
             sf_url  = f"{SF_BASE_URL}/lightning/r/Lead/{who}/view"

@@ -5659,6 +5659,12 @@ function sdrpDateBounds() {
 // "Meeting Scheduled" after being converted to a contact at S1.
 const SDRP_IS_DONE = r => (r.status || '').startsWith('Meeting Done') || r.lead_status === 'S1 Converted';
 const SDRP_IS_S1   = r => r.lead_status === 'S1 Converted';
+// Future Meetings (Vaibhav, 17 Aug 2026): same generated-on window + generated-by
+// attribution as the other columns, but Meeting_Scheduled_on__c is today (IST) or
+// later — "of this period's generated meetings, how many are still upcoming".
+// Matches the SFDC report filter "Meeting Scheduled on > <today> 12:00am".
+const _istToday = () => new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+const SDRP_IS_FUTURE = r => (r.scheduled_on || '') >= _istToday();
 
 // All-time per-SDR stats from the live meeting-leads data (unfiltered) — the
 // SDR cards read these so they always match the performance table's All view.
@@ -5897,7 +5903,7 @@ function renderSdrPerfTable() {
 
   let list, totalMeetings;
   if (isFrozen) {
-    list = Object.entries(snap).map(([name, v]) => ({ name, meetings: v.generated || 0, done: v.done || 0, s1: v.s1 || 0 }));
+    list = Object.entries(snap).map(([name, v]) => ({ name, meetings: v.generated || 0, done: v.done || 0, future: v.future || 0, s1: v.s1 || 0 }));
     totalMeetings = list.reduce((a, s) => a + s.meetings, 0);
   } else {
     const rows = sdrpFilteredRows();
@@ -5905,10 +5911,11 @@ function renderSdrPerfTable() {
     const agg = {};
     rows.forEach(r => {
       const n = r.generated_by || '—';
-      if (!agg[n]) agg[n] = { name: n, meetings: 0, done: 0, s1: 0 };
+      if (!agg[n]) agg[n] = { name: n, meetings: 0, done: 0, future: 0, s1: 0 };
       agg[n].meetings += 1;
-      if (SDRP_IS_DONE(r)) agg[n].done += 1;
-      if (SDRP_IS_S1(r))   agg[n].s1   += 1;
+      if (SDRP_IS_DONE(r))   agg[n].done   += 1;
+      if (SDRP_IS_FUTURE(r)) agg[n].future += 1;
+      if (SDRP_IS_S1(r))     agg[n].s1     += 1;
     });
     list = Object.values(agg);
     // S1 Created = opportunity-based count (SDR_Owner__c). Quarter-specific opp
@@ -5944,8 +5951,8 @@ function renderSdrPerfTable() {
     return;
   }
 
-  const tot = { meetings: 0, done: 0, s1: 0 };
-  list.forEach(s => { tot.meetings += s.meetings; tot.done += s.done; tot.s1 += s.s1; });
+  const tot = { meetings: 0, done: 0, future: 0, s1: 0 };
+  list.forEach(s => { tot.meetings += s.meetings; tot.done += s.done; tot.future += (s.future || 0); tot.s1 += s.s1; });
 
   const arrow = k => SDRP.sortKey === k ? (SDRP.sortDir === -1 ? ' ↓' : ' ↑') : ' ↕';
   const numCell = (sdr, metric, val, color) =>
@@ -5960,6 +5967,7 @@ function renderSdrPerfTable() {
           <th onclick="sortSdrpTable('name')"     style="text-align:left;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">SDR${arrow('name')}</th>
           <th onclick="sortSdrpTable('meetings')" style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">🤝 Meetings Generated${arrow('meetings')}</th>
           <th onclick="sortSdrpTable('done')"     style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✅ Meetings Done${arrow('done')}</th>
+          <th onclick="sortSdrpTable('future')"   style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📅 Future Meetings${arrow('future')}</th>
           <th onclick="sortSdrpTable('s1')"       style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">🏆 S1 Created${arrow('s1')}</th>
         </tr>
       </thead>
@@ -5975,6 +5983,7 @@ function renderSdrPerfTable() {
           </td>
           ${numCell(s.name, 'meetings', s.meetings, '#F59E0B')}
           ${numCell(s.name, 'done',     s.done,     '#34D399')}
+          ${numCell(s.name, 'future',   s.future || 0, '#38BDF8')}
           ${s.s1 > 0
             ? `<td style="padding:9px 12px;text-align:center"><a href="#" data-sdr="${escHtml(s.name)}" onclick="event.preventDefault();openSdrpS1Detail(this.dataset.sdr)" style="color:#A78BFA;font-weight:800;text-decoration:none;border-bottom:1px dotted #A78BFA55;cursor:pointer">${s.s1}</a></td>`
             : `<td style="padding:9px 12px;text-align:center;color:var(--text-dim)">—</td>`}
@@ -5985,19 +5994,21 @@ function renderSdrPerfTable() {
           <td style="padding:9px 12px;font-weight:700;color:var(--text-muted);font-size:11px">TOTAL — ${list.length} SDRs</td>
           ${numCell('__ALL__', 'meetings', tot.meetings, '#F59E0B')}
           ${numCell('__ALL__', 'done',     tot.done,     '#34D399')}
+          ${numCell('__ALL__', 'future',   tot.future,   '#38BDF8')}
           <td style="padding:9px 12px;text-align:center;color:#A78BFA;font-weight:800">${tot.s1}</td>
         </tr>
       </tfoot>
     </table>`;
 }
 
-const SDRP_METRIC_LABEL = { meetings: '🤝 Meetings Generated', done: '✅ Meetings Done', s1: '🏆 S1 Created' };
+const SDRP_METRIC_LABEL = { meetings: '🤝 Meetings Generated', done: '✅ Meetings Done', future: '📅 Future Meetings', s1: '🏆 S1 Created' };
 
 function openSdrpModal(sdr, metric) {
   let rows = sdrpFilteredRows();
   if (sdr !== '__ALL__') rows = rows.filter(r => r.generated_by === sdr);
-  if (metric === 'done') rows = rows.filter(SDRP_IS_DONE);
-  if (metric === 's1')   rows = rows.filter(SDRP_IS_S1);
+  if (metric === 'done')   rows = rows.filter(SDRP_IS_DONE);
+  if (metric === 'future') rows = rows.filter(SDRP_IS_FUTURE);
+  if (metric === 's1')     rows = rows.filter(SDRP_IS_S1);
   _sdrpLeadModal(`${SDRP_METRIC_LABEL[metric]} — ${sdr === '__ALL__' ? 'All SDRs' : sdr}`, rows);
 }
 
