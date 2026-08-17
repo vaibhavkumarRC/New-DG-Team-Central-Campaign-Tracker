@@ -5977,12 +5977,12 @@ function renderSdrPerfTable() {
     <table style="width:100%;border-collapse:collapse;font-size:12.5px">
       <thead>
         <tr style="border-bottom:1px solid var(--border)">
-          <th onclick="sortSdrpTable('name')"     style="text-align:left;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">SDR${arrow('name')}</th>
-          <th onclick="sortSdrpTable('meetings')" style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">🤝 Meetings Generated${arrow('meetings')}</th>
-          <th onclick="sortSdrpTable('done')"     style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✅ Meetings Done${arrow('done')}</th>
-          <th onclick="sortSdrpTable('future')"   style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📅 Future Meetings${arrow('future')}</th>
-          <th onclick="sortSdrpTable('sqlgen')"   style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">💎 SQL Generated${arrow('sqlgen')}</th>
-          <th onclick="sortSdrpTable('s1')"       style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">🏆 S1 Created${arrow('s1')}</th>
+          <th onclick="sortSdrpTable('name')"     title="${escHtml(SDRP_TIP.sdr)}"      style="text-align:left;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">SDR${arrow('name')}</th>
+          <th onclick="sortSdrpTable('meetings')" title="${escHtml(SDRP_TIP.meetings)}" style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">🤝 Meetings Generated${arrow('meetings')} <span style="opacity:.5">ⓘ</span></th>
+          <th onclick="sortSdrpTable('done')"     title="${escHtml(SDRP_TIP.done)}"     style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✅ Meetings Done${arrow('done')} <span style="opacity:.5">ⓘ</span></th>
+          <th onclick="sortSdrpTable('sqlgen')"   title="${escHtml(SDRP_TIP.sqlgen)}"   style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">💎 SQL Generated${arrow('sqlgen')} <span style="opacity:.5">ⓘ</span></th>
+          <th onclick="sortSdrpTable('s1')"       title="${escHtml(SDRP_TIP.s1)}"       style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">🏆 S1 Created${arrow('s1')} <span style="opacity:.5">ⓘ</span></th>
+          <th onclick="sortSdrpTable('future')"   title="${escHtml(SDRP_TIP.future)}"   style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📅 Future Meetings${arrow('future')} <span style="opacity:.5">ⓘ</span></th>
         </tr>
       </thead>
       <tbody>
@@ -5997,11 +5997,11 @@ function renderSdrPerfTable() {
           </td>
           ${numCell(s.name, 'meetings', s.meetings, '#F59E0B')}
           ${numCell(s.name, 'done',     s.done,     '#34D399')}
-          ${numCell(s.name, 'future',   s.future || 0, '#38BDF8')}
           ${numCell(s.name, 'sqlgen',   s.sqlgen || 0, '#22D3EE')}
           ${s.s1 > 0
             ? `<td style="padding:9px 12px;text-align:center"><a href="#" data-sdr="${escHtml(s.name)}" onclick="event.preventDefault();openSdrpS1Detail(this.dataset.sdr)" style="color:#A78BFA;font-weight:800;text-decoration:none;border-bottom:1px dotted #A78BFA55;cursor:pointer">${s.s1}</a></td>`
             : `<td style="padding:9px 12px;text-align:center;color:var(--text-dim)">—</td>`}
+          ${numCell(s.name, 'future',   s.future || 0, '#38BDF8')}
         </tr>`).join('')}
       </tbody>
       <tfoot>
@@ -6009,15 +6009,28 @@ function renderSdrPerfTable() {
           <td style="padding:9px 12px;font-weight:700;color:var(--text-muted);font-size:11px">TOTAL — ${list.length} SDRs</td>
           ${numCell('__ALL__', 'meetings', tot.meetings, '#F59E0B')}
           ${numCell('__ALL__', 'done',     tot.done,     '#34D399')}
-          ${numCell('__ALL__', 'future',   tot.future,   '#38BDF8')}
           ${numCell('__ALL__', 'sqlgen',   tot.sqlgen,   '#22D3EE')}
           <td style="padding:9px 12px;text-align:center;color:#A78BFA;font-weight:800">${tot.s1}</td>
+          ${numCell('__ALL__', 'future',   tot.future,   '#38BDF8')}
         </tr>
       </tfoot>
     </table>`;
 }
 
 const SDRP_METRIC_LABEL = { meetings: '🤝 Meetings Generated', done: '✅ Meetings Done', future: '📅 Future Meetings', sqlgen: '💎 SQL Generated', s1: '🏆 S1 Created' };
+
+// Plain-language "how is this number calculated" tooltips for the table headers
+// (hover). Every column starts from the same pool — leads whose "Meeting
+// Generated on" falls in the selected period, credited to "Meeting Generated by"
+// — then asks its own question of it.
+const SDRP_TIP = {
+  sdr: 'The SDR credited on the lead\'s "Meeting Generated by" field in Salesforce. Every column below is counted from the leads whose "Meeting Generated on" date falls inside the selected period/quarter, and the filters above narrow that same pool.',
+  meetings: 'How many meetings this SDR booked.\n\nCounts every lead whose "Meeting Generated on" date falls in the selected period. One booked meeting = 1.\n\nClick any number to see the exact leads.',
+  done: 'How many of those booked meetings actually happened.\n\nCounted when the lead\'s Meeting Status starts with "Meeting Done" (any type — SQL, Nurture, Unqualified, Not Interested), OR the lead reached S1. The S1 part is a safety net: a lead cannot reach S1 without its meeting having happened, so it catches meetings whose status was never updated afterwards.',
+  sqlgen: 'How many meetings produced a qualified opportunity conversation.\n\nCounted when the lead\'s Meeting Status is "Meeting Done-SQL", OR the lead status is "S1 Converted".\n\nThe second rule matters: converting a lead makes the record read-only in Salesforce, so its Meeting Status freezes at whatever it said in that moment. Some genuine SQLs are stuck reading "Meeting Scheduled" and can never be corrected — this makes sure the SDR still gets credit.',
+  s1: 'How much pipeline came out of it.\n\nThe only column NOT counted from leads: it counts OPPORTUNITIES created inside the selected period whose "SDR Owner" is this SDR.\n\nBecause of that, it can differ from the columns on the left — an opportunity created this quarter from a meeting booked last quarter still counts here.',
+  future: 'How many booked meetings are still upcoming.\n\nCounts leads whose "Meeting Scheduled on" date is today or later (IST). It re-reads the clock every time the page loads, so it shrinks on its own as meetings pass — there is no date to maintain.\n\nThese are a subset of Meetings Generated that have not happened yet.',
+};
 
 function openSdrpModal(sdr, metric) {
   let rows = sdrpFilteredRows();
