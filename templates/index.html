@@ -5711,6 +5711,34 @@ function _applySdrpFilters(rows) {
 // quarter filter can reach Q1. The SDR CARDS and Meetings tab keep MTG.data (Q2+,
 // exactly like live) — so extending the table never touches the cards.
 function sdrpFilteredRows() { return _applySdrpFilters(TREND_ROWS || MTG.data || []); }
+
+// ↩️ Carried In (Vaibhav, 17 Aug 2026) — meetings BOOKED BEFORE the selected
+// period that were HELD INSIDE it, and actually happened.
+//
+// Deliberately generic ("before the period start" rather than "previous
+// quarter") so it behaves correctly for Q-selects, QTD, Last 7/30 Days and
+// custom ranges alike, with no special cases.
+//
+// NOTE these rows can never come from sdrpFilteredRows(): that helper keeps only
+// leads whose generated_on is INSIDE the window, which is the exact opposite of
+// what this column needs. So we start from sdrpTrendBase() — the same dataset
+// with the seller/channel/status/type multi-selects applied but NOT the date
+// filter — which also guarantees zero double-counting with Meetings Done.
+//
+// Data reach: TREND_ROWS starts 1 Jan 2026, so carry-in into Q1 2026 (which
+// would need 2025 bookings) reads 0. Everything from Q2 2026 on is complete.
+function sdrpCarriedRows() {
+  const [ds, de] = sdrpTableBounds();
+  if (!ds) return [];                       // no window ⇒ nothing can precede it
+  return sdrpTrendBase().filter(r => {
+    const g = r.generated_on || '', s = r.scheduled_on || '';
+    if (!g || !s) return false;
+    if (g >= ds) return false;              // booked inside/after the window → belongs to the normal columns
+    if (s < ds) return false;               // held before the window
+    if (de && s > de) return false;         // held after the window
+    return SDRP_IS_DONE(r);                 // only meetings that actually happened
+  });
+}
 // Chart base rows: full-year dataset, multi-select filters only. The chart applies
 // its own date window (quarter selector, else the table period).
 function sdrpTrendBase()   { return _applySdrpMsel(TREND_ROWS || MTG.data || []); }
@@ -5951,6 +5979,19 @@ function renderSdrPerfTable() {
     totalMeetings = rows.length;
   }
 
+  // ↩️ Carried In — merged after both branches (frozen + live) because it is a
+  // NEW metric that no historical snapshot contains, so it is always computed
+  // live. An SDR whose only activity this period was a carried-in meeting still
+  // gets a row: dropping them would re-hide exactly the meetings this column
+  // exists to surface.
+  const carriedBy = {};
+  sdrpCarriedRows().forEach(r => { const n = r.generated_by || '—'; carriedBy[n] = (carriedBy[n] || 0) + 1; });
+  list.forEach(s => { s.carried = carriedBy[s.name] || 0; });
+  Object.keys(carriedBy).forEach(n => {
+    if (!list.some(s => s.name === n))
+      list.push({ name: n, meetings: 0, done: 0, future: 0, sqlgen: 0, s1: 0, carried: carriedBy[n] });
+  });
+
   list.sort((a, b) => {
     if (SDRP.sortKey === 'name') return String(a.name).localeCompare(String(b.name)) * SDRP.sortDir;
     return ((a[SDRP.sortKey] || 0) - (b[SDRP.sortKey] || 0)) * SDRP.sortDir;
@@ -5964,8 +6005,8 @@ function renderSdrPerfTable() {
     return;
   }
 
-  const tot = { meetings: 0, done: 0, future: 0, sqlgen: 0, s1: 0 };
-  list.forEach(s => { tot.meetings += s.meetings; tot.done += s.done; tot.future += (s.future || 0); tot.sqlgen += (s.sqlgen || 0); tot.s1 += s.s1; });
+  const tot = { meetings: 0, done: 0, future: 0, sqlgen: 0, s1: 0, carried: 0 };
+  list.forEach(s => { tot.meetings += s.meetings; tot.done += s.done; tot.future += (s.future || 0); tot.sqlgen += (s.sqlgen || 0); tot.s1 += s.s1; tot.carried += (s.carried || 0); });
 
   const arrow = k => SDRP.sortKey === k ? (SDRP.sortDir === -1 ? ' ↓' : ' ↑') : ' ↕';
   const numCell = (sdr, metric, val, color) =>
@@ -5980,6 +6021,7 @@ function renderSdrPerfTable() {
           <th onclick="sortSdrpTable('name')"     title="${escHtml(SDRP_TIP.sdr)}"      style="text-align:left;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">SDR${arrow('name')}</th>
           <th onclick="sortSdrpTable('meetings')" title="${escHtml(SDRP_TIP.meetings)}" style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">🤝 Meetings Generated${arrow('meetings')} <span style="opacity:.5">ⓘ</span></th>
           <th onclick="sortSdrpTable('done')"     title="${escHtml(SDRP_TIP.done)}"     style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✅ Meetings Done${arrow('done')} <span style="opacity:.5">ⓘ</span></th>
+          <th onclick="sortSdrpTable('carried')"  title="${escHtml(SDRP_TIP.carried)}"  style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">↩️ Carried In${arrow('carried')} <span style="opacity:.5">ⓘ</span></th>
           <th onclick="sortSdrpTable('sqlgen')"   title="${escHtml(SDRP_TIP.sqlgen)}"   style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">💎 SQL Generated${arrow('sqlgen')} <span style="opacity:.5">ⓘ</span></th>
           <th onclick="sortSdrpTable('s1')"       title="${escHtml(SDRP_TIP.s1)}"       style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">🏆 S1 Created${arrow('s1')} <span style="opacity:.5">ⓘ</span></th>
           <th onclick="sortSdrpTable('future')"   title="${escHtml(SDRP_TIP.future)}"   style="text-align:center;padding:8px 12px;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📅 Future Meetings${arrow('future')} <span style="opacity:.5">ⓘ</span></th>
@@ -5997,6 +6039,7 @@ function renderSdrPerfTable() {
           </td>
           ${numCell(s.name, 'meetings', s.meetings, '#F59E0B')}
           ${numCell(s.name, 'done',     s.done,     '#34D399')}
+          ${numCell(s.name, 'carried',  s.carried || 0, '#F472B6')}
           ${numCell(s.name, 'sqlgen',   s.sqlgen || 0, '#22D3EE')}
           ${s.s1 > 0
             ? `<td style="padding:9px 12px;text-align:center"><a href="#" data-sdr="${escHtml(s.name)}" onclick="event.preventDefault();openSdrpS1Detail(this.dataset.sdr)" style="color:#A78BFA;font-weight:800;text-decoration:none;border-bottom:1px dotted #A78BFA55;cursor:pointer">${s.s1}</a></td>`
@@ -6009,6 +6052,7 @@ function renderSdrPerfTable() {
           <td style="padding:9px 12px;font-weight:700;color:var(--text-muted);font-size:11px">TOTAL — ${list.length} SDRs</td>
           ${numCell('__ALL__', 'meetings', tot.meetings, '#F59E0B')}
           ${numCell('__ALL__', 'done',     tot.done,     '#34D399')}
+          ${numCell('__ALL__', 'carried',  tot.carried,  '#F472B6')}
           ${numCell('__ALL__', 'sqlgen',   tot.sqlgen,   '#22D3EE')}
           <td style="padding:9px 12px;text-align:center;color:#A78BFA;font-weight:800">${tot.s1}</td>
           ${numCell('__ALL__', 'future',   tot.future,   '#38BDF8')}
@@ -6017,7 +6061,7 @@ function renderSdrPerfTable() {
     </table>`;
 }
 
-const SDRP_METRIC_LABEL = { meetings: '🤝 Meetings Generated', done: '✅ Meetings Done', future: '📅 Future Meetings', sqlgen: '💎 SQL Generated', s1: '🏆 S1 Created' };
+const SDRP_METRIC_LABEL = { meetings: '🤝 Meetings Generated', done: '✅ Meetings Done', future: '📅 Future Meetings', sqlgen: '💎 SQL Generated', s1: '🏆 S1 Created', carried: '↩️ Carried In' };
 
 // Plain-language "how is this number calculated" tooltips for the table headers
 // (hover). Every column starts from the same pool — leads whose "Meeting
@@ -6029,11 +6073,15 @@ const SDRP_TIP = {
   done: 'How many of those booked meetings actually happened.\n\nCounted when the lead\'s Meeting Status starts with "Meeting Done" (any type — SQL, Nurture, Unqualified, Not Interested), OR the lead reached S1. The S1 part is a safety net: a lead cannot reach S1 without its meeting having happened, so it catches meetings whose status was never updated afterwards.',
   sqlgen: 'How many meetings produced a qualified opportunity conversation.\n\nCounted when the lead\'s Meeting Status is "Meeting Done-SQL", OR the lead status is "S1 Converted".\n\nThe second rule matters: converting a lead makes the record read-only in Salesforce, so its Meeting Status freezes at whatever it said in that moment. Some genuine SQLs are stuck reading "Meeting Scheduled" and can never be corrected — this makes sure the SDR still gets credit.',
   s1: 'How much pipeline came out of it.\n\nThe only column NOT counted from leads: it counts OPPORTUNITIES created inside the selected period whose "SDR Owner" is this SDR.\n\nBecause of that, it can differ from the columns on the left — an opportunity created this quarter from a meeting booked last quarter still counts here.',
+  carried: 'Meetings you booked BEFORE this period that actually took place INSIDE it.\n\nExample: booked on 25 June (Q2), the prospect took the slot on 14 July (Q3) — it counts as Done in Q2 (the quarter you booked it) and appears here in Q3 (the quarter it happened).\n\nOnly meetings that actually happened are counted — no-shows, cancellations and reschedules are excluded.\n\nThis column exists so meetings booked late in a quarter are never invisible: "Meetings Done" counts THIS period\'s bookings, this counts the earlier bookings that landed here. There is no double-counting between the two.',
   future: 'How many booked meetings are still upcoming.\n\nCounts leads whose "Meeting Scheduled on" date is today or later (IST). It re-reads the clock every time the page loads, so it shrinks on its own as meetings pass — there is no date to maintain.\n\nThese are a subset of Meetings Generated that have not happened yet.',
 };
 
 function openSdrpModal(sdr, metric) {
-  let rows = sdrpFilteredRows();
+  // 'carried' has its own row set — those leads were booked OUTSIDE the window,
+  // so sdrpFilteredRows() (which filters generated_on INTO the window) can never
+  // contain them.
+  let rows = metric === 'carried' ? sdrpCarriedRows() : sdrpFilteredRows();
   if (sdr !== '__ALL__') rows = rows.filter(r => r.generated_by === sdr);
   if (metric === 'done')   rows = rows.filter(SDRP_IS_DONE);
   if (metric === 'future') rows = rows.filter(SDRP_IS_FUTURE);
