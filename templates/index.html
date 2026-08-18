@@ -7,8 +7,55 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+/* Theme init BEFORE first paint — default DARK; 'light' opt-in persists. */
+(function(){ if ((localStorage.getItem('dashTheme') || 'dark') === 'dark')
+  document.documentElement.setAttribute('data-theme', 'dark'); })();
+</script>
 <style>
+/* ── THEME TOKENS ──────────────────────────────────────────────────────────
+   DARK is the DEFAULT (Vaibhav, 18 Aug 2026); the light palette (styled
+   after the lead-research-v2 dashboard) is the :root base and dark overrides
+   it under html[data-theme="dark"] — the head script applies dark before
+   first paint unless the viewer chose light. Toggle in the header persists
+   via localStorage('dashTheme'). */
 :root {
+  --bg:          #F6F8FB;
+  --surface:     #FFFFFF;
+  --surface2:    #F1F5F9;
+  --surface3:    #E9EEF5;
+  --border:      #E2E8F0;
+  --border2:     #CBD5E1;
+  --gold:        #A16207;
+  --gold-light:  #D97706;
+  --gold-dark:   #854D0E;
+  --gold-glow:   rgba(180,83,9,0.10);
+  --text:        #0F172A;
+  --text-muted:  #64748B;
+  --text-dim:    #94A3B8;
+  --text-secondary: #334155;
+  --green:       #16A34A;
+  --green-bg:    rgba(22,163,74,0.10);
+  --red:         #DC2626;
+  --red-bg:      rgba(220,38,38,0.08);
+  --blue:        #2563EB;
+  --purple:      #7C3AED;
+  --amber:       #D97706;
+  --radius:      10px;
+  --radius-lg:   14px;
+  --shadow:      0 4px 24px rgba(15,23,42,0.08);
+  --shadow-gold: 0 0 24px rgba(180,83,9,0.10);
+  --hover:       rgba(15,23,42,0.04);
+  --chart-tick:  #64748B;
+  --chart-grid:  rgba(15,23,42,0.08);
+  --header-a:    #FFFFFF;
+  --header-b:    #F1F5F9;
+  /* aliases used across the app (previously undefined) */
+  --card-bg:     var(--surface);
+  --bg-card:     var(--surface);
+  --bg-main:     var(--bg);
+}
+html[data-theme="dark"] {
   --bg:          #07111C;
   --surface:     #0C1A2B;
   --surface2:    #0F2038;
@@ -22,6 +69,7 @@
   --text:        #ECF2F9;
   --text-muted:  #7B9EC2;
   --text-dim:    #3D5F80;
+  --text-secondary: #B9CBE0;
   --green:       #22C55E;
   --green-bg:    rgba(34,197,94,0.12);
   --red:         #EF4444;
@@ -29,10 +77,13 @@
   --blue:        #3B82F6;
   --purple:      #A78BFA;
   --amber:       #F59E0B;
-  --radius:      10px;
-  --radius-lg:   14px;
   --shadow:      0 4px 24px rgba(0,0,0,0.5);
   --shadow-gold: 0 0 24px rgba(212,175,55,0.12);
+  --hover:       var(--hover);
+  --chart-tick:  #D0DEF0;
+  --chart-grid:  rgba(26,51,82,0.6);
+  --header-a:    #060E17;
+  --header-b:    #0A1A2E;
 }
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 html { scroll-behavior:smooth; }
@@ -51,10 +102,10 @@ body {
 
 /* ── HEADER ── */
 .header {
-  background: linear-gradient(135deg, #060E17 0%, #0A1A2E 100%);
+  background: linear-gradient(135deg, var(--header-a) 0%, var(--header-b) 100%);
   border-bottom: 1px solid var(--border);
   position: sticky; top:0; z-index:100;
-  box-shadow: 0 2px 20px rgba(0,0,0,0.6);
+  box-shadow: var(--shadow);
 }
 .header-inner {
   max-width:1800px; margin:0 auto; padding:0 28px;
@@ -527,7 +578,7 @@ tfoot td {
 .pod-table { width:100%; border-collapse:collapse; font-size:12px; }
 .pod-table th { background:var(--surface2); color:var(--text-muted); font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; padding:8px 12px; text-align:right; border-bottom:1px solid var(--border); white-space:nowrap; }
 .pod-table th:first-child { text-align:left; }
-.pod-table td { padding:9px 12px; border-bottom:1px solid rgba(26,51,82,0.5); text-align:right; }
+.pod-table td { padding:9px 12px; border-bottom:1px solid var(--border); text-align:right; }
 .pod-table td:first-child { text-align:left; font-weight:600; }
 .pod-table tr:hover td { background:var(--surface2); }
 .pod-cov-bar { display:inline-flex; align-items:center; gap:6px; }
@@ -581,6 +632,7 @@ tfoot td {
     </div>
     <div id="adminBadge" class="admin-badge-center">🔑 Admin View — Vaibhav</div>
     <div class="header-right">
+      <button class="btn-sync" id="themeBtn" onclick="toggleTheme()" title="Switch light/dark theme">🌙 Dark</button>
       <div class="countdown-badge" id="countdown">Next sync in 10:00</div>
       <div class="sync-pill">
         <div class="sync-dot idle" id="syncDot"></div>
@@ -1096,7 +1148,7 @@ tfoot td {
             style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">All Lead Statuses ▾</button>
           <div id="mtgMselDD-lead_status" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:60;min-width:240px;max-height:280px;overflow-y:auto;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,0.45)"></div>
         </div>
-        <button onclick="clearMtgFilters()" style="background:rgba(255,255,255,0.06);color:var(--text-muted);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:11px;cursor:pointer">✕ Clear Filters</button>
+        <button onclick="clearMtgFilters()" style="background:var(--surface3);color:var(--text-muted);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:11px;cursor:pointer">✕ Clear Filters</button>
         <span id="mtgCount" style="font-size:11.5px;color:var(--text-muted);margin-left:4px"></span>
       </div>
 
@@ -2236,6 +2288,22 @@ function startCountdown() {
 }
 
 // ── TABS ─────────────────────────────────────────────────────────────────────
+/* ── Light/Dark theme toggle (default light; persisted) ── */
+const themeVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+function _themeBtnLabel() {
+  const b = q('themeBtn');
+  if (b) b.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️ Light' : '🌙 Dark';
+}
+function toggleTheme() {
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  if (dark) document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', 'dark');
+  localStorage.setItem('dashTheme', dark ? 'light' : 'dark');
+  _themeBtnLabel();
+  renderCurrentTab();     // charts re-create with the new palette's tick/grid colors
+}
+document.addEventListener('DOMContentLoaded', _themeBtnLabel);
+
 function switchTab(tab) {
   S.activeTab = tab;
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
@@ -2945,8 +3013,8 @@ function drawBarChart(id, data, opts={}) {
         }
       },
       scales:{
-        x:{ grid:{color:'rgba(26,51,82,0.6)'}, ticks:{color:'#D0DEF0',font:{size:11}} },
-        y:{ grid:{color:'rgba(26,51,82,0.6)'}, ticks:{color:'#D0DEF0',font:{size:11}} },
+        x:{ grid:{color:themeVar('--chart-grid')}, ticks:{color:themeVar('--chart-tick'),font:{size:11}} },
+        y:{ grid:{color:themeVar('--chart-grid')}, ticks:{color:themeVar('--chart-tick'),font:{size:11}} },
       }
     }
   });
@@ -2962,7 +3030,7 @@ function drawDoughnut(id, labels, data, colors) {
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{
-        legend:{position:'right', labels:{color:'#D0DEF0', font:{size:11}, padding:16}},
+        legend:{position:'right', labels:{color:themeVar('--chart-tick'), font:{size:11}, padding:16}},
         tooltip:{
           backgroundColor:'rgba(12,26,43,0.95)',
           titleColor:'#ECF2F9', bodyColor:'#7B9EC2',
@@ -3005,8 +3073,8 @@ function _trendLineConfig(series, color, fill){
       responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false}, tooltip:{backgroundColor:'rgba(12,26,43,0.95)', titleColor:'#ECF2F9', bodyColor:'#7B9EC2', borderColor:'#1A3352', borderWidth:1} },
       scales:{
-        x:{ grid:{color:'rgba(26,51,82,0.6)'}, ticks:{color:'#D0DEF0',font:{size:10},maxRotation:60,minRotation:0,autoSkip:true,maxTicksLimit:14} },
-        y:{ beginAtZero:true, grid:{color:'rgba(26,51,82,0.6)'}, ticks:{color:'#D0DEF0',font:{size:11},precision:0} },
+        x:{ grid:{color:themeVar('--chart-grid')}, ticks:{color:themeVar('--chart-tick'),font:{size:10},maxRotation:60,minRotation:0,autoSkip:true,maxTicksLimit:14} },
+        y:{ beginAtZero:true, grid:{color:themeVar('--chart-grid')}, ticks:{color:themeVar('--chart-tick'),font:{size:11},precision:0} },
       }
     }
   };
@@ -5313,7 +5381,7 @@ function renderMgfModalTable() {
           <tr onclick="${r.sf_url ? `window.open('${r.sf_url}','_blank')` : ''}"
               title="${r.sf_url ? 'Open in Salesforce' : ''}"
               style="${r.sf_url ? 'cursor:pointer;' : ''}border-bottom:1px solid var(--border)"
-              onmouseover="this.style.background='rgba(255,255,255,0.03)'"
+              onmouseover="this.style.background='var(--hover)'"
               onmouseout="this.style.background=''">
             ${cols.map(c => `<td style="padding:8px 10px">${cell(r, c)}</td>`).join('')}
           </tr>`).join('')}
@@ -5514,7 +5582,7 @@ function buildSdrpFilterBar() {
         style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">${SDRP_MSEL[key].all} ▾</button>
       <div id="sdrpMselDD-${key}" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:60;min-width:240px;max-height:280px;overflow-y:auto;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,0.45)"></div>
     </div>`).join('') +
-    `<button onclick="clearSdrpFilters()" style="background:rgba(255,255,255,0.06);color:var(--text-muted);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:11px;cursor:pointer">✕ Clear Filters</button>`;
+    `<button onclick="clearSdrpFilters()" style="background:var(--surface3);color:var(--text-muted);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:11px;cursor:pointer">✕ Clear Filters</button>`;
 }
 
 function populateSdrpFilters() {
@@ -5539,7 +5607,7 @@ function renderSdrpMsel(key) {
     (cfg.opts.length === 0
       ? `<div style="padding:8px;font-size:11px;color:var(--text-muted)">No values</div>`
       : cfg.opts.map(v => `
-      <label style="display:flex;gap:8px;align-items:center;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:12px" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
+      <label style="display:flex;gap:8px;align-items:center;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:12px" onmouseover="this.style.background='var(--hover)'" onmouseout="this.style.background='transparent'">
         <input type="checkbox" data-v="${escHtml(v)}" ${cfg.sel.has(v) ? 'checked' : ''} onchange="toggleSdrpMselVal('${key}', this.dataset.v)" style="accent-color:var(--gold)">
         <span>${escHtml(v)}</span>
       </label>`).join(''));
@@ -5920,7 +5988,7 @@ function renderSdrTrendChart() {
                    callbacks: { title: items => meta[items[0].dataIndex].tip } },
       },
       scales: {
-        x: { grid: { color: 'rgba(26,51,82,0.6)' }, ticks: { color: '#D0DEF0', font: { size: 10 }, maxRotation: 0, minRotation: 0,
+        x: { grid: { color: themeVar('--chart-grid') }, ticks: { color: themeVar('--chart-tick'), font: { size: 10 }, maxRotation: 0, minRotation: 0,
                // Label the first, the last (current week — so July is always visible),
                // and an even spread in between; hide the rest instead of autoSkip
                // (which can drop the most-recent week's label).
@@ -5932,7 +6000,7 @@ function renderSdrTrendChart() {
                  if (i === 0 || i === total - 1 || i % step === 0) return this.getLabelForValue(val);
                  return '';
                } } },
-        y: { beginAtZero: true, grid: { color: 'rgba(26,51,82,0.6)' }, ticks: { color: '#D0DEF0', font: { size: 11 }, precision: 0 } },
+        y: { beginAtZero: true, grid: { color: themeVar('--chart-grid') }, ticks: { color: themeVar('--chart-tick'), font: { size: 11 }, precision: 0 } },
       }
     }
   });
@@ -6037,7 +6105,7 @@ function renderSdrPerfTable() {
       </thead>
       <tbody>
         ${list.map((s, i) => `
-        <tr style="border-bottom:1px solid var(--border)" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background=''">
+        <tr style="border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--hover)'" onmouseout="this.style.background=''">
           <td style="padding:9px 12px">
             <span style="display:inline-flex;align-items:center;gap:8px">
               <span style="color:var(--text-dim);font-size:10px;width:22px">#${i + 1}</span>
@@ -6153,7 +6221,7 @@ function _sdrpCallMeetingModal(title, rows) {
           return `
           <tr onclick="${r.sf_url ? `window.open('${r.sf_url}','_blank')` : ''}" title="${r.sf_url ? 'Open in Salesforce' : ''}"
               style="${r.sf_url ? 'cursor:pointer;' : ''}border-bottom:1px solid var(--border)"
-              onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background=''">
+              onmouseover="this.style.background='var(--hover)'" onmouseout="this.style.background=''">
             <td style="padding:7px 10px;font-weight:600">${r.sf_url ? `<span style="color:var(--gold-light)">${escHtml(r.name)} <span style="font-size:10px;opacity:.6">↗</span></span>` : escHtml(r.name)}</td>
             <td style="padding:7px 10px;color:var(--text-muted)">${escHtml(r.sdr)}</td>
             <td style="padding:7px 10px">${typeBadge}</td>
@@ -6184,7 +6252,7 @@ function _sdrpLeadModal(title, rows) {
         <tbody>${rows.map(r => `
           <tr onclick="${r.sf_url ? `window.open('${r.sf_url}','_blank')` : ''}" title="${r.sf_url ? 'Open in Salesforce' : ''}"
               style="${r.sf_url ? 'cursor:pointer;' : ''}border-bottom:1px solid var(--border)"
-              onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background=''">
+              onmouseover="this.style.background='var(--hover)'" onmouseout="this.style.background=''">
             <td style="padding:7px 10px;font-weight:600">${r.sf_url ? `<span style="color:var(--gold-light)">${escHtml(r.name)} <span style="font-size:10px;opacity:.6">↗</span></span>` : escHtml(r.name)}</td>
             <td style="padding:7px 10px;color:var(--text-muted);font-size:11px">${escHtml(r.title)}</td>
             <td style="padding:7px 10px;color:var(--text-muted)">${escHtml(r.company)}</td>
@@ -6242,7 +6310,7 @@ function renderMtgMsel(key) {
     (cfg.opts.length === 0
       ? `<div style="padding:8px;font-size:11px;color:var(--text-muted)">No values</div>`
       : cfg.opts.map(v => `
-      <label style="display:flex;gap:8px;align-items:center;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:12px" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
+      <label style="display:flex;gap:8px;align-items:center;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:12px" onmouseover="this.style.background='var(--hover)'" onmouseout="this.style.background='transparent'">
         <input type="checkbox" data-v="${escHtml(v)}" ${cfg.sel.has(v) ? 'checked' : ''} onchange="toggleMtgMselVal('${key}', this.dataset.v)" style="accent-color:var(--gold)">
         <span>${escHtml(v)}</span>
       </label>`).join(''));
@@ -6385,7 +6453,7 @@ function drawMtgTable(rows) {
     <tr onclick="${r.sf_url ? `window.open('${r.sf_url}','_blank')` : ''}"
         title="${r.sf_url ? 'Open in Salesforce' : ''}"
         style="${r.sf_url ? 'cursor:pointer;' : ''}border-bottom:1px solid var(--border)"
-        onmouseover="this.style.background='rgba(255,255,255,0.03)'"
+        onmouseover="this.style.background='var(--hover)'"
         onmouseout="this.style.background=''">
       <td style="padding:8px 10px;font-weight:600;color:var(--text)">${escHtml(r.first_name)}</td>
       <td style="padding:8px 10px;font-weight:600;color:var(--text)">
@@ -7034,7 +7102,7 @@ const CC_DOWS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const ccNum = n => (n || 0).toLocaleString('en-US');
 const ccBadge = (txt, cls) => `<span style="border-radius:999px;padding:2px 8px;font-size:10px;font-weight:600;${cls}">${ccEsc(txt)}</span>`;
 const CC_GOOD = 'background:rgba(52,211,153,.15);color:#34D399', CC_WARN = 'background:rgba(245,158,11,.15);color:#F59E0B',
-      CC_BAD = 'background:rgba(239,68,68,.15);color:#F87171', CC_MUT = 'background:rgba(255,255,255,.07);color:var(--text-muted)',
+      CC_BAD = 'background:rgba(239,68,68,.15);color:#F87171', CC_MUT = 'background:var(--surface3);color:var(--text-muted)',
       CC_BLUE = 'background:rgba(56,189,248,.15);color:#38BDF8';
 
 async function ccInit() {
@@ -7092,7 +7160,7 @@ function ccMsel(key, label, options) {
   const sel = CC.f[key];
   return `<details style="position:relative" ontoggle="event.stopPropagation()">
     <summary style="list-style:none;cursor:pointer;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--text-secondary)">${label}${sel.length ? ` · ${sel.length}` : ''} ▾</summary>
-    <div style="position:absolute;top:110%;left:0;z-index:50;background:var(--bg-main);border:1px solid var(--border);border-radius:10px;padding:8px;min-width:210px;max-height:260px;overflow:auto;box-shadow:0 8px 30px rgba(0,0,0,.5)">
+    <div style="position:absolute;top:110%;left:0;z-index:50;background:var(--bg-main);border:1px solid var(--border);border-radius:10px;padding:8px;min-width:210px;max-height:260px;overflow:auto;box-shadow:var(--shadow)">
       ${options.map(o => `<label style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--text-secondary);padding:3px 4px;cursor:pointer">
          <input type="checkbox" ${sel.includes(o) ? 'checked' : ''} onchange="ccToggleF('${key}', ${JSON.stringify(o).replace(/"/g, '&quot;')}, this.checked)"> ${ccEsc(o)}</label>`).join('')}
     </div></details>`;
@@ -7203,9 +7271,9 @@ async function ccOverview(body, qs) {
         { label: 'Conversations', data: d.weekly.map(w => w.conversations), borderColor: '#34D399', backgroundColor: 'rgba(52,211,153,.08)', tension: .35, fill: true },
         { label: 'Meetings', data: d.weekly.map(w => w.meetings), borderColor: '#38BDF8', backgroundColor: 'rgba(56,189,248,.10)', tension: .35, fill: true },
       ]}, options: { responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { labels: { color: '#9CA3AF', boxWidth: 10, font: { size: 10 } } } },
-        scales: { x: { ticks: { color: '#6B7280', font: { size: 9 } }, grid: { display: false } },
-                  y: { ticks: { color: '#6B7280', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,.05)' } } } } });
+        plugins: { legend: { labels: { color: themeVar('--chart-tick'), boxWidth: 10, font: { size: 10 } } } },
+        scales: { x: { ticks: { color: themeVar('--chart-tick'), font: { size: 9 } }, grid: { display: false } },
+                  y: { ticks: { color: themeVar('--chart-tick'), font: { size: 9 } }, grid: { color: themeVar('--chart-grid') } } } } });
   }
 }
 
@@ -7299,7 +7367,7 @@ async function ccTiming(body, qs) {
     for (const h of hours) {
       const c = cells[dow + '-' + h];
       const rate = c && c.dials >= 5 ? c.conversations / c.dials : null;
-      const bg = !c ? 'transparent' : rate === null ? 'rgba(255,255,255,.04)' : `rgba(52,211,153,${Math.min(.85, rate * 2.2).toFixed(2)})`;
+      const bg = !c ? 'transparent' : rate === null ? themeVar('--hover') : `rgba(52,211,153,${Math.min(.85, rate * 2.2).toFixed(2)})`;
       const drill = c ? `onclick="ccOpenList('source=calls&dow=${dow}&hour=${h}')" ` : '';
       grid += `<td ${drill}title="${c ? `${c.dials} dials · ${c.conversations} conversations · ${c.meetings} meetings${c.dials < 5 ? ' · low sample' : ''}` : ''}" style="width:40px;height:30px;text-align:center;border:1px solid var(--border);background:${bg};color:${rate > .18 ? '#052e22' : 'var(--text-secondary)'};cursor:${c ? 'pointer' : 'default'};font-weight:600">${c ? c.dials : ''}</td>`;
     }
@@ -7399,7 +7467,7 @@ async function ccExplorer(body, qs, offset = 0) {
     </div>
     <div style="font-size:11px;color:var(--text-dim)">${ccNum(d.count)} calls · newest first · click a row for the transcript</div>
     ${ccTable(['Time', 'Rep', 'Contact', 'Account', 'Disposition', 'Class', 'Dur', 'Talk%', 'Grade'],
-      rows.map(r => `<tr onclick="ccOpenCall('${r.id}')" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
+      rows.map(r => `<tr onclick="ccOpenCall('${r.id}')" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='var(--hover)'" onmouseout="this.style.background=''">
         <td style="padding:7px 10px;color:var(--text-dim);white-space:nowrap">${ccEsc((r.time || '').slice(0, 16).replace('T', ' '))}</td>
         <td style="padding:7px 10px;font-weight:600;color:var(--text)">${ccEsc(r.owner_name || '—')}</td>
         <td style="padding:7px 10px">${ccEsc(r.contact_name || '—')}</td>
@@ -7431,7 +7499,7 @@ async function ccOpenList(params) {
       <div style="font-size:11px;color:var(--text-dim)">click any row for the full transcript</div>
       <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="q('ccModal').style.display='none'">✕ Close</button>
     </div>
-    ${rows.map(r => `<div onclick="ccOpenCall('${r.call_id || r.id}')" style="border:1px solid var(--border);border-radius:10px;padding:9px 12px;margin-bottom:6px;cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
+    ${rows.map(r => `<div onclick="ccOpenCall('${r.call_id || r.id}')" style="border:1px solid var(--border);border-radius:10px;padding:9px 12px;margin-bottom:6px;cursor:pointer" onmouseover="this.style.background='var(--hover)'" onmouseout="this.style.background=''">
       <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px">
         <b style="color:var(--text)">${ccEsc(r.contact_name || r.owner_name || '—')}</b>
         <span style="color:var(--text-dim)">${ccEsc(r.account_name || '')}</span>
