@@ -10,3 +10,4 @@ campaigns.json
 *.xlsx
 .~lock*
 node_modules/
+cold_calls_cache.json.gz

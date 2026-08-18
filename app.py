@@ -4891,6 +4891,12 @@ auto_complete_campaigns()
 threading.Thread(target=bg_loop, daemon=True).start()
 threading.Thread(target=slack_scheduler_loop, daemon=True).start()
 
+# ── Nooks Cold Calls tab (read-only Supabase mirror of Rahul's pipeline) ─────
+import cold_calls
+cold_calls.init_app(app, soql=soql, load_campaigns=load_campaigns,
+                    load_ledger=load_ledger, require_admin=require_admin,
+                    data_dir=DATA_DIR)
+
 print('\n' + '='*55)
 print('  🚀  Campaign Command Center')
 print('  →   http://localhost:5001')

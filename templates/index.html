@@ -599,6 +599,7 @@ tfoot td {
     <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
     <button class="tab-btn" data-tab="campaigns">📋 Campaigns</button>
     <button class="tab-btn" data-tab="sdr">👥 SDR Performance</button>
+    <button class="tab-btn" data-tab="coldcalls">📞 Nooks Cold Calls</button>
     <button class="tab-btn" data-tab="reporting">📈 SDR Reporting 2026 (MQL/SQL/S1)</button>
     <button class="tab-btn" data-tab="manage">⚙️ Manage</button>
   </div>
@@ -880,6 +881,12 @@ tfoot td {
   </div>
 
   <!-- SDR REPORTING 2026 -->
+  <!-- ══ NOOKS COLD CALLS (read-only mirror of the lead-research-v2 pipeline,
+       plus campaign scope; see cold_calls.py) ═══════════════════════════════ -->
+  <div id="tab-coldcalls" class="tab-panel">
+    <div id="ccRoot"><div style="text-align:center;padding:48px;color:var(--text-dim)">Loading cold-call data…</div></div>
+  </div>
+
   <div id="tab-reporting" class="tab-panel">
 
     <!-- ── MEETING GENERATION FUNNEL SECTION ── -->
@@ -2244,6 +2251,7 @@ function renderCurrentTab() {
   if(S.activeTab==='dashboard') renderDashboard();
   if(S.activeTab==='campaigns') renderCampaigns();
   if(S.activeTab==='sdr')       renderSDR();
+  if(S.activeTab==='coldcalls') ccInit();
   if(S.activeTab==='reporting') renderReportingTab();
   if(S.activeTab==='manage')    renderManage();
 }
@@ -6993,6 +7001,474 @@ loadSegments();
 populatePodDropdowns();
 startCountdown();
 setInterval(fetchData, 10000);   // Poll Flask every 10s to pick up sync progress updates
+</script>
+
+<script>
+/* ══ NOOKS COLD CALLS TAB ════════════════════════════════════════════════════
+   Mirrors lead-research-v2's /cold-calls (8 sub-tabs) + a campaign scope.
+   All aggregates come from /api/cold-calls/* (cold_calls.py — a snapshot of
+   Rahul's Supabase pipeline, validated 1:1 against his SQL RPCs 18 Aug 2026).
+   Audit invariant preserved: every number clicks through to its exact calls,
+   and every call opens its transcript. */
+
+const CC = {
+  meta: null, sub: 'overview', basis: 'local',
+  f: { from: '', to: '', reps: [], pods: [], modes: [], campaign: '' },
+  inited: false, chart: null,
+};
+
+const ccQS = () => {
+  const p = new URLSearchParams();
+  if (CC.f.from) p.set('from', CC.f.from);
+  if (CC.f.to) p.set('to', CC.f.to);
+  if (CC.f.reps.length) p.set('rep', CC.f.reps.join(','));
+  if (CC.f.pods.length) p.set('pod', CC.f.pods.join(','));
+  if (CC.f.modes.length) p.set('mode', CC.f.modes.join(','));
+  if (CC.f.campaign) p.set('campaign', CC.f.campaign);
+  return p.toString();
+};
+const ccGet = async (url) => { const r = await fetch(url); return r.json(); };
+const ccPct = (a, b) => b > 0 ? (100 * a / b).toFixed(1) + '%' : '—';
+const ccEsc = s => escHtml(String(s ?? ''));
+const CC_DOWS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const ccNum = n => (n || 0).toLocaleString('en-US');
+const ccBadge = (txt, cls) => `<span style="border-radius:999px;padding:2px 8px;font-size:10px;font-weight:600;${cls}">${ccEsc(txt)}</span>`;
+const CC_GOOD = 'background:rgba(52,211,153,.15);color:#34D399', CC_WARN = 'background:rgba(245,158,11,.15);color:#F59E0B',
+      CC_BAD = 'background:rgba(239,68,68,.15);color:#F87171', CC_MUT = 'background:rgba(255,255,255,.07);color:var(--text-muted)',
+      CC_BLUE = 'background:rgba(56,189,248,.15);color:#38BDF8';
+
+async function ccInit() {
+  if (!CC.inited) { CC.inited = true; CC.meta = await ccGet('/api/cold-calls/meta'); }
+  ccRenderShell();
+  ccRenderSub();
+}
+
+function ccRenderShell() {
+  const m = CC.meta;
+  const root = q('ccRoot');
+  if (!m || !m.ready) {
+    root.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">
+      ${ccEsc(m?.reason || 'Cold-call snapshot not available yet.')}<br><br>
+      <button class="btn btn-sm admin-only" onclick="ccRefreshData(this)">↻ Fetch data now</button></div>`;
+    return;
+  }
+  const stale = m.stale_business_days > 2;
+  const subs = [['overview','Overview'],['openings','First 20 Seconds'],['objections','Objections'],['mistakes','Mistakes'],
+                ['timing','Timing'],['reps','Reps'],['meetings','Meetings'],['explorer','Call Explorer']];
+  root.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:4px">
+      <div class="section-title" style="margin:0">📞 Nooks Cold Calls</div>
+      <span style="font-size:11px;color:var(--text-dim)">${ccNum(m.total_calls)} connects synced · ${ccNum(m.identity_matched)} matched to Salesforce · data through <b>${ccEsc(m.newest_call)}</b></span>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="ccRefreshData(this)">↻ Refresh data</button>
+    </div>
+    ${stale ? `<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:10px;padding:8px 12px;font-size:12px;color:#F59E0B;margin-bottom:8px">
+        ⚠️ Data is ${m.stale_business_days} business days old — the upstream Nooks ingest (Rahul's pipeline) looks stalled. Numbers below are complete only through ${ccEsc(m.newest_call)}.</div>` : ''}
+    ${m.refresh_error ? `<div style="background:rgba(239,68,68,.10);border:1px solid rgba(239,68,68,.35);border-radius:10px;padding:8px 12px;font-size:12px;color:#F87171;margin-bottom:8px">Snapshot refresh failing — serving the last good snapshot. (${ccEsc(m.refresh_error)})</div>` : ''}
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0">
+      <input type="date" id="ccFrom" value="${CC.f.from}" min="${ccEsc(m.min_date)}" onchange="CC.f.from=this.value;ccRenderSub()" style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 8px;font-size:12px">
+      <span style="color:var(--text-dim);font-size:11px">→</span>
+      <input type="date" id="ccTo" value="${CC.f.to}" onchange="CC.f.to=this.value;ccRenderSub()" style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 8px;font-size:12px">
+      ${ccMsel('reps', 'Reps', m.reps)}
+      ${ccMsel('pods', 'Pods', m.pods)}
+      ${ccMsel('modes', 'Dialing mode', ['parallel','power'])}
+      <select onchange="CC.f.campaign=this.value;ccRenderSub()" style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 8px;font-size:12px;max-width:280px">
+        <option value="">All campaigns</option>
+        ${m.campaigns.map(c => `<option value="${ccEsc(c)}" ${CC.f.campaign === c ? 'selected' : ''}>${ccEsc(c)}</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="CC.f={from:'',to:'',reps:[],pods:[],modes:[],campaign:''};ccRenderShell();ccRenderSub()">✕ Clear</button>
+    </div>
+    <div id="ccScopeNote"></div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px">
+      ${subs.map(([k, l]) => `<button onclick="CC.sub='${k}';ccRenderShell();ccRenderSub()" style="background:none;border:none;cursor:pointer;padding:8px 12px;font-size:12.5px;font-weight:600;color:${CC.sub === k ? 'var(--text)' : 'var(--text-dim)'};border-bottom:2px solid ${CC.sub === k ? '#F59E0B' : 'transparent'}">${l}</button>`).join('')}
+    </div>
+    <div id="ccBody"><div style="text-align:center;padding:40px;color:var(--text-dim)">Loading…</div></div>
+
+    <div id="ccModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1200" onclick="if(event.target===this)this.style.display='none'">
+      <div style="position:absolute;top:5%;left:50%;transform:translateX(-50%);width:min(880px,94vw);max-height:88vh;overflow:auto;background:var(--bg-main);border:1px solid var(--border);border-radius:16px;padding:18px" id="ccModalBox"></div>
+    </div>`;
+}
+
+function ccMsel(key, label, options) {
+  const sel = CC.f[key];
+  return `<details style="position:relative" ontoggle="event.stopPropagation()">
+    <summary style="list-style:none;cursor:pointer;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--text-secondary)">${label}${sel.length ? ` · ${sel.length}` : ''} ▾</summary>
+    <div style="position:absolute;top:110%;left:0;z-index:50;background:var(--bg-main);border:1px solid var(--border);border-radius:10px;padding:8px;min-width:210px;max-height:260px;overflow:auto;box-shadow:0 8px 30px rgba(0,0,0,.5)">
+      ${options.map(o => `<label style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--text-secondary);padding:3px 4px;cursor:pointer">
+         <input type="checkbox" ${sel.includes(o) ? 'checked' : ''} onchange="ccToggleF('${key}', ${JSON.stringify(o).replace(/"/g, '&quot;')}, this.checked)"> ${ccEsc(o)}</label>`).join('')}
+    </div></details>`;
+}
+function ccToggleF(key, val, on) {
+  const a = CC.f[key];
+  if (on && !a.includes(val)) a.push(val);
+  if (!on) CC.f[key] = a.filter(x => x !== val);
+  ccRenderSub();
+}
+
+async function ccRefreshData(btn) {
+  btn.textContent = '↻ Refreshing… (~1 min)'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/cold-calls/refresh', { method: 'POST', headers: { 'X-Admin-Token': (localStorage.getItem('adminToken') || 'rc-admin-2026') } });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'refresh failed');
+    CC.meta = await ccGet('/api/cold-calls/meta');
+    ccRenderShell(); ccRenderSub();
+  } catch (e) { btn.textContent = '↻ Failed — retry'; btn.disabled = false; alert('Refresh failed: ' + e.message); }
+}
+
+function ccScopeNote(payload) {
+  const el = q('ccScopeNote');
+  if (!el) return;
+  const s = payload && payload.scope;
+  el.innerHTML = s && !s.error
+    ? `<div style="font-size:11px;color:#38BDF8;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25);border-radius:8px;padding:6px 10px;margin-bottom:10px">
+        🎯 Scoped to <b>${ccEsc(s.campaign)}</b> — ${ccNum(s.matched_calls)} of ${ccNum(s.all_calls)} synced calls matched this campaign's ${ccNum(s.lead_ids)} leads (phone-identity bridge, ~90% coverage; unmatched calls can't be attributed).</div>`
+    : '';
+}
+
+async function ccRenderSub() {
+  const body = q('ccBody');
+  if (!body) return;
+  body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">Loading…</div>';
+  const qs = ccQS();
+  try {
+    if (CC.sub === 'overview') return ccOverview(body, qs);
+    if (CC.sub === 'openings') return ccOpenings(body, qs);
+    if (CC.sub === 'objections') return ccObjections(body, qs);
+    if (CC.sub === 'mistakes') return ccMistakes(body, qs);
+    if (CC.sub === 'timing') return ccTiming(body, qs);
+    if (CC.sub === 'reps') return ccReps(body, qs);
+    if (CC.sub === 'meetings') return ccMeetings(body, qs);
+    if (CC.sub === 'explorer') return ccExplorer(body, qs);
+  } catch (e) { body.innerHTML = `<div style="color:#F87171;padding:24px">Failed: ${ccEsc(e.message)}</div>`; }
+}
+
+const ccCard = (label, value, sub) => `
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;min-width:150px;flex:1">
+    <div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted)">${label}</div>
+    <div style="font-size:24px;font-weight:800;color:var(--text);margin-top:4px">${value}</div>
+    ${sub ? `<div style="font-size:11px;color:var(--text-dim);margin-top:2px">${sub}</div>` : ''}
+  </div>`;
+const ccTable = (heads, rowsHtml) => `
+  <div class="table-wrap" style="margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="border-bottom:1px solid var(--border)">${heads.map(h => `<th style="text-align:left;padding:7px 10px;color:var(--text-muted);font-size:10.5px;white-space:nowrap">${h}</th>`).join('')}</tr></thead>
+    <tbody>${rowsHtml}</tbody></table></div>`;
+const ccSection = (title, hint, inner) => `
+  <div style="margin-top:18px"><div style="font-size:13px;font-weight:700;color:var(--text)">${title}</div>
+  ${hint ? `<div style="font-size:11px;color:var(--text-dim);margin-top:2px">${hint}</div>` : ''}${inner}</div>`;
+const ccDrill = (label, params, color) =>
+  `<a href="#" onclick="event.preventDefault();ccOpenList('${params.replace(/'/g, "\\'")}')" style="color:${color || '#F59E0B'};font-weight:700;text-decoration:none;border-bottom:1px dotted ${color || '#F59E0B'}55">${label}</a>`;
+
+/* ── Overview ── */
+async function ccOverview(body, qs) {
+  const d = await ccGet('/api/cold-calls/aggregate?view=overview&' + qs);
+  ccScopeNote(d);
+  const k = d.kpis;
+  const insights = (CC.meta.insights || []).slice(0, 6);
+  body.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:10px">
+      ${ccCard('Connects', `${ccDrill(ccNum(k.connects), 'source=calls')}`, 'connect-only export — no-answers not synced')}
+      ${ccCard('Conversations', ccDrill(ccNum(k.conversations), 'source=calls&class=conversation'), ccPct(k.conversations, k.connects) + ' of connects · ≥3 prospect turns & ≥45s')}
+      ${ccCard('Meetings booked', ccDrill(ccNum(k.meetings), 'source=calls&meeting=1'), ccPct(k.meetings, k.conversations) + ' of conversations')}
+      ${ccCard('Data quality', `${d.data_quality.disposition_mismatches}`, 'disposition contradicts transcript · ' + ccDrill('view', 'source=calls&mismatch=1', '#F87171'))}
+    </div>
+    ${ccSection('Weekly trend', 'connects vs conversations vs meetings per week', '<div style="height:230px;margin-top:8px"><canvas id="ccTrend"></canvas></div>')}
+    ${insights.length ? ccSection('Latest weekly insights', 'evidence-backed synthesis from the transcripts (period ending ' + ccEsc(insights[0].period_end) + ')',
+      `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px;margin-top:8px">` +
+      insights.map(i => `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:12px">
+        <div style="font-size:10px;color:#F59E0B;font-weight:700;text-transform:uppercase">${ccEsc(i.question.replace(/_/g, ' '))} · n=${i.n}</div>
+        <div style="font-size:12.5px;font-weight:700;color:var(--text);margin:4px 0">${ccEsc(i.title)}</div>
+        <div style="font-size:11.5px;color:var(--text-secondary);line-height:1.5">${ccEsc(i.insight)}</div>
+        ${i.recommendation ? `<div style="font-size:11px;color:#34D399;margin-top:6px">→ ${ccEsc(i.recommendation)}</div>` : ''}
+      </div>`).join('') + '</div>') : ''}
+    ${ccSection('By rep', '', ccTable(['Rep', 'Pod', 'Connects', 'Conversations', 'Conv %', 'Meetings'],
+      d.by_rep.map(r => `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:7px 10px;font-weight:600;color:var(--text)">${ccEsc(r.rep)}</td>
+        <td style="padding:7px 10px;color:var(--text-dim)">${ccEsc(r.pod || '—')}</td>
+        <td style="padding:7px 10px">${ccNum(r.connects)}</td>
+        <td style="padding:7px 10px">${ccNum(r.conversations)}</td>
+        <td style="padding:7px 10px;color:var(--text-dim)">${ccPct(r.conversations, r.connects)}</td>
+        <td style="padding:7px 10px;color:#34D399;font-weight:700">${ccNum(r.meetings)}</td></tr>`).join('')))}
+    ${ccSection('By pod', '', ccTable(['Pod', 'Connects', 'Conversations', 'Meetings'],
+      d.by_pod.map(p => `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:7px 10px;font-weight:600;color:var(--text)">${ccEsc(p.pod)}</td>
+        <td style="padding:7px 10px">${ccNum(p.connects)}</td><td style="padding:7px 10px">${ccNum(p.conversations)}</td>
+        <td style="padding:7px 10px;color:#34D399;font-weight:700">${ccNum(p.meetings)}</td></tr>`).join('')))}`;
+  if (CC.chart) { CC.chart.destroy(); CC.chart = null; }
+  const ctx = q('ccTrend');
+  if (ctx && window.Chart) {
+    CC.chart = new Chart(ctx, { type: 'line', data: {
+      labels: d.weekly.map(w => w.week.slice(5)),
+      datasets: [
+        { label: 'Connects', data: d.weekly.map(w => w.connects), borderColor: '#A78BFA', backgroundColor: 'rgba(167,139,250,.08)', tension: .35, fill: true },
+        { label: 'Conversations', data: d.weekly.map(w => w.conversations), borderColor: '#34D399', backgroundColor: 'rgba(52,211,153,.08)', tension: .35, fill: true },
+        { label: 'Meetings', data: d.weekly.map(w => w.meetings), borderColor: '#38BDF8', backgroundColor: 'rgba(56,189,248,.10)', tension: .35, fill: true },
+      ]}, options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#9CA3AF', boxWidth: 10, font: { size: 10 } } } },
+        scales: { x: { ticks: { color: '#6B7280', font: { size: 9 } }, grid: { display: false } },
+                  y: { ticks: { color: '#6B7280', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,.05)' } } } } });
+  }
+}
+
+/* ── First 20 Seconds ── */
+async function ccOpenings(body, qs) {
+  const d = await ccGet('/api/cold-calls/aggregate?view=openings&' + qs);
+  ccScopeNote(d);
+  const p = d.personalization;
+  body.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:10px">
+      ${ccCard('Openings analyzed', ccNum(d.population), 'every human connect, incl. calls that died instantly')}
+      ${ccCard('Died within 20s', ccDrill(ccNum(d.died_within_20s), 'source=openings&died=1', '#F87171'), ccPct(d.died_within_20s, d.population) + ' of openings')}
+      ${ccCard('Personalized openers', ccNum(p.with.n), ccPct(p.with.attention_captured, p.with.n) + ' captured attention vs ' + ccPct(p.without.attention_captured, p.without.n) + ' without')}
+    </div>
+    ${ccSection('Opener type × survival', 'what the rep led with, and whether the prospect stayed', ccTable(['Opener', 'n', 'Attention', '→ Conversation', 'Meetings'],
+      d.by_opener.filter(o => o.n >= 3).map(o => `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:7px 10px;font-weight:600;color:var(--text)">${ccDrill(ccEsc((o.opener_type || '—').replace(/_/g, ' ')), 'source=openings&opener_type=' + encodeURIComponent(o.opener_type || ''), 'var(--text)')}</td>
+        <td style="padding:7px 10px">${ccNum(o.n)}</td>
+        <td style="padding:7px 10px">${ccPct(o.attention_captured, o.n)}</td>
+        <td style="padding:7px 10px">${ccPct(o.became_conversation, o.n)}</td>
+        <td style="padding:7px 10px;color:#34D399;font-weight:700">${o.meetings}</td></tr>`).join('')))}
+    ${ccSection('Why openings die', 'cause of death for the sub-20-second calls', ccTable(['Cause', 'n', 'share'],
+      d.death_causes.filter(c => c.n >= 3).map(c => `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:7px 10px;font-weight:600;color:var(--text)">${ccDrill(ccEsc(c.cause.replace(/_/g, ' ')), 'source=openings&died=1&death_cause=' + encodeURIComponent(c.cause), '#F87171')}</td>
+        <td style="padding:7px 10px">${ccNum(c.n)}</td>
+        <td style="padding:7px 10px;color:var(--text-dim)">${ccPct(c.n, d.died_within_20s)}</td></tr>`).join('')))}
+    ${ccSection('By rep', '', ccTable(['Rep', 'Openings', 'Attention captured', 'Died <20s'],
+      d.by_rep.map(r => `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:7px 10px;font-weight:600;color:var(--text)">${ccEsc(r.rep)}</td>
+        <td style="padding:7px 10px">${ccNum(r.n)}</td>
+        <td style="padding:7px 10px;color:#34D399">${ccPct(r.attention_captured, r.n)}</td>
+        <td style="padding:7px 10px;color:#F87171">${ccPct(r.died_within_20s, r.n)}</td></tr>`).join('')))}`;
+}
+
+/* ── Objections ── */
+async function ccObjections(body, qs) {
+  const d = await ccGet('/api/cold-calls/aggregate?view=objections&' + qs);
+  ccScopeNote(d);
+  body.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:10px">${ccCard('Conversations with objections', ccNum(d.population_conversations), 'from the deep transcript analysis')}</div>
+    ${ccSection('Objection type × handling', 'how often each objection lands, and how well reps handle it', ccTable(['Objection', 'n', 'Well', 'Adequate', 'Poorly', 'Not addressed', 'Meeting anyway'],
+      d.by_type.map(o => `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:7px 10px;font-weight:600;color:var(--text)">${ccDrill(ccEsc((o.objection_type || '—').replace(/_/g, ' ')), 'source=objections&objection_type=' + encodeURIComponent(o.objection_type || ''), 'var(--text)')}</td>
+        <td style="padding:7px 10px">${ccNum(o.n)}</td>
+        <td style="padding:7px 10px;color:#34D399">${ccDrill(o.handled_well, 'source=objections&objection_type=' + encodeURIComponent(o.objection_type || '') + '&handled=well', '#34D399')}</td>
+        <td style="padding:7px 10px;color:#F59E0B">${o.handled_adequate}</td>
+        <td style="padding:7px 10px;color:#F87171">${o.handled_poorly}</td>
+        <td style="padding:7px 10px;color:var(--text-dim)">${o.not_addressed}</td>
+        <td style="padding:7px 10px;color:#38BDF8;font-weight:700">${o.meeting_after}</td></tr>`).join('')))}
+    ${ccSection('By rep', 'objections faced · handled well', ccTable(['Rep', 'Objections', 'Handled well', '%'],
+      d.by_rep.map(r => `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:7px 10px;font-weight:600;color:var(--text)">${ccEsc(r.rep)}</td>
+        <td style="padding:7px 10px">${ccNum(r.n)}</td>
+        <td style="padding:7px 10px;color:#34D399">${r.handled_well}</td>
+        <td style="padding:7px 10px;color:var(--text-dim)">${ccPct(r.handled_well, r.n)}</td></tr>`).join('')))}`;
+}
+
+/* ── Mistakes ── */
+async function ccMistakes(body, qs) {
+  const d = await ccGet('/api/cold-calls/aggregate?view=mistakes&' + qs);
+  ccScopeNote(d);
+  body.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:10px">${ccCard('Conversations analyzed', ccNum(d.population_conversations), 'mistakes are per conversation, coaching-graded')}</div>
+    ${ccSection('Mistake type × severity', '', ccTable(['Mistake', 'n', 'Minor', 'Moderate', 'Major'],
+      d.by_type.map(o => `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:7px 10px;font-weight:600;color:var(--text)">${ccDrill(ccEsc((o.mistake_type || '—').replace(/_/g, ' ')), 'source=mistakes&mistake_type=' + encodeURIComponent(o.mistake_type || ''), 'var(--text)')}</td>
+        <td style="padding:7px 10px">${ccNum(o.n)}</td>
+        <td style="padding:7px 10px;color:var(--text-dim)">${o.minor}</td>
+        <td style="padding:7px 10px;color:#F59E0B">${o.moderate}</td>
+        <td style="padding:7px 10px;color:#F87171">${ccDrill(o.major, 'source=mistakes&mistake_type=' + encodeURIComponent(o.mistake_type || '') + '&severity=major', '#F87171')}</td></tr>`).join('')))}
+    ${ccSection('By rep', 'conversations · mistakes flagged · major', ccTable(['Rep', 'Conversations', 'Mistakes', 'Major', 'Mistakes / conv'],
+      d.by_rep.map(r => `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:7px 10px;font-weight:600;color:var(--text)">${ccEsc(r.rep)}</td>
+        <td style="padding:7px 10px">${ccNum(r.n)}</td>
+        <td style="padding:7px 10px">${ccNum(r.mistakes)}</td>
+        <td style="padding:7px 10px;color:#F87171">${r.major}</td>
+        <td style="padding:7px 10px;color:var(--text-dim)">${r.n ? (r.mistakes / r.n).toFixed(1) : '—'}</td></tr>`).join('')))}`;
+}
+
+/* ── Timing heatmap ── */
+async function ccTiming(body, qs) {
+  const d = await ccGet('/api/cold-calls/aggregate?view=timing&basis=' + CC.basis + '&' + qs);
+  ccScopeNote(d);
+  const cells = {};
+  let maxDials = 1;
+  d.cells.forEach(c => { cells[c.dow + '-' + c.hour] = c; maxDials = Math.max(maxDials, c.dials); });
+  const hours = Array.from({ length: 14 }, (_, i) => i + 7);   // 7am–8pm local
+  let grid = `<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:10px;margin-top:10px"><tr><td></td>${hours.map(h => `<td style="padding:3px 6px;color:var(--text-dim);text-align:center">${h}</td>`).join('')}</tr>`;
+  for (const dow of [1, 2, 3, 4, 5]) {
+    grid += `<tr><td style="padding:3px 8px;color:var(--text-dim);font-weight:700">${CC_DOWS[dow]}</td>`;
+    for (const h of hours) {
+      const c = cells[dow + '-' + h];
+      const rate = c && c.dials >= 5 ? c.conversations / c.dials : null;
+      const bg = !c ? 'transparent' : rate === null ? 'rgba(255,255,255,.04)' : `rgba(52,211,153,${Math.min(.85, rate * 2.2).toFixed(2)})`;
+      const drill = c ? `onclick="ccOpenList('source=calls&dow=${dow}&hour=${h}')" ` : '';
+      grid += `<td ${drill}title="${c ? `${c.dials} dials · ${c.conversations} conversations · ${c.meetings} meetings${c.dials < 5 ? ' · low sample' : ''}` : ''}" style="width:40px;height:30px;text-align:center;border:1px solid var(--border);background:${bg};color:${rate > .18 ? '#052e22' : 'var(--text-secondary)'};cursor:${c ? 'pointer' : 'default'};font-weight:600">${c ? c.dials : ''}</td>`;
+    }
+    grid += '</tr>';
+  }
+  grid += '</table></div>';
+  body.innerHTML = `
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="font-size:12px;color:var(--text-secondary)">Basis:</span>
+      <button class="btn btn-sm ${CC.basis === 'local' ? '' : 'btn-ghost'}" onclick="CC.basis='local';ccRenderSub()">Prospect-local time</button>
+      <button class="btn btn-sm ${CC.basis === 'et' ? '' : 'btn-ghost'}" onclick="CC.basis='et';ccRenderSub()">Eastern Time</button>
+      ${CC.basis === 'local' && d.excluded_unknown_tz ? `<span style="font-size:11px;color:var(--text-dim)">· ${ccNum(d.excluded_unknown_tz)} calls with unknown timezone excluded</span>` : ''}
+    </div>
+    ${ccSection('Connect-hour heatmap (Mon–Fri, 7:00–20:00)', 'cell = dials; green intensity = conversation rate (≥5 dials); click a cell for its calls', grid)}`;
+}
+
+/* ── Reps ── */
+async function ccReps(body, qs) {
+  const d = await ccGet('/api/cold-calls/aggregate?view=reps&' + qs);
+  ccScopeNote(d);
+  body.innerHTML = ccSection('Rep leaderboard', 'ranked by conversations · closing behavior and call grades from the transcript analysis',
+    ccTable(['Rep', 'Pod', 'Connects', 'Convs', 'Meetings', 'Conv→Mtg', 'Transcripts', 'Asked for mtg', 'No ask', 'Closing mix', 'Grades A/B/C/D'],
+      d.reps.map(r => {
+        const cm = r.closing_mix, gm = r.grade_mix;
+        return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:7px 10px;font-weight:600;color:var(--text)">${ccEsc(r.rep)}</td>
+        <td style="padding:7px 10px;color:var(--text-dim)">${ccEsc(r.pod || '—')}</td>
+        <td style="padding:7px 10px">${ccNum(r.connects)}</td>
+        <td style="padding:7px 10px">${ccNum(r.conversations)}</td>
+        <td style="padding:7px 10px;color:#34D399;font-weight:700">${r.meetings}</td>
+        <td style="padding:7px 10px;color:var(--text-dim)">${ccPct(r.meetings, r.conversations)}</td>
+        <td style="padding:7px 10px;color:var(--text-dim)">${r.transcript_coverage_pct === null ? '—' : r.transcript_coverage_pct + '%'}</td>
+        <td style="padding:7px 10px;color:#34D399">${ccNum(r.close_attempts)}</td>
+        <td style="padding:7px 10px;color:#F87171">${ccNum(r.no_ask)}</td>
+        <td style="padding:7px 10px;font-size:10.5px;color:var(--text-dim)">assumptive ${cm.assumptive} · times ${cm.choice_of_times} · soft ${cm.soft_ask}</td>
+        <td style="padding:7px 10px;font-size:10.5px"><span style="color:#34D399">${gm.A}</span>/<span style="color:#38BDF8">${gm.B}</span>/<span style="color:#F59E0B">${gm.C}</span>/<span style="color:#F87171">${gm.D}</span></td></tr>`;
+      }).join('')));
+}
+
+/* ── Meetings ── */
+async function ccMeetings(body, qs) {
+  const d = await ccGet('/api/cold-calls/list?source=meetings&limit=200&' + qs);
+  const rows = d.rows || [];
+  const agg = await ccGet('/api/cold-calls/aggregate?view=overview&' + qs);   // for scope note only
+  ccScopeNote(agg);
+  if (!rows.length) { body.innerHTML = '<div style="padding:30px;color:var(--text-dim)">No quality-scored meetings in this scope.</div>'; return; }
+  const firm = rows.filter(r => r.firmness === 'firm_time_set').length;
+  const dm = rows.filter(r => r.decision_maker_fit === 'decision_maker').length;
+  const pain = rows.filter(r => r.pain_confirmed === true).length;
+  const fCls = { firm_time_set: CC_GOOD, tentative: CC_WARN, vague: CC_BAD };
+  const dCls = { decision_maker: CC_GOOD, influencer: CC_BLUE, unclear: CC_MUT, wrong_person: CC_BAD };
+  body.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:10px">
+      ${ccCard('Scored meetings', ccNum(d.count), 'LLM-scored from the booking call transcript')}
+      ${ccCard('Firm time set', ccPct(firm, rows.length), firm + ' of ' + rows.length)}
+      ${ccCard('Decision maker', ccPct(dm, rows.length), dm + ' of ' + rows.length)}
+      ${ccCard('Pain confirmed', ccPct(pain, rows.length), pain + ' of ' + rows.length)}
+    </div>
+    ${ccSection('Booked meetings, quality-scored', 'click a row for seller prep notes, risks, and the full booking-call transcript',
+      '<div style="margin-top:8px">' + rows.map((m, i) => {
+        const qsc = m.quality_score ?? '?';
+        const qCls = (m.quality_score || 0) >= 4 ? CC_GOOD : (m.quality_score || 0) >= 3 ? CC_WARN : CC_BAD;
+        return `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;margin-bottom:8px">
+        <div onclick="q('ccMx${i}').style.display = q('ccMx${i}').style.display==='none'?'block':'none'" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;cursor:pointer">
+          <span style="width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;${qCls}">${qsc}</span>
+          <span style="min-width:0;flex:1">
+            <span style="display:block;font-size:12.5px;font-weight:700;color:var(--text)">${ccEsc(m.contact_name || 'Unknown')}${m.contact_title ? ' — ' + ccEsc(m.contact_title) : ''}</span>
+            <span style="display:block;font-size:11px;color:var(--text-dim)">${ccEsc(m.account_name || '—')} · booked by ${ccEsc(m.owner_name || '—')} · ${ccEsc((m.time || '').slice(0, 10))}</span>
+          </span>
+          ${m.firmness ? ccBadge(m.firmness.replace(/_/g, ' '), fCls[m.firmness] || CC_MUT) : ''}
+          ${m.decision_maker_fit ? ccBadge(m.decision_maker_fit.replace(/_/g, ' '), dCls[m.decision_maker_fit] || CC_MUT) : ''}
+          ${m.pain_confirmed ? ccBadge('pain confirmed', CC_GOOD) : ''}
+        </div>
+        <div id="ccMx${i}" style="display:none;border-top:1px solid var(--border);padding:10px 14px;font-size:12px">
+          ${m.motivation ? `<div style="color:var(--text-secondary)"><b style="color:var(--text-muted)">Why they agreed:</b> ${ccEsc(m.motivation)}</div>` : ''}
+          ${(m.risk_flags || []).length ? `<div style="color:#F59E0B;margin-top:6px"><b>No-show risks:</b> ${m.risk_flags.map(ccEsc).join(' · ')}</div>` : ''}
+          ${m.prep_notes ? `<div style="margin-top:8px;border:1px solid rgba(245,158,11,.3);background:rgba(245,158,11,.06);border-radius:10px;padding:10px">
+            <div style="font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#F59E0B;margin-bottom:4px">Prep notes for the discovery call</div>
+            <div style="color:var(--text-secondary);line-height:1.55">${ccEsc(m.prep_notes)}</div></div>` : ''}
+          <a href="#" onclick="event.preventDefault();ccOpenCall('${m.call_id}')" style="display:inline-block;margin-top:8px;color:#F59E0B;font-size:11.5px">Read the full call transcript →</a>
+        </div></div>`;
+      }).join('') + '</div>')}`;
+}
+
+/* ── Call Explorer ── */
+async function ccExplorer(body, qs, offset = 0) {
+  const extra = CC._explorerF || '';
+  const d = await ccGet(`/api/cold-calls/list?source=calls&limit=50&offset=${offset}&` + qs + extra);
+  const agg = { scope: null };
+  ccScopeNote(CC.f.campaign ? await ccGet('/api/cold-calls/aggregate?view=overview&' + qs) : agg);
+  const rows = d.rows || [];
+  const fBtn = (label, param) => `<button class="btn btn-sm ${CC._explorerF === param ? '' : 'btn-ghost'}" onclick="CC._explorerF=CC._explorerF==='${param}'?'':'${param}';ccRenderSub()">${label}</button>`;
+  body.innerHTML = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+      ${fBtn('All', '')}${fBtn('Conversations', '&class=conversation')}${fBtn('Meetings', '&meeting=1')}
+      ${fBtn('Brief exchanges', '&class=brief_exchange')}${fBtn('Disposition mismatches', '&mismatch=1')}
+    </div>
+    <div style="font-size:11px;color:var(--text-dim)">${ccNum(d.count)} calls · newest first · click a row for the transcript</div>
+    ${ccTable(['Time', 'Rep', 'Contact', 'Account', 'Disposition', 'Class', 'Dur', 'Talk%', 'Grade'],
+      rows.map(r => `<tr onclick="ccOpenCall('${r.id}')" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
+        <td style="padding:7px 10px;color:var(--text-dim);white-space:nowrap">${ccEsc((r.time || '').slice(0, 16).replace('T', ' '))}</td>
+        <td style="padding:7px 10px;font-weight:600;color:var(--text)">${ccEsc(r.owner_name || '—')}</td>
+        <td style="padding:7px 10px">${ccEsc(r.contact_name || '—')}</td>
+        <td style="padding:7px 10px;color:var(--text-dim)">${ccEsc(r.account_name || '—')}</td>
+        <td style="padding:7px 10px">${ccEsc(r.disposition_name || '—')}${r.disposition_mismatch ? ' ⚠️' : ''}</td>
+        <td style="padding:7px 10px">${ccBadge(r.conversation_class || '—', r.conversation_class === 'conversation' ? CC_GOOD : CC_MUT)}${r.is_meeting ? ' ' + ccBadge('meeting', CC_BLUE) : ''}</td>
+        <td style="padding:7px 10px;color:var(--text-dim)">${r.duration_sec ? Math.round(r.duration_sec) + 's' : '—'}</td>
+        <td style="padding:7px 10px;color:var(--text-dim)">${r.talk_ratio_rep ?? '—'}</td>
+        <td style="padding:7px 10px">${r.call_grade ? ccBadge(r.call_grade, r.call_grade === 'A' ? CC_GOOD : r.call_grade === 'B' ? CC_BLUE : r.call_grade === 'C' ? CC_WARN : CC_BAD) : '—'}</td></tr>`).join(''))}
+    <div style="display:flex;gap:8px;margin-top:10px">
+      ${offset > 0 ? `<button class="btn btn-ghost btn-sm" onclick="ccExplorer(q('ccBody'), '${qs}', ${Math.max(0, offset - 50)})">← Prev</button>` : ''}
+      ${offset + 50 < d.count ? `<button class="btn btn-ghost btn-sm" onclick="ccExplorer(q('ccBody'), '${qs}', ${offset + 50})">Next →</button>` : ''}
+      <span style="font-size:11px;color:var(--text-dim);align-self:center">${offset + 1}–${Math.min(offset + 50, d.count)} of ${ccNum(d.count)}</span>
+    </div>`;
+}
+
+/* ── drill-down list modal + transcript modal ── */
+async function ccOpenList(params) {
+  const modal = q('ccModal'), box = q('ccModalBox');
+  modal.style.display = 'block';
+  box.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-dim)">Loading…</div>';
+  const d = await ccGet('/api/cold-calls/list?limit=200&' + ccQS() + '&' + params);
+  const rows = d.rows || [];
+  const src = new URLSearchParams(params).get('source') || 'calls';
+  const quote = v => { const t = (v && (v.text || (typeof v === 'string' ? v : null))); return t ? `<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:3px">"${ccEsc(t)}"</div>` : ''; };
+  box.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <div style="font-weight:800;color:var(--text)">${ccNum(d.count)} rows</div>
+      <div style="font-size:11px;color:var(--text-dim)">click any row for the full transcript</div>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="q('ccModal').style.display='none'">✕ Close</button>
+    </div>
+    ${rows.map(r => `<div onclick="ccOpenCall('${r.call_id || r.id}')" style="border:1px solid var(--border);border-radius:10px;padding:9px 12px;margin-bottom:6px;cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px">
+        <b style="color:var(--text)">${ccEsc(r.contact_name || r.owner_name || '—')}</b>
+        <span style="color:var(--text-dim)">${ccEsc(r.account_name || '')}</span>
+        <span style="color:var(--text-dim);margin-left:auto">${ccEsc((r.time || '').slice(0, 16).replace('T', ' '))} · ${ccEsc(r.owner_name || '')}</span>
+      </div>
+      ${src === 'openings' ? quote(r.opener_quote) + (r.death_cause ? `<div style="font-size:10.5px;color:#F87171;margin-top:2px">death: ${ccEsc(r.death_cause)}</div>` + quote(r.death_quote) : '') : ''}
+      ${src === 'objections' ? quote(r.verbatim) + (r.handled ? `<div style="font-size:10.5px;margin-top:2px;color:${r.handled === 'well' ? '#34D399' : r.handled === 'not_addressed' ? 'var(--text-dim)' : '#F59E0B'}">handled: ${ccEsc(r.handled)} — ${ccEsc(r.handled_reason || '')}</div>` : '') : ''}
+      ${src === 'mistakes' ? quote(r.quote) + `<div style="font-size:10.5px;color:#F59E0B;margin-top:2px">${ccEsc(r.severity || '')} — ${ccEsc(r.detail || '')}</div>` : ''}
+    </div>`).join('') || '<div style="color:var(--text-dim);padding:20px">No rows.</div>'}`;
+}
+
+async function ccOpenCall(callId) {
+  const modal = q('ccModal'), box = q('ccModalBox');
+  modal.style.display = 'block';
+  box.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-dim)">Fetching transcript…</div>';
+  const d = await ccGet('/api/cold-calls/call/' + callId);
+  if (d.error) { box.innerHTML = `<div style="padding:20px;color:#F87171">${ccEsc(d.error)}</div><button class="btn btn-ghost btn-sm" onclick="q('ccModal').style.display='none'">✕ Close</button>`; return; }
+  const c = d.call || {};
+  const summary = c.analysis && c.analysis.summary;
+  box.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+      <div style="font-weight:800;color:var(--text)">${ccEsc(c.contact_name || 'Unknown')}${c.contact_title ? ' — ' + ccEsc(c.contact_title) : ''}</div>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="q('ccModal').style.display='none'">✕ Close</button>
+    </div>
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:10px">
+      ${ccEsc(c.account_name || '—')} · ${ccEsc(c.owner_name || '—')} · ${ccEsc((c.time || '').slice(0, 16).replace('T', ' '))}
+      · ${ccEsc(c.disposition_name || '')} · ${Math.round(c.duration_sec || 0)}s · rep talk ${c.talk_ratio_rep ?? '—'}%
+      ${c.recording_url ? ` · <a href="${ccEsc(c.recording_url)}" target="_blank" style="color:#F59E0B">recording ↗</a>` : ''}
+    </div>
+    ${summary ? `<div style="border:1px solid var(--border);border-radius:10px;padding:10px;font-size:12px;color:var(--text-secondary);margin-bottom:10px"><b style="color:var(--text-muted)">AI summary:</b> ${ccEsc(summary)}</div>` : ''}
+    ${(d.turns || []).map(t => `
+      <div style="margin-bottom:8px;display:flex;gap:8px">
+        <span style="flex-shrink:0;width:70px;text-align:right;font-size:10px;font-weight:700;color:${t.speaker === 'rep' ? '#F59E0B' : '#38BDF8'}">${t.speaker === 'rep' ? 'REP' : 'PROSPECT'}</span>
+        <span style="font-size:12px;color:var(--text-secondary);line-height:1.5">${ccEsc(t.text)}</span>
+      </div>`).join('') || '<div style="color:var(--text-dim)">No transcript stored for this call.</div>'}
+    ${d.truncated ? '<div style="font-size:11px;color:var(--text-dim)">[transcript truncated]</div>' : ''}`;
+}
 </script>
 </body>
 </html>
