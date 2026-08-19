@@ -11,3 +11,4 @@ campaigns.json
 .~lock*
 node_modules/
 cold_calls_cache.json.gz
+weekly_review_cache.json.gz
