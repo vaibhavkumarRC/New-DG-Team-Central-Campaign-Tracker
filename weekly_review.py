@@ -970,11 +970,165 @@ def build_review(week=None):
     }
 
 
+# ── Deep Dive: filtering ─────────────────────────────────────────────────────
+
+# The sentinel a chart's "Unknown" bar drills through on. Without it, clicking
+# the 10 unknown-revenue meetings would silently return everything.
+UNKNOWN = '__unknown__'
+
+# Query-string key → row field. `specialties` is the one list-valued field: a
+# meeting matches if ANY of its specialties matches.
+FILTER_FIELDS = {
+    'source':       'source',
+    'channel':      'channel',
+    'revenue_band': 'revenue_band',
+    'client_type':  'client_type',
+    'specialty':    'specialties',
+    'seller':       'seller',
+    'seniority':    'seniority',
+    'function':     'function',
+    'status':       'meeting_status',
+}
+
+# Values that mean "we don't know", not "a category called Unknown".
+_UNKNOWN_VALUES = (None, '', 'Unknown')
+
+
+def _matches(row, key, wanted):
+    """Values within one filter are OR'd; separate filters are AND'd."""
+    field = FILTER_FIELDS[key]
+    val = row.get(field)
+    if field == 'specialties':
+        vals = val or []
+        if not vals:
+            return UNKNOWN in wanted
+        return bool(set(vals) & wanted) or (UNKNOWN in wanted and not vals)
+    if val in _UNKNOWN_VALUES:
+        return UNKNOWN in wanted
+    return val in wanted
+
+
+def _facets(rows):
+    """Distinct values per dimension, for the Deep Dive filter controls. Built
+    from the rows actually in scope so the dropdowns never offer a dead option."""
+    out = {}
+    for key, field in FILTER_FIELDS.items():
+        counts = {}
+        unknown = 0
+        for r in rows:
+            if field == 'specialties':
+                vals = r.get(field) or []
+                if not vals:
+                    unknown += 1
+                for v in set(vals):
+                    counts[v] = counts.get(v, 0) + 1
+            else:
+                v = r.get(field)
+                if v in _UNKNOWN_VALUES:
+                    unknown += 1
+                else:
+                    counts[v] = counts.get(v, 0) + 1
+        items = [{'key': k, 'n': n}
+                 for k, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+        if unknown:
+            items.append({'key': UNKNOWN, 'label': 'Unknown', 'n': unknown})
+        out[key] = items
+    return out
+
+
+def _row_view(r, sf_base):
+    d = r.get('deal') or {}
+    return {
+        'id':           r['id'],
+        'name':         r['name'],
+        'title':        r['title'],
+        'company':      r['company'],
+        'week':         r['week'],
+        'generated_on': r['generated_on'],
+        'scheduled_on': r['scheduled_on'],
+        'sdr':          r['sdr'],
+        'seller':       r['seller'],
+        'source':       r['source'],
+        'channel':      r['channel'],
+        'seniority':    r['seniority'],
+        'function':     r['function'],
+        'revenue_band': r['revenue_band'],
+        'client_type':  r['client_type'],
+        'specialties':  r['specialties'],
+        'meeting_status': r['meeting_status'],
+        'status':       r['status'],
+        'is_done':      r['is_done'],
+        'is_sql':       r['is_sql'],
+        'is_upcoming':  r['is_upcoming'],
+        'converted_on': r['converted_on'],
+        'deal_rung':    r['deal_rung'],
+        'deal': ({'amount': d.get('amount'), 'stage': d.get('stage'),
+                  'owner': d.get('owner'), 'close_date': d.get('close_date'),
+                  'next_steps': d.get('next_steps') or d.get('next_steps_ai'),
+                  'is_won': d.get('is_won'), 'is_closed': d.get('is_closed')}
+                 if d else None),
+        'sf_url': f"{sf_base}/lightning/r/Lead/{r['id']}/view" if sf_base else None,
+    }
+
+
+def build_meetings(args, sf_base=''):
+    """Deep Dive list. `week` is optional — omitting it searches all history,
+    which is what the tab does when entered directly rather than drilled into."""
+    wr = _WR
+    if not wr:
+        return {'ready': False, 'reason': 'no snapshot yet'}
+    rows = wr['rows']
+
+    week = (args.get('week') or '').strip()
+    if week:
+        rows = [r for r in rows if r['week'] == week]
+    scoped = rows
+
+    applied = {}
+    for key in FILTER_FIELDS:
+        raw = (args.get(key) or '').strip()
+        if not raw:
+            continue
+        wanted = {v.strip() for v in raw.split(',') if v.strip()}
+        if not wanted:
+            continue
+        applied[key] = sorted(wanted)
+        rows = [r for r in rows if _matches(r, key, wanted)]
+
+    outcome = (args.get('outcome') or '').strip()
+    if outcome == 'done':
+        rows = [r for r in rows if r['is_done']]
+    elif outcome == 'upcoming':
+        rows = [r for r in rows if r['is_upcoming']]
+    elif outcome == 'sql':
+        rows = [r for r in rows if r['is_sql']]
+    elif outcome == 'deal':
+        rows = [r for r in rows if r['deal']]
+    if outcome:
+        applied['outcome'] = [outcome]
+
+    rows = sorted(rows, key=lambda r: (r['generated_on'], r['company']), reverse=True)
+
+    return {
+        'ready':      True,
+        'fetched_at': wr.get('fetched_at'),
+        'week':       week or None,
+        'total':      len(wr['rows']),
+        'in_scope':   len(scoped),
+        'filtered':   len(rows),
+        'applied':    applied,
+        'facets':     _facets(scoped),
+        'weeks':      [w for w in _week_list()],
+        'rows':       rows[:1000],
+        'truncated':  len(rows) > 1000,
+    }
+
+
 # ── Flask wiring ─────────────────────────────────────────────────────────────
 
-def init_app(app, soql, norm_sdr, require_admin, data_dir):
+def init_app(app, soql, norm_sdr, require_admin, data_dir, sf_base_url=''):
     global CACHE_PATH
-    _deps.update(soql=soql, norm_sdr=norm_sdr)
+    _deps.update(soql=soql, norm_sdr=norm_sdr, sf_base_url=sf_base_url)
     CACHE_PATH = os.path.join(data_dir, 'weekly_review_cache.json.gz')
     _load_cache_from_disk()
 
@@ -984,6 +1138,14 @@ def init_app(app, soql, norm_sdr, require_admin, data_dir):
     def api_weekly_review():
         _maybe_background_refresh()
         return jsonify(build_review(request.args.get('week', '').strip() or None))
+
+    @app.route('/api/weekly/meetings')
+    def api_weekly_meetings():
+        _maybe_background_refresh()
+        payload = build_meetings(request.args, sf_base=sf_base_url)
+        if payload.get('ready'):
+            payload['rows'] = [_row_view(r, sf_base_url) for r in payload['rows']]
+        return jsonify(payload)
 
     @app.route('/api/weekly/refresh', methods=['POST'])
     @require_admin
