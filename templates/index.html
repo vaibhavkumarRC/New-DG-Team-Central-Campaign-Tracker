@@ -351,6 +351,66 @@ tfoot td {
 .pct-mid   { background:rgba(245,158,11,0.12); color:var(--amber); }
 .pct-low   { background:var(--surface3); color:var(--text-dim); }
 
+/* ── WEEKLY REVIEW / WEEKLY DEEP DIVE ──────────────────────────────────────
+   Scoped with a wr- prefix rather than reusing .kpi-label/.kpi-sub: those
+   hardcode #C8D8EC / #8AAAC8 with no light-theme override, which is close to
+   invisible on a white --surface card. Everything below uses var() tokens so
+   both themes work. */
+.wr-bar { display:flex; align-items:center; gap:10px; padding:5px 0; }
+.wr-bar-key { width:150px; flex:0 0 150px; font-size:12px; color:var(--text-secondary);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wr-bar-track { flex:1; height:20px; background:var(--surface2);
+  border-radius:5px; overflow:hidden; min-width:40px; }
+.wr-bar-fill { height:100%; border-radius:5px; background:linear-gradient(90deg,var(--gold-dark),var(--gold-light));
+  transition:width .3s ease; }
+.wr-bar-n { width:56px; flex:0 0 56px; text-align:right; font-size:12px;
+  font-weight:700; color:var(--text); font-variant-numeric:tabular-nums; }
+.wr-bar.is-unknown .wr-bar-key,
+.wr-bar.is-unknown .wr-bar-n { color:var(--text-dim); font-style:italic; }
+.wr-bar.is-unknown .wr-bar-fill { background:var(--border2); }
+
+.wr-card { background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius-lg); padding:18px 20px; }
+.wr-card-title { font-size:13px; font-weight:700; color:var(--text);
+  margin-bottom:4px; display:flex; align-items:center; gap:8px; }
+/* --text-muted, not --text-dim: on a white card --text-dim lands around 2.9:1
+   contrast, and the coverage line is meant to be read, not skimmed past. */
+.wr-cov { font-size:11px; color:var(--text-muted); margin-bottom:12px; line-height:1.5; }
+.wr-cov b { color:var(--text-secondary); font-weight:700; }
+
+.wr-kpi { background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius-lg); padding:16px 18px; position:relative; overflow:hidden; }
+.wr-kpi::before { content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg,var(--wr-c,var(--gold)),transparent); }
+.wr-kpi-label { font-size:10.5px; font-weight:700; color:var(--text-muted);
+  letter-spacing:.6px; text-transform:uppercase; margin-bottom:7px; }
+.wr-kpi-value { font-size:26px; font-weight:800; line-height:1; color:var(--wr-c,var(--gold));
+  font-variant-numeric:tabular-nums; }
+.wr-kpi-sub { font-size:11px; color:var(--text-muted); margin-top:6px; }
+.wr-up   { color:var(--green); font-weight:700; }
+.wr-down { color:var(--red);   font-weight:700; }
+.wr-flat { color:var(--text-dim); font-weight:700; }
+
+.wr-matrix { border-collapse:collapse; font-size:12px; }
+.wr-matrix th { background:var(--surface2); color:var(--text-muted); font-size:10px;
+  letter-spacing:.4px; text-transform:uppercase; padding:8px 10px; font-weight:700;
+  border-bottom:1px solid var(--border); white-space:nowrap; cursor:default; }
+.wr-matrix td { padding:8px 10px; text-align:center; border-bottom:1px solid var(--border);
+  font-variant-numeric:tabular-nums; color:var(--text); }
+.wr-matrix td.wr-rowhdr { text-align:left; font-weight:600; color:var(--text-secondary);
+  white-space:nowrap; }
+.wr-matrix tr:hover td { background:var(--surface2); }
+.wr-zero { color:var(--text-dim); opacity:.45; }
+
+.wr-rung { display:inline-flex; align-items:center; gap:4px; padding:2px 7px;
+  border-radius:10px; font-size:10px; font-weight:700; letter-spacing:.3px; }
+.wr-rung-1 { background:var(--green-bg); color:var(--green); }
+.wr-rung-2 { background:rgba(245,158,11,0.14); color:var(--amber); }
+
+.wr-note { background:var(--surface2); border:1px solid var(--border);
+  border-left:3px solid var(--amber); border-radius:8px;
+  padding:10px 14px; font-size:12px; color:var(--text-secondary); }
+
 /* ── SDR CARDS ── */
 .sdr-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
 .sdr-card {
@@ -653,6 +713,7 @@ tfoot td {
     <button class="tab-btn" data-tab="sdr">👥 SDR Performance</button>
     <button class="tab-btn" data-tab="coldcalls">📞 Nooks Cold Calls</button>
     <button class="tab-btn" data-tab="reporting">📈 SDR Reporting 2026 (MQL/SQL/S1)</button>
+    <button class="tab-btn" data-tab="weekly-review">🗓️ Weekly Review</button>
     <button class="tab-btn" data-tab="manage">⚙️ Manage</button>
   </div>
 </nav>
@@ -1500,6 +1561,11 @@ tfoot td {
   </div><!-- /tab-reporting -->
 
   <!-- MANAGE -->
+  <!-- ── WEEKLY REVIEW ── rendered entirely by wrRender() (weekly_review.js block) -->
+  <div id="tab-weekly-review" class="tab-panel">
+    <div id="wrRoot"></div>
+  </div>
+
   <div id="tab-manage" class="tab-panel">
     <div class="manage-layout">
       <div class="form-card">
@@ -2321,6 +2387,7 @@ function renderCurrentTab() {
   if(S.activeTab==='sdr')       renderSDR();
   if(S.activeTab==='coldcalls') ccInit();
   if(S.activeTab==='reporting') renderReportingTab();
+  if(S.activeTab==='weekly-review') wrInit();
   if(S.activeTab==='manage')    renderManage();
 }
 function renderAll() { renderDashboard(); renderCampaigns(); renderSDR(); renderManage(); }
@@ -7536,6 +7603,380 @@ async function ccOpenCall(callId) {
         <span style="font-size:12px;color:var(--text-secondary);line-height:1.5">${ccEsc(t.text)}</span>
       </div>`).join('') || '<div style="color:var(--text-dim)">No transcript stored for this call.</div>'}
     ${d.truncated ? '<div style="font-size:11px;color:var(--text-dim)">[transcript truncated]</div>' : ''}`;
+}
+</script>
+
+<script>
+/* ══ WEEKLY REVIEW TAB ═══════════════════════════════════════════════════════
+   Every number comes from /api/weekly/review (weekly_review.py), which serves
+   one daily Salesforce snapshot joined to Rahul's Supabase companies. The tab
+   opens on the latest COMPLETE week so nothing shifts under the reader
+   mid-review; the in-progress week stays selectable and is labelled.
+
+   Two invariants to preserve:
+   1. Every aggregate prints its own coverage ("known for 22/32"). Revenue,
+      client type and specialty are 52-77% covered — a silent 100% is what
+      loses CEO trust.
+   2. Deal links are tagged certain/probable. Rung 2 is an account+date match
+      and must never be presented as fact. */
+
+const WR = { data: null, week: null, loading: false, chart: null };
+
+const wrEsc  = s => escHtml(String(s ?? ''));
+const wrNum  = n => (n ?? 0).toLocaleString();
+const wrMoney = n => (n === null || n === undefined) ? '—'
+  : '$' + Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+function wrInit() {
+  const root = document.getElementById('wrRoot');
+  if (!root) return;
+  // The dashboard polls every 10s and calls renderCurrentTab(). Without this
+  // guard the innerHTML rebuild resets the reader's scroll mid-review.
+  if (root.dataset.rendered === '1') return;
+  root.dataset.rendered = '1';
+  wrLoad(null);
+}
+
+async function wrLoad(week) {
+  const root = document.getElementById('wrRoot');
+  if (WR.loading) return;
+  WR.loading = true;
+  root.innerHTML = `<div style="padding:60px;text-align:center;color:var(--text-muted)">
+    Loading week…</div>`;
+  try {
+    const qs = week ? ('?week=' + encodeURIComponent(week)) : '';
+    const r = await fetch('/api/weekly/review' + qs);
+    WR.data = await r.json();
+    WR.week = WR.data.week;
+  } catch (e) {
+    root.innerHTML = `<div class="wr-note">Could not load the weekly snapshot: ${wrEsc(e)}</div>`;
+    WR.loading = false;
+    return;
+  }
+  WR.loading = false;
+  wrRender();
+}
+
+function wrSelectWeek(w) { wrLoad(w); }
+
+async function wrRefresh() {
+  const btn = document.getElementById('wrRefreshBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Refreshing…'; }
+  try {
+    await fetch('/api/weekly/refresh', {
+      method: 'POST', headers: { 'X-Admin-Token': (S.adminToken || '') },
+    });
+  } catch (e) { /* fall through — the reload will show whatever is cached */ }
+  await wrLoad(WR.week);
+}
+
+/* ── pieces ────────────────────────────────────────────────────────────────── */
+
+function wrDelta(cur, prev) {
+  if (prev === null || prev === undefined) return '';
+  const d = cur - prev;
+  if (d === 0) return `<span class="wr-flat">±0</span> vs last week`;
+  const cls = d > 0 ? 'wr-up' : 'wr-down';
+  return `<span class="${cls}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</span> vs last week`;
+}
+
+function wrBars(block, opts = {}) {
+  const buckets = block.buckets || [];
+  if (!buckets.length) {
+    return `<div style="font-size:12px;color:var(--text-dim);padding:8px 0">
+      No meetings in this week.</div>`;
+  }
+  const max = Math.max(...buckets.map(b => b.n), 1);
+  const limit = opts.limit || buckets.length;
+  const shown = buckets.slice(0, limit);
+  const hidden = buckets.length - shown.length;
+  return shown.map(b => `
+    <div class="wr-bar ${b.unknown ? 'is-unknown' : ''}">
+      <div class="wr-bar-key" title="${wrEsc(b.key)}">${wrEsc(b.key)}</div>
+      <div class="wr-bar-track"><div class="wr-bar-fill" style="width:${(100 * b.n / max).toFixed(1)}%"></div></div>
+      <div class="wr-bar-n">${b.n}</div>
+    </div>`).join('')
+    + (hidden > 0 ? `<div style="font-size:11px;color:var(--text-dim);padding-top:6px">
+        + ${hidden} more</div>` : '');
+}
+
+function wrCoverage(block, extra = '') {
+  const c = block.coverage || {};
+  const pct = c.total ? Math.round(100 * c.known / c.total) : 0;
+  return `<div class="wr-cov">Known for <b>${c.known}/${c.total}</b> meetings (${pct}%)${extra}</div>`;
+}
+
+function wrCard(title, block, opts = {}) {
+  const extra = block.multi
+    ? ` · multi-specialty groups counted once per specialty, so the bars total ${block.total_tags}`
+    : '';
+  return `<div class="wr-card">
+    <div class="wr-card-title">${title}</div>
+    ${wrCoverage(block, extra)}
+    ${wrBars(block, opts)}
+  </div>`;
+}
+
+function wrHeadline(d) {
+  const h = d.headline, c = h.current, p = h.previous, t = h.typical;
+  const cards = [
+    ['Meetings Generated', c.generated, p.generated, t && t.generated, 'var(--gold)'],
+    ['Meetings Done',      c.done,      p.done,      t && t.done,      '#3B82F6'],
+    ['SQLs',               c.sql,       p.sql,       null,             '#22C55E'],
+    ['Still Upcoming',     c.upcoming,  null,        null,             '#A78BFA'],
+  ].map(([label, val, prev, typ, color]) => `
+    <div class="wr-kpi" style="--wr-c:${color}">
+      <div class="wr-kpi-label">${label}</div>
+      <div class="wr-kpi-value">${wrNum(val)}</div>
+      <div class="wr-kpi-sub">${wrDelta(val, prev)}${
+        typ !== null && typ !== undefined
+          ? `<br>typical week: ${typ}` : ''}</div>
+    </div>`).join('');
+
+  const pl = d.pipeline.current;
+  const plPrev = d.pipeline.previous;
+  const ratio = pl.ratio_pct === null ? '—' : pl.ratio_pct + '%';
+  const ratioSub = pl.done
+    ? `${pl.meetings_with_deal} of ${pl.done} done meetings produced a deal`
+    : 'no meetings done yet in this week';
+
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:22px">
+    ${cards}
+    <div class="wr-kpi" style="--wr-c:#EC4899">
+      <div class="wr-kpi-label">Done → Pipeline</div>
+      <div class="wr-kpi-value">${ratio}</div>
+      <div class="wr-kpi-sub">${ratioSub}${
+        plPrev.ratio_pct !== null ? `<br>last week: ${plPrev.ratio_pct}%` : ''}</div>
+    </div>
+    <div class="wr-kpi" style="--wr-c:#0EA5E9">
+      <div class="wr-kpi-label">Pipeline Created</div>
+      <div class="wr-kpi-value">${wrMoney(pl.amount)}</div>
+      <div class="wr-kpi-sub">${pl.deals} deal${pl.deals === 1 ? '' : 's'}${
+        pl.amount_known < pl.deals
+          ? ` · amount on ${pl.amount_known}/${pl.deals}` : ''}<br>
+        <span class="wr-rung wr-rung-1">${pl.rung_split.certain} certain</span>
+        ${pl.rung_split.probable
+          ? `<span class="wr-rung wr-rung-2">${pl.rung_split.probable} probable</span>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+function wrWeekPicker(d) {
+  // Month-grouped so a 34-week list stays navigable.
+  const groups = {};
+  d.weeks.forEach(w => { (groups[w.month] = groups[w.month] || []).push(w); });
+  const opts = Object.keys(groups).sort().reverse().map(m => {
+    const label = new Date(m + '-01T00:00:00').toLocaleString(undefined,
+      { month: 'long', year: 'numeric' });
+    const inner = groups[m].slice().reverse().map(w => {
+      const tag = w.state === 'in_progress' ? ' — in progress'
+                : w.state === 'partial' ? ' — partial week' : '';
+      return `<option value="${w.week}" ${w.week === d.week ? 'selected' : ''}>
+        ${wrEsc(w.label)} · ${w.generated} meeting${w.generated === 1 ? '' : 's'}${tag}</option>`;
+    }).join('');
+    return `<optgroup label="${wrEsc(label)}">${inner}</optgroup>`;
+  }).join('');
+
+  const stateNote = d.week_state === 'in_progress'
+    ? `<span class="badge badge-paused"><span class="badge-dot"></span>In progress — numbers still moving</span>`
+    : d.week_state === 'partial'
+      ? `<span class="badge badge-paused"><span class="badge-dot"></span>Partial week</span>`
+      : `<span class="badge badge-complete"><span class="badge-dot"></span>Complete week</span>`;
+
+  return `<div class="section-hdr" style="flex-wrap:wrap;gap:12px;margin-bottom:6px">
+    <div class="section-title" style="font-size:16px">🗓️ Weekly Review</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-left:auto;flex-wrap:wrap">
+      ${stateNote}
+      <select onchange="wrSelectWeek(this.value)"
+        style="background:var(--card-bg);color:var(--text);border:1px solid var(--border);
+               border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;max-width:340px">
+        ${opts}
+      </select>
+      ${S.isAdmin ? `<button id="wrRefreshBtn" class="chip" onclick="wrRefresh()"
+        title="Force a Salesforce re-pull now instead of waiting for the daily refresh">↻ Refresh</button>` : ''}
+    </div>
+  </div>
+  <div style="font-size:11.5px;color:var(--text-dim);margin-bottom:18px">
+    Week of <b style="color:var(--text-secondary)">${wrEsc(d.week_label)}</b> (Mon–Sun).
+    Snapshot taken ${wrEsc((d.fetched_at || '').slice(0, 16).replace('T', ' '))} IST — Salesforce is re-pulled once a day.
+    ${d.error ? `<span style="color:var(--red)"> · last refresh failed, showing the previous snapshot</span>` : ''}
+  </div>`;
+}
+
+function wrSellerTable(d) {
+  const s = d.seller;
+  const rows = s.rows.map(r => `
+    <tr>
+      <td style="${r.unattributed ? 'color:var(--text-dim);font-style:italic' : 'font-weight:600'}">
+        ${r.unattributed ? '⚠ ' : ''}${wrEsc(r.seller)}</td>
+      <td class="td-num">${r.generated}</td>
+      <td class="td-num">${r.done}</td>
+      <td class="td-num">${r.sql}</td>
+    </tr>`).join('');
+  return `<div class="wr-card">
+    <div class="wr-card-title">Who booked and who is selling</div>
+    ${wrCoverage(s, ' · blanks shown as Unattributed, never hidden')}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Seller</th><th style="text-align:right">Generated</th>
+        <th style="text-align:right">Done</th><th style="text-align:right">SQL</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4" style="color:var(--text-dim)">No meetings this week.</td></tr>'}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function wrPersona(d) {
+  const p = d.persona;
+  if (!p.seniorities.length) {
+    return `<div class="wr-card"><div class="wr-card-title">Who did we meet?</div>
+      <div style="font-size:12px;color:var(--text-dim)">No meetings this week.</div></div>`;
+  }
+  const cell = (s, f) => (p.cells.find(c => c.seniority === s && c.function === f) || {}).n || 0;
+  const head = p.functions.map(f => `<th>${wrEsc(f)}</th>`).join('');
+  const body = p.seniorities.map(s => `
+    <tr><td class="wr-rowhdr">${wrEsc(s)}</td>
+      ${p.functions.map(f => {
+        const n = cell(s, f);
+        return `<td class="${n ? '' : 'wr-zero'}">${n || '·'}</td>`;
+      }).join('')}
+      <td style="font-weight:800;color:var(--gold)">${
+        (p.seniority_totals.find(t => t.key === s) || {}).n || 0}</td>
+    </tr>`).join('');
+  const foot = p.functions.map(f =>
+    `<td style="font-weight:800;color:var(--gold)">${
+      (p.function_totals.find(t => t.key === f) || {}).n || 0}</td>`).join('');
+
+  const ss = p.source_split;
+  return `<div class="wr-card">
+    <div class="wr-card-title">Who did we meet? <span style="font-weight:400;color:var(--text-dim);font-size:11px">first point of contact</span></div>
+    ${wrCoverage(p, ` · seniority from Salesforce on ${ss.seniority.field}, inferred from title on ${ss.seniority.title}`)}
+    <div class="table-wrap"><table class="wr-matrix">
+      <thead><tr><th></th>${head}<th>Total</th></tr></thead>
+      <tbody>${body}</tbody>
+      <tfoot><tr><td class="wr-rowhdr" style="font-weight:800">Total</td>${foot}<td></td></tr></tfoot>
+    </table></div>
+  </div>`;
+}
+
+function wrS1Box(d) {
+  const rows = d.s1_this_week.rows || [];
+  const body = rows.map(r => `
+    <tr>
+      <td>${wrEsc(r.cohort_week)}</td>
+      <td style="font-weight:600">${wrEsc(r.client)}</td>
+      <td>${r.revenue_band ? wrEsc(r.revenue_band) : '<span style="color:var(--text-dim)">unknown</span>'}</td>
+      <td>${r.seller ? wrEsc(r.seller) : '<span style="color:var(--text-dim)">—</span>'}</td>
+      <td class="td-num">${wrMoney(r.deal_amount)}</td>
+    </tr>`).join('');
+  return `<div class="wr-card" style="border-left:3px solid var(--green)">
+    <div class="wr-card-title">✅ Calls that moved to S1 this week
+      <span style="font-weight:800;color:var(--green)">${rows.length}</span></div>
+    <div class="wr-cov">Dated on the lead's conversion, not the meeting — the Week column
+      names the cohort each one came from, so you can see which week's work is landing now.</div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Week</th><th>Client</th><th>Revenue</th><th>Seller</th>
+        <th style="text-align:right">Deal</th></tr></thead>
+      <tbody>${body || '<tr><td colspan="5" style="color:var(--text-dim)">Nothing converted to S1 in this week.</td></tr>'}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function wrDealReview(d) {
+  const dr = d.deal_review;
+  const rows = dr.rows.map(r => {
+    const dl = r.deal;
+    const next = dl.next_steps || dl.next_steps_ai;
+    return `<tr>
+      <td style="font-weight:600">${wrEsc(r.client)}
+        <div style="font-size:11px;color:var(--text-dim);font-weight:400">${wrEsc(r.contact)}</div></td>
+      <td class="td-num">${wrMoney(dl.amount)}</td>
+      <td>${wrEsc(dl.stage || '—')}</td>
+      <td>${wrEsc(dl.owner || '—')}</td>
+      <td>${wrEsc(dl.close_date || '—')}</td>
+      <td style="white-space:normal;max-width:340px;font-size:12px;color:var(--text-secondary)">
+        ${next ? wrEsc(next).slice(0, 260) : '<span style="color:var(--text-dim)">no next steps recorded</span>'}
+        ${dl.next_steps ? '' : (dl.next_steps_ai ? ' <span style="font-size:10px;color:var(--text-dim)">(AI)</span>' : '')}</td>
+      <td><span class="wr-rung wr-rung-${r.deal_rung}">${r.deal_rung === 1 ? 'certain' : 'probable'}</span></td>
+    </tr>`;
+  }).join('');
+
+  const warn = d.deal_review_young
+    ? `<div class="wr-note" style="margin-bottom:12px">This cohort is less than two weeks old.
+        Most of its meetings have not been held or worked yet, so an empty deal table here
+        means "too early", not "nothing happened".</div>` : '';
+
+  return `<div class="wr-card">
+    <div class="wr-card-title">💼 Deal review — last-to-last week
+      <span style="font-weight:400;color:var(--text-dim);font-size:11px">cohort of ${wrEsc(dr.week)}</span></div>
+    <div class="wr-cov">${dr.meetings} meetings generated · ${dr.done} done ·
+      <b>${dr.rows.length}</b> linked to a deal. Probable links are an account + date match
+      on Salesforce's own conversion record — treat them as likely, not confirmed.</div>
+    ${warn}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Client</th><th style="text-align:right">Value</th><th>Stage</th>
+        <th>Who's leading</th><th>Expected close</th><th>Next steps</th><th>Link</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="7" style="color:var(--text-dim)">No deals linked to this cohort yet.</td></tr>'}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function wrCohorts(d) {
+  const rows = d.cohorts.slice().reverse().map(c => {
+    const sel = c.week === d.week;
+    return `<tr style="${sel ? 'background:var(--gold-glow)' : ''}" onclick="wrSelectWeek('${c.week}')">
+      <td style="${sel ? 'font-weight:800;color:var(--gold)' : ''}">${wrEsc(c.label)}
+        ${c.state === 'in_progress' ? '<span style="font-size:10px;color:var(--text-dim)"> in progress</span>' : ''}
+        ${c.state === 'partial' ? '<span style="font-size:10px;color:var(--text-dim)"> partial</span>' : ''}</td>
+      <td class="td-num ${c.generated ? '' : 'wr-zero'}">${c.generated}</td>
+      <td class="td-num ${c.done ? '' : 'wr-zero'}">${c.done}</td>
+      <td class="td-num ${c.sql ? '' : 'wr-zero'}">${c.sql}</td>
+      <td class="td-num ${c.converted ? '' : 'wr-zero'}">${c.converted}</td>
+      <td class="td-num ${c.deals ? '' : 'wr-zero'}">${c.deals}</td>
+      <td class="td-num">${c.amount ? wrMoney(c.amount) : '<span class="wr-zero">—</span>'}</td>
+      <td class="td-num">${c.ratio_pct === null ? '<span class="wr-zero">—</span>' : c.ratio_pct + '%'}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="wr-card">
+    <div class="wr-card-title">📈 How each week's cohort is maturing</div>
+    <div class="wr-cov">Every week since 1 Jan 2026, followed forward. Zero-meeting weeks are
+      kept on purpose — a row that vanishes reads as "no data" when it means "no meetings".
+      Click any row to jump to that week.</div>
+    <div class="table-wrap" style="max-height:420px;overflow-y:auto"><table>
+      <thead><tr><th>Week</th><th style="text-align:right">Generated</th>
+        <th style="text-align:right">Done</th><th style="text-align:right">SQL</th>
+        <th style="text-align:right">S1</th><th style="text-align:right">Deals</th>
+        <th style="text-align:right">Pipeline</th><th style="text-align:right">Done→Pipe</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+/* ── render ────────────────────────────────────────────────────────────────── */
+
+function wrRender() {
+  const root = document.getElementById('wrRoot');
+  const d = WR.data;
+  if (!d) return;
+  if (!d.ready) {
+    root.innerHTML = `<div class="wr-note">No snapshot yet — ${wrEsc(d.reason || '')}
+      <div style="margin-top:10px"><button class="chip" onclick="wrRefresh()">Build it now</button></div></div>`;
+    return;
+  }
+  root.innerHTML = `
+    ${wrWeekPicker(d)}
+    ${wrHeadline(d)}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px;margin-bottom:16px">
+      ${wrCard('Where did the meetings come from?', d.source)}
+      ${wrCard('How were they booked?', d.channel)}
+      ${wrCard('What size are the companies?', d.revenue_band)}
+      ${wrCard('What kind of organisations?', d.client_type)}
+      ${wrCard('Which specialties?', d.specialty, { limit: 12 })}
+      ${wrSellerTable(d)}
+    </div>
+    <div style="margin-bottom:16px">${wrPersona(d)}</div>
+    <div style="margin-bottom:16px">${wrS1Box(d)}</div>
+    <div style="margin-bottom:16px">${wrDealReview(d)}</div>
+    <div style="margin-bottom:24px">${wrCohorts(d)}</div>`;
 }
 </script>
 </body>
