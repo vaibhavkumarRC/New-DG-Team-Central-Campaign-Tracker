@@ -348,15 +348,37 @@ LEAD_FIELDS = """Id, Name, Title, Company, Email, Status,
     Meeting_Status__c, Meeting_Source__c, Meeting_Channel__c,
     Seller_Name__c, Follow_Up_Owner__c,
     Management_Level__c, Job_Function__c,
-    RC_Account_ID__c, Account_Lookup__c, ConvertedOpportunityId"""
+    RC_Account_ID__c, Account_Lookup__c,
+    IsConverted, ConvertedDate, ConvertedAccountId, ConvertedOpportunityId,
+    SQL_Converted_Date__c"""
+
+# Straight from SFDC Opportunity, never Rahul's Supabase `deals` mirror — that
+# mirror truncates Closed Lost at 90 days and would silently under-report loss
+# history. Only 269 opportunities exist org-wide, so there is no window filter:
+# a lead converted in 2026 can legitimately attach to a deal opened in 2025.
+OPP_FIELDS = """Id, Name, AccountId, StageName, Amount, CloseDate, CreatedDate,
+    IsClosed, IsWon, Owner.Name, Next_Steps__c, Next_Steps_AI__c,
+    Deal_Summary_AI__c, Deal_Risk_AI__c, Deal_Risk_Manual__c,
+    Follow_up_Date__c, Loss_Reason__c, Loss_Reason_Explanation__c"""
+
+# S1-S5 are the active pipeline (SFDC_ORG_GUIDE.md:212-221).
+ACTIVE_STAGES = ('S1', 'S2', 'S3', 'S4', 'S5')
+
+# Rung 2 matches a deal on the account Salesforce itself linked at conversion,
+# within this many days of the conversion date. 90 days = a quarter; wider adds
+# 9 more matches but stops being a defensible claim. Zero ambiguous matches at
+# every window tested, so a tie-break rule is not needed.
+RUNG2_WINDOW_DAYS = 90
 
 COMPANY_SELECT = ('company_name,salesforce_account_id,rc_account_id,'
                   'revenue_estimate_usd,organisation_type,specialty_type,state')
 
 
 def _company_index():
-    """15-char SFDC account id → Supabase company row. Only companies carrying
-    an account id are fetched (30.6k of 49k rows)."""
+    """account id → Supabase company row, keyed on BOTH id spaces:
+    the 15-char Salesforce id and the RC-internal id ("RC0015647"). Only
+    companies carrying at least one of them are fetched (30.6k of 49k rows).
+    sf15() is a no-op on RC ids, which are shorter than 15 chars."""
     rows = _sb_fetch_all(
         'companies', COMPANY_SELECT,
         extra_params={'or': '(salesforce_account_id.not.is.null,'
@@ -396,8 +418,18 @@ def _build_rows(lead_records, comp_idx, norm_sdr):
         except ValueError:
             continue
 
-        acct15 = sf15(r.get('RC_Account_ID__c')) or sf15(r.get('Account_Lookup__c'))
-        comp = comp_idx.get(acct15) if acct15 else None
+        # TWO DIFFERENT ID SPACES — do not collapse them.
+        #   Account_Lookup__c  = the real Salesforce Account id ("001f6...")
+        #   RC_Account_ID__c   = an RC-internal identifier ("RC0015647")
+        # 688 of 837 meetings carry both and they never agree. Supabase indexes
+        # both (salesforce_account_id / rc_account_id) so either resolves a
+        # company, but Opportunity.AccountId only ever matches the Salesforce
+        # one — joining deals on the RC id silently matches nothing.
+        sf_acct = sf15(r.get('Account_Lookup__c'))
+        rc_acct = (r.get('RC_Account_ID__c') or '').strip()
+        comp = comp_idx.get(sf_acct) if sf_acct else None
+        if comp is None and rc_acct:
+            comp = comp_idx.get(rc_acct)
 
         seniority, sen_src = _norm_seniority(r.get('Management_Level__c'), r.get('Title'))
         function,  fn_src  = _norm_function(r.get('Job_Function__c'),      r.get('Title'))
@@ -424,17 +456,100 @@ def _build_rows(lead_records, comp_idx, norm_sdr):
             'seniority_src': sen_src,
             'function':      function,
             'function_src':  fn_src,
-            'account_id':    acct15 or None,
+            'sf_account_id': sf_acct or None,
+            'rc_account_id': rc_acct or None,
             'revenue_usd':   (comp or {}).get('revenue_estimate_usd'),
             'revenue_band':  _revenue_band((comp or {}).get('revenue_estimate_usd')),
             'client_type':   _client_type_label((comp or {}).get('organisation_type')),
             'specialties':   _specialties((comp or {}).get('specialty_type')),
             'state':         (comp or {}).get('state') or None,
             'opp_id':        r.get('ConvertedOpportunityId') or None,
+            'converted':     bool(r.get('IsConverted')),
+            'converted_on':  (r.get('ConvertedDate') or '')[:10] or None,
+            'converted_acct': sf15(r.get('ConvertedAccountId')) or None,
+            'sql_converted_on': (r.get('SQL_Converted_Date__c') or '')[:10] or None,
             'is_done':       _is_done(r),
             'is_sql':        _is_sql(r),
             'is_upcoming':   bool(sched and sched >= today and not _is_done(r)),
         })
+    return rows
+
+
+def _opp_view(o):
+    """Only the fields a reader needs, so the snapshot stays small."""
+    stage = o.get('StageName') or ''
+    return {
+        'id':          o.get('Id'),
+        'name':        o.get('Name'),
+        'stage':       stage or None,
+        'is_active':   stage.startswith(ACTIVE_STAGES),
+        'is_closed':   bool(o.get('IsClosed')),
+        'is_won':      bool(o.get('IsWon')),
+        'amount':      o.get('Amount'),
+        'close_date':  (o.get('CloseDate') or '')[:10] or None,
+        'created_on':  (o.get('CreatedDate') or '')[:10] or None,
+        'owner':       ((o.get('Owner') or {}) or {}).get('Name'),
+        'next_steps':  (o.get('Next_Steps__c') or '').strip() or None,
+        'next_steps_ai': (o.get('Next_Steps_AI__c') or '').strip() or None,
+        'summary_ai':  (o.get('Deal_Summary_AI__c') or '').strip() or None,
+        'risk':        (o.get('Deal_Risk_Manual__c')
+                        or (o.get('Deal_Risk_AI__c') or '').strip() or None),
+        'follow_up_on': (o.get('Follow_up_Date__c') or '')[:10] or None,
+        'loss_reason': o.get('Loss_Reason__c') or None,
+        'loss_detail': (o.get('Loss_Reason_Explanation__c') or '').strip() or None,
+    }
+
+
+def _link_deals(rows, opp_records):
+    """Attach a deal to each meeting via an explicit ladder, and tag which rung
+    matched. Rung 2 is never presented as certain anywhere in the UI.
+
+      rung 1  Lead.ConvertedOpportunityId          — Salesforce's own link
+      rung 2  ConvertedAccountId + ±90d of         — the account SF linked at
+              ConvertedDate                          conversion; probable
+
+    An opportunity is claimed at most once: if rung 1 already tied a deal to
+    another lead, rung 2 will not re-claim it for a second meeting. Otherwise a
+    single deal would inflate several cohorts at once."""
+    opps = {sf15(o.get('Id')): o for o in opp_records if o.get('Id')}
+    by_account = {}
+    for o in opp_records:
+        by_account.setdefault(sf15(o.get('AccountId')), []).append(o)
+
+    claimed = {sf15(r['opp_id']) for r in rows if r.get('opp_id')}
+
+    for r in rows:
+        r['deal'] = None
+        r['deal_rung'] = None
+        if r.get('opp_id'):
+            o = opps.get(sf15(r['opp_id']))
+            if o:
+                r['deal'] = _opp_view(o)
+                r['deal_rung'] = 1
+
+    for r in rows:
+        if r['deal'] or not r.get('converted_acct') or not r.get('converted_on'):
+            continue
+        try:
+            cd = date.fromisoformat(r['converted_on'])
+        except ValueError:
+            continue
+        best = None
+        for o in by_account.get(r['converted_acct'], []):
+            oid = sf15(o.get('Id'))
+            if oid in claimed:
+                continue
+            created = (o.get('CreatedDate') or '')[:10]
+            try:
+                gap = abs((date.fromisoformat(created) - cd).days)
+            except ValueError:
+                continue
+            if gap <= RUNG2_WINDOW_DAYS and (best is None or gap < best[0]):
+                best = (gap, o)
+        if best:
+            claimed.add(sf15(best[1].get('Id')))
+            r['deal'] = _opp_view(best[1])
+            r['deal_rung'] = 2
     return rows
 
 
@@ -452,14 +567,18 @@ def refresh_weekly():
         raise RuntimeError('SOQL returned nothing — Salesforce auth or network')
     leads = res.get('records', [])
 
+    opp_res = soql(f"SELECT {' '.join(OPP_FIELDS.split())} FROM Opportunity")
+    opp_records = (opp_res or {}).get('records', [])
+
     comp_idx, comp_rows = _company_index()
-    rows = _build_rows(leads, comp_idx, norm_sdr)
+    rows = _link_deals(_build_rows(leads, comp_idx, norm_sdr), opp_records)
 
     snap = {
         'fetched_at':   datetime.now(IST).isoformat(),
         'epoch':        WR_EPOCH.isoformat(),
         'rows':         rows,
         'lead_count':   len(leads),
+        'opp_count':    len(opp_records),
         'company_rows': comp_rows,
         'error':        None,
     }
@@ -469,9 +588,13 @@ def refresh_weekly():
     os.replace(tmp, CACHE_PATH)
     with _wr_lock:
         _WR = snap
-    matched = sum(1 for r in rows if r['account_id'] and r['revenue_band'])
+    matched = sum(1 for r in rows if r['revenue_band'])
+    r1 = sum(1 for r in rows if r['deal_rung'] == 1)
+    r2 = sum(1 for r in rows if r['deal_rung'] == 2)
     print(f"[weekly_review] snapshot refreshed: {len(rows)} meetings, "
-          f"{comp_rows} company rows, {matched} with a revenue band")
+          f"{comp_rows} company rows, {matched} with a revenue band, "
+          f"{len(opp_records)} opportunities, deals linked {r1} certain "
+          f"+ {r2} probable")
     return snap
 
 
@@ -666,6 +789,124 @@ def _persona_matrix(rows):
     }
 
 
+def _pipeline(rows):
+    """Meetings done → deals created, for one cohort. The ratio's denominator is
+    meetings DONE, not generated: a meeting that hasn't happened yet cannot have
+    produced pipeline, and including it would drag every recent week down."""
+    done = [r for r in rows if r['is_done']]
+    with_deal = [r for r in done if r['deal']]
+
+    # Two leads can legitimately convert into ONE opportunity — e.g. Bruce Maki
+    # and Alexis Martin at Michigan Primary Care Association, a week apart, both
+    # into the same $50k deal. So the ratio counts MEETINGS (both of those
+    # meetings did produce pipeline) but the amount is summed over DISTINCT
+    # deals, or that one deal would contribute $100k across two cohorts.
+    seen = {}
+    for r in with_deal:
+        seen.setdefault(r['deal']['id'], r['deal'])
+    amounts = [d['amount'] for d in seen.values() if d.get('amount') is not None]
+
+    return {
+        'done':               len(done),
+        'meetings_with_deal': len(with_deal),
+        'deals':              len(seen),
+        'ratio_pct':   round(100 * len(with_deal) / len(done), 1) if done else None,
+        'amount':      sum(amounts) if amounts else 0,
+        'amount_known': len(amounts),
+        'amount_total_deals': len(seen),
+        'rung_split': {
+            'certain':  sum(1 for r in with_deal if r['deal_rung'] == 1),
+            'probable': sum(1 for r in with_deal if r['deal_rung'] == 2),
+        },
+    }
+
+
+def _s1_this_week(rows, week):
+    """'Calls that moved to S1 this week' — keyed on the date the LEAD converted,
+    not on the meeting date, so a meeting from six weeks ago shows up in the week
+    it actually converted. The Week column names the cohort it came from, which
+    is what makes the box readable: it says which week's work is landing now."""
+    try:
+        start = date.fromisoformat(week)
+    except ValueError:
+        return {'rows': []}
+    end = start + timedelta(days=6)
+    out = []
+    for r in rows:
+        cd = r.get('converted_on')
+        if not cd:
+            continue
+        try:
+            d = date.fromisoformat(cd)
+        except ValueError:
+            continue
+        if not (start <= d <= end):
+            continue
+        out.append({
+            'lead_id':      r['id'],
+            'cohort_week':  r['week'],
+            'converted_on': cd,
+            'client':       r['company'],
+            'revenue_band': r['revenue_band'],
+            'revenue_usd':  r['revenue_usd'],
+            'seller':       r['seller'],
+            'deal_amount':  (r['deal'] or {}).get('amount'),
+            'deal_stage':   (r['deal'] or {}).get('stage'),
+            'deal_rung':    r['deal_rung'],
+        })
+    out.sort(key=lambda x: (x['converted_on'], x['client']))
+    return {'rows': out}
+
+
+def _cohort_table(rows, weeks):
+    """Every week since the epoch, followed forward. Zero-meeting weeks stay in
+    the table — a gap that vanishes reads as 'no data' when it means 'no
+    meetings'."""
+    by_week = {w['week']: [] for w in weeks}
+    for r in rows:
+        if r['week'] in by_week:
+            by_week[r['week']].append(r)
+    out = []
+    for w in weeks:
+        wr = by_week[w['week']]
+        p = _pipeline(wr)
+        out.append({
+            'week':       w['week'],
+            'label':      w['label'],
+            'state':      w['state'],
+            'generated':  len(wr),
+            'done':       p['done'],
+            'sql':        sum(1 for r in wr if r['is_sql']),
+            'converted':  sum(1 for r in wr if r['converted']),
+            'deals':      p['deals'],
+            'amount':     p['amount'],
+            'ratio_pct':  p['ratio_pct'],
+        })
+    return out
+
+
+def _deal_review(rows, week):
+    """The 'last-to-last week' block: what happened to a cohort old enough to
+    have deals. Young cohorts get a warning banner instead of an empty table —
+    two weeks is roughly when a meeting has been held and worked."""
+    with_deal = [r for r in rows if r['deal']]
+    with_deal.sort(key=lambda r: (-(r['deal'].get('amount') or 0), r['company']))
+    return {
+        'week': week,
+        'rows': [{
+            'lead_id':     r['id'],
+            'client':      r['company'],
+            'contact':     r['name'],
+            'seller':      r['seller'],
+            'revenue_band': r['revenue_band'],
+            'deal_rung':   r['deal_rung'],
+            'deal':        r['deal'],
+        } for r in with_deal],
+        'meetings':  len(rows),
+        'done':      sum(1 for r in rows if r['is_done']),
+    }
+
+
 def build_review(week=None):
     wr = _WR
     if not wr:
@@ -681,6 +922,12 @@ def build_review(week=None):
     cur = _week_rows(rows, week)
     prev_week = (date.fromisoformat(week) - timedelta(days=7)).isoformat()
     prev = _week_rows(rows, prev_week) if prev_week in valid else []
+
+    # "Last to last week" = two weeks before the selected one. That cohort has
+    # had time to be held and worked, so it is the one worth reviewing deals on.
+    l2l_week = (date.fromisoformat(week) - timedelta(days=14)).isoformat()
+    l2l_rows = _week_rows(rows, l2l_week) if l2l_week in valid else []
+    l2l_age_days = (_ist_today() - date.fromisoformat(l2l_week)).days
 
     # Per-week generated counts drive the selector labels and the trend line.
     per_week = {w['week']: 0 for w in weeks}
@@ -712,6 +959,14 @@ def build_review(week=None):
         'specialty':    _tally_multi(cur, 'specialties'),
         'seller':       _seller_table(cur),
         'persona':      _persona_matrix(cur),
+        'pipeline': {
+            'current':  _pipeline(cur),
+            'previous': _pipeline(prev),
+        },
+        's1_this_week': _s1_this_week(rows, week),
+        'cohorts':      _cohort_table(rows, weeks),
+        'deal_review':  _deal_review(l2l_rows, l2l_week),
+        'deal_review_young': l2l_age_days < 14,
     }
 
 
