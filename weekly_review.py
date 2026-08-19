@@ -96,7 +96,14 @@ def sf15(v):
 # The Title parser MUST emit the same tokens as the field normalisers, or the
 # matrix double-counts the same person under two spellings.
 
-SENIORITY_ORDER = ['C-Level', 'VP', 'Director', 'Manager', 'Individual Contributor']
+SENIORITY_ORDER = ['C-Level', 'VP', 'Head', 'Director', 'Manager',
+                   'Individual Contributor']
+
+# "Head of X" is checked BEFORE the Salesforce field, unlike every other bucket.
+# Management_Level__c has no Head value — the picklist is C/VP/Director/Manager/
+# Non-Manager — so the field cannot express it and levels these people as
+# Director, VP or IC. The title is the only source that can, so it wins here.
+_TITLE_HEAD_RULE = r'\bhead\s+of\b|^\s*head\b|\bhead\s*,'
 
 _LEVEL_FIELD_MAP = {
     'c level':           'C-Level',
@@ -115,7 +122,7 @@ _TITLE_SENIORITY_RULES = [
                  r'|(?<!vice )(?<!vice-)\bpresident\b'
                  r'|\bowner\b|\bfounder\b|\bpartner\b'),
     ('VP',       r'\b(vice[- ]president|vp|svp|evp|avp)\b'),
-    ('Director', r'\b(director|dir\.?)\b|\bhead\s+of\b|\bmanaging\s+director\b'),
+    ('Director', r'\b(director|dir\.?)\b|\bmanaging\s+director\b'),
     ('Manager',  r'\b(manager|mgr\.?|supervisor|lead|team\s+lead)\b'),
 ]
 
@@ -176,14 +183,15 @@ def _norm_seniority(level_field, title):
     the 19% of meetings where the field is blank, and is deterministic so any
     row can be explained by pointing at the matched word.
 
-    Note on "Head": the CEO's list was VP/Director/Head/Manager, but only 4 of
-    836 meetings have "Head" in the title and Salesforce already levels all four
-    (2 Director, 1 VP, 1 IC). A separate Head bucket would be noise, so "head of"
-    maps to Director and the coverage note says so."""
+    "Head" is the one exception to field-first: Management_Level__c has no Head
+    value, so Salesforce levels these people as Director/VP/IC. The title is the
+    only source that can express the bucket the CEO asked for, so it wins."""
+    t = (title or '').strip()
+    if t and re.search(_TITLE_HEAD_RULE, t, re.I):
+        return 'Head', 'title'
     key = (level_field or '').strip().lower()
     if key in _LEVEL_FIELD_MAP:
         return _LEVEL_FIELD_MAP[key], 'field'
-    t = (title or '').strip()
     if t:
         for bucket, pattern in _TITLE_SENIORITY_RULES:
             if re.search(pattern, t, re.I):
