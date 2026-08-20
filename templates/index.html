@@ -427,14 +427,37 @@ td.wr-drill:hover { background:var(--gold-glow); color:var(--gold); font-weight:
 .wd-chip button { background:none; border:none; color:inherit; cursor:pointer;
   font-size:14px; line-height:1; padding:0; opacity:.7; }
 .wd-chip button:hover { opacity:1; }
-.wd-filters { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
-  gap:10px; margin-bottom:14px; }
-.wd-filters label { display:block; font-size:10px; font-weight:700; letter-spacing:.4px;
-  text-transform:uppercase; color:var(--text-muted); margin-bottom:4px; }
-.wd-filters select { width:100%; background:var(--card-bg); color:var(--text);
-  border:1px solid var(--border); border-radius:8px; padding:6px 8px; font-size:12px;
-  cursor:pointer; }
-.wd-filters select[multiple] { height:104px; cursor:default; }
+.wd-fbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
+.wd-fpill { position:relative; }
+.wd-fpill > .pill { display:inline-flex; align-items:center; gap:6px; padding:6px 12px;
+  border-radius:20px; border:1px solid var(--border); background:var(--card-bg);
+  color:var(--text-secondary); font-size:12px; font-weight:600; cursor:pointer;
+  transition:border-color .15s, color .15s; }
+.wd-fpill > .pill:hover { border-color:var(--gold-dark); color:var(--text); }
+.wd-fpill.on > .pill { border-color:var(--gold-dark); background:var(--gold-glow);
+  color:var(--gold); }
+.wd-fpill .pb { font-weight:800; }
+.wd-fpill .caret { font-size:8px; opacity:.55; }
+.wd-fmenu { position:absolute; top:calc(100% + 6px); left:0; z-index:900;
+  min-width:220px; max-width:290px; background:var(--bg-main);
+  border:1px solid var(--border); border-radius:12px; padding:6px;
+  box-shadow:0 12px 32px rgba(0,0,0,.28); }
+.wd-fmenu .opts { max-height:250px; overflow-y:auto; }
+.wd-fmenu .fsearch { width:100%; box-sizing:border-box; margin:2px 0 6px;
+  background:var(--card-bg); color:var(--text); border:1px solid var(--border);
+  border-radius:8px; padding:5px 9px; font-size:12px; outline:none; }
+.wd-fmenu .fsearch:focus { border-color:var(--gold-dark); }
+.wd-fopt { display:flex; align-items:center; gap:8px; padding:6px 9px;
+  border-radius:8px; cursor:pointer; font-size:12px; color:var(--text-secondary);
+  user-select:none; }
+.wd-fopt:hover { background:var(--gold-glow); color:var(--text); }
+.wd-fopt.sel { color:var(--gold); font-weight:700; }
+.wd-fopt .n { margin-left:auto; font-size:10.5px; color:var(--text-dim); padding-left:10px; }
+.wd-fopt .box { flex-shrink:0; width:13px; height:13px; border-radius:4px;
+  border:1.5px solid var(--border); display:inline-flex; align-items:center;
+  justify-content:center; font-size:10px; line-height:1; }
+.wd-fopt.sel .box { background:var(--gold); border-color:var(--gold);
+  color:var(--bg-main); }
 
 /* ── SDR CARDS ── */
 .sdr-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
@@ -8128,10 +8151,47 @@ async function wdLoad() {
 
 function wdSet(key, value) { WD.f[key] = value || ''; wdWriteHash(); wdLoad(); }
 
-function wdSetMulti(key, selectEl) {
-  WD.f[key] = Array.from(selectEl.selectedOptions).map(o => o.value).join(',');
+/* ── filter pill menus ──
+   One popover open at a time (WD.ui.menu). Toggling a value re-fetches and
+   re-renders the whole tab; the open menu + its search text + scroll position
+   are restored afterwards so a multi-pick feels continuous. */
+WD.ui = { menu: '', q: {}, scroll: 0 };
+
+function wdMenuToggle(key) {
+  WD.ui.menu = WD.ui.menu === key ? '' : key;
+  WD.ui.scroll = 0;
+  wdRender();
+}
+
+function wdToggle(key, val) {
+  const sel = new Set((WD.f[key] || '').split(',').filter(Boolean));
+  sel.has(val) ? sel.delete(val) : sel.add(val);
+  WD.f[key] = [...sel].join(',');
+  const opts = document.querySelector('.wd-fmenu .opts');
+  WD.ui.scroll = opts ? opts.scrollTop : 0;
   wdWriteHash(); wdLoad();
 }
+
+function wdPick(key, val) {           // single-select menus (week, outcome)
+  WD.ui.menu = '';
+  wdSet(key, val);
+}
+
+function wdMenuSearch(key, q) {       // client-side only — no re-fetch
+  WD.ui.q[key] = q;
+  const opts = document.querySelector('.wd-fmenu .opts');
+  if (opts && WD.data) {
+    const sel = new Set((WD.f[key] || '').split(',').filter(Boolean));
+    opts.innerHTML = wdMenuOpts(key, (WD.data.facets || {})[key] || [], sel);
+  }
+}
+
+document.addEventListener('click', e => {
+  if (WD.ui.menu && !e.target.closest('.wd-fpill')) { WD.ui.menu = ''; wdRender(); }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && WD.ui.menu) { WD.ui.menu = ''; wdRender(); }
+});
 
 function wdClear(key) { WD.f[key] = ''; wdWriteHash(); wdLoad(); }
 
@@ -8161,39 +8221,71 @@ function wdChips(d) {
     <span style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px">Filtered by</span>
     ${chips.map(([k, label, val]) => `<span class="wd-chip">${wdEsc(label)}: ${wdEsc(val)}
       <button onclick="wdClear('${k}')" title="Remove this filter">×</button></span>`).join('')}
-    <button class="chip" onclick="wdClearAll()">Clear all</button>
   </div>`;
 }
 
-function wdFilterControls(d) {
-  const weekOpts = ['<option value="">All weeks</option>'].concat(
-    (d.weeks || []).slice().reverse().map(w =>
-      `<option value="${w.week}" ${w.week === WD.f.week ? 'selected' : ''}>${wdEsc(w.label)}</option>`)
-  ).join('');
+function wdPill(key, label, badge, menu) {
+  const open = WD.ui.menu === key;
+  return `<div class="wd-fpill ${badge ? 'on' : ''} ${open ? 'open' : ''}">
+    <button class="pill" onclick="event.stopPropagation(); wdMenuToggle('${key}')">
+      ${wdEsc(label)}${badge ? ` <span class="pb">${wdEsc(badge)}</span>` : ''}
+      <span class="caret">${open ? '▲' : '▼'}</span></button>
+    ${open ? `<div class="wd-fmenu" onclick="event.stopPropagation()">${menu}</div>` : ''}
+  </div>`;
+}
 
-  const outcomeOpts = ['<option value="">Any outcome</option>'].concat(
-    Object.keys(WD_OUTCOMES).map(k =>
-      `<option value="${k}" ${k === WD.f.outcome ? 'selected' : ''}>${WD_OUTCOMES[k]}</option>`)
-  ).join('');
-
-  const multi = WD_KEYS.map(k => {
-    const sel = new Set((WD.f[k] || '').split(',').filter(Boolean));
-    const opts = (d.facets[k] || []).map(o =>
-      `<option value="${wdEsc(o.key)}" ${sel.has(o.key) ? 'selected' : ''}>${
-        wdEsc(o.label || o.key)} (${o.n})</option>`).join('');
-    return `<div><label>${WD_LABELS[k]}</label>
-      <select multiple onchange="wdSetMulti('${k}', this)">${opts}</select></div>`;
+function wdMenuOpts(key, facet, sel) {
+  const q = (WD.ui.q[key] || '').toLowerCase();
+  const shown = facet.filter(o =>
+    !q || String(o.label || o.key).toLowerCase().includes(q));
+  if (!shown.length) {
+    return `<div style="padding:10px;font-size:11.5px;color:var(--text-dim)">No matches.</div>`;
+  }
+  return shown.map(o => {
+    const on = sel.has(o.key);
+    return `<div class="wd-fopt ${on ? 'sel' : ''}" onclick="wdToggle('${key}', '${wrAttr(o.key)}')">
+      <span class="box">${on ? '✓' : ''}</span>
+      <span>${wdEsc(o.label || o.key)}</span><span class="n">${o.n}</span></div>`;
   }).join('');
+}
 
-  return `<div class="wr-card" style="margin-bottom:16px">
-    <div class="wr-card-title">Filters</div>
-    <div class="wr-cov">Hold ⌘ / Ctrl to pick more than one. Values inside a filter are
-      OR'd; different filters are AND'd. Facet counts are for the current week scope.</div>
-    <div class="wd-filters">
-      <div><label>Week</label><select onchange="wdSet('week', this.value)">${weekOpts}</select></div>
-      <div><label>Outcome</label><select onchange="wdSet('outcome', this.value)">${outcomeOpts}</select></div>
-      ${multi}
-    </div>
+function wdFilterBar(d) {
+  const pills = [];
+
+  const weekOpts = [['', 'All weeks']].concat(
+    (d.weeks || []).slice().reverse().map(w => [w.week, w.label]));
+  const outcomeOpts = [['', 'Any outcome']].concat(
+    Object.keys(WD_OUTCOMES).map(k => [k, WD_OUTCOMES[k]]));
+
+  [['week', 'Week', weekOpts], ['outcome', 'Outcome', outcomeOpts]].forEach(([k, label, opts]) => {
+    const cur = WD.f[k];
+    const curLabel = (opts.find(o => o[0] === cur) || [])[1];
+    const menu = `<div class="opts">${opts.map(([v, l]) =>
+      `<div class="wd-fopt ${v === cur ? 'sel' : ''}" onclick="wdPick('${k}', '${wrAttr(v)}')">
+        <span>${wdEsc(l)}</span>${v === cur ? '<span class="n">✓</span>' : ''}</div>`).join('')}</div>`;
+    pills.push(wdPill(k, label, cur ? curLabel : '', menu));
+  });
+
+  WD_KEYS.forEach(k => {
+    const facet = (d.facets || {})[k] || [];
+    if (!facet.length && !WD.f[k]) return;         // nothing to filter on in scope
+    const sel = new Set((WD.f[k] || '').split(',').filter(Boolean));
+    const search = facet.length > 12
+      ? `<input type="text" class="fsearch" placeholder="Search ${WD_LABELS[k].toLowerCase()}…"
+           value="${wdEsc(WD.ui.q[k] || '')}" oninput="wdMenuSearch('${k}', this.value)">`
+      : '';
+    const menu = `${search}<div class="opts">${wdMenuOpts(k, facet, sel)}</div>`;
+    pills.push(wdPill(k, WD_LABELS[k], sel.size ? String(sel.size) : '', menu));
+  });
+
+  const active = Object.keys(WD.f).some(k => WD.f[k]);
+  return `<div class="wd-fbar">
+    <span style="font-size:10.5px;font-weight:800;text-transform:uppercase;
+      letter-spacing:.5px;color:var(--text-muted)">Filter</span>
+    ${pills.join('')}
+    ${active ? `<button class="chip" onclick="wdClearAll()">Clear all</button>` : ''}
+    <span style="margin-left:auto;font-size:10.5px;color:var(--text-dim)">
+      values inside a filter are OR'd · filters are AND'd</span>
   </div>`;
 }
 
@@ -8266,10 +8358,22 @@ function wdRender() {
       Every meeting behind the Weekly Review numbers. Arrive here by clicking any chart,
       card or matrix cell on that tab, or filter freely below. The URL carries the filters,
       so a filtered view can be shared as-is.</div>
+    ${wdFilterBar(d)}
     ${wdChips(d)}
-    ${wdFilterControls(d)}
     ${wdTable(d)}
     <div style="height:24px"></div>`;
+
+  // An open filter menu survives the re-render that every toggle triggers:
+  // restore its list scroll and keep typing in its search box seamless.
+  if (WD.ui.menu) {
+    const opts = root.querySelector('.wd-fmenu .opts');
+    if (opts && WD.ui.scroll) opts.scrollTop = WD.ui.scroll;
+    const inp = root.querySelector('.wd-fmenu .fsearch');
+    if (inp && WD.ui.q[WD.ui.menu]) {
+      inp.focus();
+      inp.setSelectionRange(inp.value.length, inp.value.length);
+    }
+  }
 }
 </script>
 </body>
