@@ -359,7 +359,8 @@ LEAD_FIELDS = """Id, Name, Title, Company, Email, Status,
 OPP_FIELDS = """Id, Name, AccountId, StageName, Amount, CloseDate, CreatedDate,
     IsClosed, IsWon, Owner.Name, Next_Steps__c, Next_Steps_AI__c,
     Deal_Summary_AI__c, Deal_Risk_AI__c, Deal_Risk_Manual__c,
-    Follow_up_Date__c, Loss_Reason__c, Loss_Reason_Explanation__c"""
+    Follow_up_Date__c, Loss_Reason__c, Loss_Reason_Explanation__c,
+    SDR_Owner__c, Source__c"""
 
 # S1-S5 are the active pipeline (SFDC_ORG_GUIDE.md:212-221).
 ACTIVE_STAGES = ('S1', 'S2', 'S3', 'S4', 'S5')
@@ -490,6 +491,14 @@ def _opp_view(o):
         'close_date':  (o.get('CloseDate') or '')[:10] or None,
         'created_on':  (o.get('CreatedDate') or '')[:10] or None,
         'owner':       ((o.get('Owner') or {}) or {}).get('Name'),
+        # Opportunity-level SDR credit and source, distinct from the Lead's
+        # Meeting_Generated_by__c: the SDR who booked the meeting is not always
+        # the one credited on the deal. 'N/A' is a real stored value meaning
+        # "no SDR" — normalise it to None so the table shows a dash rather than
+        # an SDR apparently called N/A.
+        'sdr_owner':   (lambda v: None if v.upper() == 'N/A' else v)(
+                           (o.get('SDR_Owner__c') or '').strip()) or None,
+        'source':      (o.get('Source__c') or '').strip() or None,
         'next_steps':  (o.get('Next_Steps__c') or '').strip() or None,
         'next_steps_ai': (o.get('Next_Steps_AI__c') or '').strip() or None,
         'summary_ai':  (o.get('Deal_Summary_AI__c') or '').strip() or None,
