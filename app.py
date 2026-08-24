@@ -4897,6 +4897,12 @@ cold_calls.init_app(app, soql=soql, load_campaigns=load_campaigns,
                     load_ledger=load_ledger, require_admin=require_admin,
                     data_dir=DATA_DIR)
 
+# ── Weekly Review + Weekly Deep Dive tabs (SF meetings x Supabase companies) ──
+import weekly_review
+weekly_review.init_app(app, soql=soql, norm_sdr=norm_sdr,
+                       require_admin=require_admin, data_dir=DATA_DIR,
+                       sf_base_url=SF_BASE_URL)
+
 print('\n' + '='*55)
 print('  🚀  Campaign Command Center')
 print('  →   http://localhost:5001')
