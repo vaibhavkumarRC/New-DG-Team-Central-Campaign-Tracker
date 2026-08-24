@@ -8015,7 +8015,11 @@ function wrDealReview(d) {
         <div style="font-size:11px;color:var(--text-dim);font-weight:400">${wrEsc(r.contact)}</div></td>
       <td class="td-num">${wrMoney(dl.amount)}</td>
       <td>${wrEsc(dl.stage || '—')}</td>
+      <td>${dl.source ? wrEsc(dl.source)
+                      : '<span style="color:var(--text-dim)">—</span>'}</td>
       <td>${wrEsc(dl.owner || '—')}</td>
+      <td>${dl.sdr_owner ? wrEsc(dl.sdr_owner)
+                         : '<span style="color:var(--text-dim)" title="SDR Owner is blank or N/A on this Opportunity">—</span>'}</td>
       <td>${wrEsc(dl.close_date || '—')}</td>
       <td style="white-space:normal;max-width:340px;font-size:12px;color:var(--text-secondary)">
         ${next ? wrEsc(next).slice(0, 260) : '<span style="color:var(--text-dim)">no next steps recorded</span>'}
@@ -8038,8 +8042,11 @@ function wrDealReview(d) {
     ${warn}
     <div class="table-wrap"><table>
       <thead><tr><th>Client</th><th style="text-align:right">Value</th><th>Stage</th>
-        <th>Who's leading</th><th>Expected close</th><th>Next steps</th><th>Link</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="7" style="color:var(--text-dim)">No deals linked to this cohort yet.</td></tr>'}</tbody>
+        <th title="Opportunity Source__c">Source</th>
+        <th title="Opportunity Owner — the AE running the deal">Who's leading</th>
+        <th title="Opportunity SDR_Owner__c — the SDR credited on the deal">SDR owner</th>
+        <th>Expected close</th><th>Next steps</th><th>Link</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="9" style="color:var(--text-dim)">No deals linked to this cohort yet.</td></tr>'}</tbody>
     </table></div>
   </div>`;
 }
