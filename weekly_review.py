@@ -1178,6 +1178,27 @@ _sum_lock = threading.Lock()
 SUMMARY_MODEL_DEFAULT = 'claude-sonnet-5'
 _TRANSCRIPT_CHAR_CAP = 60_000    # ~15k tokens; a 30-min call is ~¼ of this
 
+# Backstop on Claude spend: at most this many _summarize_transcript runs per
+# IST day, across all viewers. Positives cache forever, so ordinary use stays
+# far below it; the cap only bites if something loops the endpoint.
+SUMMARY_DAILY_CAP = int(os.environ.get('SUMMARY_DAILY_CAP', '200'))
+_llm_budget = {'day': None, 'count': 0}
+_llm_budget_lock = threading.Lock()
+
+
+def _llm_budget_spend():
+    """Count one Claude call against today's cap; raise once it is exhausted."""
+    today = datetime.now(IST).date().isoformat()
+    with _llm_budget_lock:
+        if _llm_budget['day'] != today:
+            _llm_budget.update(day=today, count=0)
+        if _llm_budget['count'] >= SUMMARY_DAILY_CAP:
+            print(f'[weekly] daily summary cap hit ({SUMMARY_DAILY_CAP}/day)')
+            raise RuntimeError(
+                f'daily summary limit reached ({SUMMARY_DAILY_CAP}/day) — '
+                'try again tomorrow')
+        _llm_budget['count'] += 1
+
 _TS_LINE = re.compile(r'^\d{2}:\d{2}:\d{2}\.\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}\.\d{3}')
 
 
@@ -1287,6 +1308,7 @@ def _summarize_transcript(meta, transcript):
     api_key = os.environ.get('ANTHROPIC_API_KEY')
     if not api_key:
         raise RuntimeError('ANTHROPIC_API_KEY not set')
+    _llm_budget_spend()
     model = os.environ.get('CLASSIFIER_MODEL', SUMMARY_MODEL_DEFAULT)
     if len(transcript) > _TRANSCRIPT_CHAR_CAP:
         transcript = transcript[:_TRANSCRIPT_CHAR_CAP] + '\n[transcript truncated]'
@@ -1562,11 +1584,18 @@ def init_app(app, soql, norm_sdr, require_admin, data_dir, sf_base_url='',
     def api_weekly_meeting_summary(lead_id):
         """Generate-and-cache. Positives cached forever in call_summaries.json;
         source=None responses are never cached so a late-appearing recording
-        gets picked up on the next open. ?force=1 bypasses the cache."""
+        gets picked up on the next open. ?force=1 bypasses the cache and is
+        admin-only — regeneration burns an uncached Claude call, so it takes
+        the same X-Admin-Token check as /api/weekly/refresh. The token-less
+        path stays open for every viewer and is bounded by the cache."""
         if not _LEAD_ID_RE.match(lead_id):
             return jsonify({'error': 'bad lead id'}), 400
         key = sf15(lead_id)
-        if request.args.get('force') != '1':
+        if request.args.get('force') == '1':
+            denied = require_admin(lambda: None)()
+            if denied is not None:
+                return denied
+        else:
             c = _load_summaries().get(key)
             if c and c.get('ver') == SUMMARY_CACHE_VER:
                 return jsonify({**c, 'cached': True})

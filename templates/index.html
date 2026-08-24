@@ -8567,7 +8567,8 @@ async function wdDrawerGenerate(leadId, force) {
     Generating summary — first open takes a few seconds…</div>`);
   let s;
   try {
-    const r = await fetch('/api/weekly/meeting/' + encodeURIComponent(leadId) + '/summary' + (force ? '?force=1' : ''), { method: 'POST' });
+    const r = await fetch('/api/weekly/meeting/' + encodeURIComponent(leadId) + '/summary' + (force ? '?force=1' : ''),
+      { method: 'POST', headers: (force && S.adminToken) ? { 'X-Admin-Token': S.adminToken } : {} });
     s = await r.json();
     if (s.error && !s.source) s = { source: null, reasons: [s.error] };
   } catch (e) {
