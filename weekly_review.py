@@ -703,18 +703,33 @@ def _week_rows(rows, week):
     return [r for r in rows if r['week'] == week]
 
 
-def _headline(rows):
+def _week_key(iso):
+    """Monday of the week containing an ISO date string, or None."""
+    try:
+        return _monday(date.fromisoformat(iso or '')).isoformat()
+    except ValueError:
+        return None
+
+
+def _headline(rows, cohort, week):
+    """generated/upcoming follow the booking cohort; done/s1 are EVENT-dated —
+    done = meetings HELD in the week (scheduled_on, any cohort), s1 = leads
+    CONVERTED in the week (ConvertedDate, any cohort). Every done meeting in
+    the snapshot carries a scheduled_on, so nothing is dropped by the bucketing."""
     return {
-        'generated': len(rows),
-        'done':      sum(1 for r in rows if r['is_done']),
-        'sql':       sum(1 for r in rows if r['is_sql']),
-        'upcoming':  sum(1 for r in rows if r['is_upcoming']),
+        'generated': len(cohort),
+        'done':      sum(1 for r in rows
+                         if r['is_done'] and _week_key(r.get('scheduled_on')) == week),
+        's1':        sum(1 for r in rows
+                         if _week_key(r.get('converted_on')) == week),
+        'upcoming':  sum(1 for r in cohort if r['is_upcoming']),
     }
 
 
 def _typical(rows, weeks, upto):
     """Median of the 12 complete weeks up to and including `upto`. Median on
-    purpose — a conference spike must not move what 'normal' looks like."""
+    purpose — a conference spike must not move what 'normal' looks like.
+    `done` is event-dated (held that week) to match the headline tile."""
     complete = [w['week'] for w in weeks
                 if w['state'] == 'complete' and w['week'] <= upto][-12:]
     if not complete:
@@ -724,8 +739,10 @@ def _typical(rows, weeks, upto):
     for r in rows:
         if r['week'] in by_week:
             by_week[r['week']] += 1
-            if r['is_done']:
-                done[r['week']] += 1
+        if r['is_done']:
+            dw = _week_key(r.get('scheduled_on'))
+            if dw in done:
+                done[dw] += 1
     return {
         'generated': int(statistics.median(by_week.values())),
         'done':      int(statistics.median(done.values())),
@@ -948,8 +965,8 @@ def build_review(week=None):
         'week_label': next((w['label'] for w in weeks if w['week'] == week), week),
         'weeks':      weeks,
         'headline': {
-            'current':  _headline(cur),
-            'previous': _headline(prev),
+            'current':  _headline(rows, cur, week),
+            'previous': _headline(rows, prev, prev_week),
             'typical':  _typical(rows, weeks, week),
         },
         'source':       _tally(cur, 'source'),
@@ -1082,6 +1099,16 @@ def build_meetings(args, sf_base=''):
     week = (args.get('week') or '').strip()
     if week:
         rows = [r for r in rows if r['week'] == week]
+
+    # Event-dated drills from the headline tiles: done_week = meetings HELD in
+    # that week (any booking cohort), s1_week = leads CONVERTED in that week.
+    done_week = (args.get('done_week') or '').strip()
+    if done_week:
+        rows = [r for r in rows
+                if r['is_done'] and _week_key(r.get('scheduled_on')) == done_week]
+    s1_week = (args.get('s1_week') or '').strip()
+    if s1_week:
+        rows = [r for r in rows if _week_key(r.get('converted_on')) == s1_week]
     scoped = rows
 
     applied = {}
@@ -1106,6 +1133,10 @@ def build_meetings(args, sf_base=''):
         rows = [r for r in rows if r['deal']]
     if outcome:
         applied['outcome'] = [outcome]
+    if done_week:
+        applied['done_week'] = [done_week]
+    if s1_week:
+        applied['s1_week'] = [s1_week]
 
     rows = sorted(rows, key=lambda r: (r['generated_on'], r['company']), reverse=True)
 

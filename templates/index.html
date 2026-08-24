@@ -7789,18 +7789,22 @@ function wrCard(title, block, opts = {}) {
 
 function wrHeadline(d) {
   const h = d.headline, c = h.current, p = h.previous, t = h.typical;
+  /* generated/upcoming follow the booking cohort; done/s1 are event-dated —
+     done = meetings HELD this week, s1 = leads CONVERTED this week, whatever
+     week they were booked in. The drills match: done_week/s1_week, not the
+     cohort week filter. */
   const cards = [
-    ['Meetings Generated', c.generated, p.generated, t && t.generated, 'var(--gold)', ''],
-    ['Meetings Done',      c.done,      p.done,      t && t.done,      '#3B82F6', 'done'],
-    ['SQLs',               c.sql,       p.sql,       null,             '#22C55E', 'sql'],
-    ['Still Upcoming',     c.upcoming,  null,        null,             '#A78BFA', 'upcoming'],
-  ].map(([label, val, prev, typ, color, outcome]) => `
+    ['Meetings Generated', c.generated, p.generated, t && t.generated, 'var(--gold)', 'week:WR.week',      'booked this week'],
+    ['Meetings Done',      c.done,      p.done,      t && t.done,      '#3B82F6',     'done_week:WR.week', 'held this week, any cohort'],
+    ['S1s This Week',      c.s1,        p.s1,        null,             '#22C55E',     's1_week:WR.week',   'converted this week, any cohort'],
+    ['Still Upcoming',     c.upcoming,  null,        null,             '#A78BFA',     "week:WR.week, outcome:'upcoming'", 'booked this week, not yet held'],
+  ].map(([label, val, prev, typ, color, drill, note]) => `
     <div class="wr-kpi wr-drill" style="--wr-c:${color}"
-      onclick="wdOpen({week:WR.week${outcome ? `, outcome:'${outcome}'` : ''}})"
+      onclick="wdOpen({${drill}})"
       title="Show these meetings in Deep Dive">
       <div class="wr-kpi-label">${label}</div>
       <div class="wr-kpi-value">${wrNum(val)}</div>
-      <div class="wr-kpi-sub">${wrDelta(val, prev)}${
+      <div class="wr-kpi-sub">${note}<br>${wrDelta(val, prev)}${
         typ !== null && typ !== undefined
           ? `<br>typical week: ${typ}` : ''}</div>
     </div>`).join('');
@@ -8075,8 +8079,9 @@ function wrRender() {
 
 const WD = {
   data: null, loading: false,
-  f: { week: '', source: '', channel: '', revenue_band: '', client_type: '',
-       specialty: '', seller: '', seniority: '', function: '', status: '', outcome: '' },
+  f: { week: '', done_week: '', s1_week: '', source: '', channel: '',
+       revenue_band: '', client_type: '', specialty: '', seller: '',
+       seniority: '', function: '', status: '', outcome: '' },
 };
 
 const WD_KEYS = ['source', 'channel', 'revenue_band', 'client_type', 'specialty',
@@ -8086,6 +8091,7 @@ const WD_LABELS = {
   client_type: 'Client type', specialty: 'Specialty', seller: 'Seller',
   seniority: 'Seniority', function: 'Function', status: 'Meeting status',
   outcome: 'Outcome', week: 'Week',
+  done_week: 'Held in week', s1_week: 'Converted in week',
 };
 const WD_OUTCOMES = { done: 'Meeting done', upcoming: 'Still upcoming',
                       sql: 'SQL', deal: 'Produced a deal' };
@@ -8106,7 +8112,8 @@ function wdInit() {
 
 /* Called from every drillable element on Weekly Review. */
 function wdOpen(filters) {
-  WD_KEYS.concat(['outcome']).forEach(k => { WD.f[k] = ''; });   // fresh drill
+  WD_KEYS.concat(['outcome', 'week', 'done_week', 's1_week'])
+    .forEach(k => { WD.f[k] = ''; });   // fresh drill
   Object.keys(filters || {}).forEach(k => {
     if (filters[k] !== undefined && filters[k] !== null) WD.f[k] = String(filters[k]);
   });
@@ -8208,6 +8215,11 @@ function wdChips(d) {
     const w = (d.weeks || []).find(x => x.week === WD.f.week);
     chips.push(['week', 'Week', w ? w.label : WD.f.week]);
   }
+  ['done_week', 's1_week'].forEach(k => {
+    if (!WD.f[k]) return;
+    const w = (d.weeks || []).find(x => x.week === WD.f[k]);
+    chips.push([k, WD_LABELS[k], w ? w.label : WD.f[k]]);
+  });
   WD_KEYS.forEach(k => {
     if (WD.f[k]) chips.push([k, WD_LABELS[k], WD.f[k].split(',').map(wdVal).join(' or ')]);
   });
