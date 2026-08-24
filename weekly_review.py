@@ -1177,6 +1177,10 @@ _sum_lock = threading.Lock()
 
 SUMMARY_MODEL_DEFAULT = 'claude-sonnet-5'
 _TRANSCRIPT_CHAR_CAP = 60_000    # ~15k tokens; a 30-min call is ~¼ of this
+_CLAUDE_TIMEOUT = 60.0           # s. Must stay well under gunicorn --timeout
+                                 # 120: one worker serves everything, and a
+                                 # request that outlives it kills every other
+                                 # in-flight request with it.
 
 # Backstop on Claude spend: at most this many _summarize_transcript runs per
 # IST day, across all viewers. Positives cache forever, so ordinary use stays
@@ -1193,7 +1197,8 @@ def _llm_budget_spend():
         if _llm_budget['day'] != today:
             _llm_budget.update(day=today, count=0)
         if _llm_budget['count'] >= SUMMARY_DAILY_CAP:
-            print(f'[weekly] daily summary cap hit ({SUMMARY_DAILY_CAP}/day)')
+            print(f'[weekly] daily summary cap hit ({SUMMARY_DAILY_CAP}/day)',
+                  flush=True)
             raise RuntimeError(
                 f'daily summary limit reached ({SUMMARY_DAILY_CAP}/day) — '
                 'try again tomorrow')
@@ -1317,15 +1322,22 @@ def _summarize_transcript(meta, transcript):
                 f"When: {meta.get('when') or '—'}, "
                 f"duration {meta.get('duration_min') or '?'} min\n\n"
                 f"Transcript:\n{transcript}")
-    client = anthropic.Anthropic(api_key=api_key)
-    resp = client.messages.create(
-        model=model, max_tokens=2048, thinking={'type': 'disabled'},
-        system=_SUMMARY_SYSTEM,
-        output_config={'format': {'type': 'json_schema', 'schema': _SUMMARY_SCHEMA}},
-        messages=[{'role': 'user', 'content': user_msg}])
+    client = anthropic.Anthropic(api_key=api_key, timeout=_CLAUDE_TIMEOUT,
+                                 max_retries=0)
+    try:
+        resp = client.messages.create(
+            model=model, max_tokens=2048, thinking={'type': 'disabled'},
+            system=_SUMMARY_SYSTEM,
+            output_config={'format': {'type': 'json_schema', 'schema': _SUMMARY_SCHEMA}},
+            messages=[{'role': 'user', 'content': user_msg}])
+    except anthropic.APITimeoutError:
+        raise RuntimeError(
+            f'summary model timed out after {int(_CLAUDE_TIMEOUT)}s — '
+            'likely an unusually long transcript; try again')
     u = resp.usage
-    print(f'[weekly] summarized {meta.get("topic")}: '
-          f'in={u.input_tokens} out={u.output_tokens} ({model})')
+    print(f'[weekly] summarized lead={meta.get("lead_id") or "?"} '
+          f'"{meta.get("topic")}": in={u.input_tokens} out={u.output_tokens} '
+          f'({model})', flush=True)
     return json.loads(next(b.text for b in resp.content if b.type == 'text'))
 
 
@@ -1440,6 +1452,7 @@ def _generate_summary(lead_id, row):
             try:
                 data = _summarize_transcript(
                     {'topic': assets.get('topic') or (row or {}).get('company'),
+                     'lead_id': sf15(lead_id),
                      'kind': 'sales meeting — input is the Zoom AI Companion '
                              'summary of the meeting, not a raw transcript',
                      'when': when, 'duration_min': assets['duration']},
@@ -1462,6 +1475,7 @@ def _generate_summary(lead_id, row):
         if transcript.strip():
             data = _summarize_transcript(
                 {'topic': assets.get('topic') or (row or {}).get('company'),
+                 'lead_id': sf15(lead_id),
                  'kind': 'sales meeting', 'when': when,
                  'duration_min': assets['duration']}, transcript)
             entry = {'source': 'zoom_llm', **data, 'meeting_id': mid,
@@ -1488,6 +1502,7 @@ def _generate_summary(lead_id, row):
             if transcript.strip():
                 data = _summarize_transcript(
                     {'topic': f"booking call — {best.get('account_name') or (row or {}).get('company')}",
+                     'lead_id': sf15(lead_id),
                      'kind': 'cold call that booked the meeting',
                      'when': best.get('time'),
                      'duration_min': round((best.get('duration_sec') or 0) / 60)},
