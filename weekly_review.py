@@ -350,7 +350,7 @@ LEAD_FIELDS = """Id, Name, Title, Company, Email, Status,
     Management_Level__c, Job_Function__c,
     RC_Account_ID__c, Account_Lookup__c,
     IsConverted, ConvertedDate, ConvertedAccountId, ConvertedOpportunityId,
-    SQL_Converted_Date__c"""
+    SQL_Converted_Date__c, Zoom_Meeting_Link_URL__c"""
 
 # Straight from SFDC Opportunity, never Rahul's Supabase `deals` mirror — that
 # mirror truncates Closed Lost at 90 days and would silently under-report loss
@@ -471,6 +471,7 @@ def _build_rows(lead_records, comp_idx, norm_sdr):
             'is_done':       _is_done(r),
             'is_sql':        _is_sql(r),
             'is_upcoming':   bool(sched and sched >= today and not _is_done(r)),
+            'zoom_url':      r.get('Zoom_Meeting_Link_URL__c') or None,
         })
     return rows
 
@@ -1155,12 +1156,348 @@ def build_meetings(args, sf_base=''):
     }
 
 
+# ── Call detail drawer + transcript summaries (Stage 5) ─────────────────────
+# One summary per meeting, generated on first drawer open and cached forever in
+# DATA_DIR/call_summaries.json. Source ladder (measured coverage in
+# docs/DEFINITIONS.md, sample of 50 done meetings, 2026-08-20):
+#   1. zoom_ai    Zoom AI Companion summary file          (48% of done meetings)
+#   2. zoom_llm   Claude over the Zoom transcript VTT     (~0% extra — every VTT
+#                 in the sample also had an AI summary; kept as a safety rung)
+#   3. nooks_llm  Claude over the Nooks BOOKING-CALL      (+24%; labeled as the
+#                 transcript                               booking call, not the
+#                                                          meeting itself)
+#   4. none       28% — reasons reported honestly, never cached (a recording can
+#                 appear hours after the meeting; a cached "nothing" would stick).
+
+SUMMARY_CACHE_VER = 2            # bump to invalidate every cached summary
+                                 # v2: paragraphed summaries; zoom_ai entries are
+                                 # Claude-structured (challenges/key points filled)
+SUMMARY_CACHE_PATH = None        # set by init_app
+_sum_lock = threading.Lock()
+
+SUMMARY_MODEL_DEFAULT = 'claude-sonnet-5'
+_TRANSCRIPT_CHAR_CAP = 60_000    # ~15k tokens; a 30-min call is ~¼ of this
+
+_TS_LINE = re.compile(r'^\d{2}:\d{2}:\d{2}\.\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}\.\d{3}')
+
+
+def _load_summaries():
+    try:
+        with open(SUMMARY_CACHE_PATH) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_summary(key, entry):
+    with _sum_lock:
+        d = _load_summaries()
+        d[key] = entry
+        tmp = SUMMARY_CACHE_PATH + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(d, f)
+        os.replace(tmp, SUMMARY_CACHE_PATH)
+
+
+def _vtt_clean(vtt_text):
+    """Zoom VTT → 'Speaker: text' lines, consecutive same-speaker cues merged.
+    Lifted from the Rattle-replacement service (rattle_replacement/service/vtt.py)."""
+    turns = []
+    for block in (vtt_text or '').replace('\r\n', '\n').split('\n\n'):
+        lines = [ln.strip() for ln in block.strip().split('\n') if ln.strip()]
+        if not lines or lines[0] == 'WEBVTT':
+            continue
+        text_lines, seen_ts = [], False
+        for ln in lines:
+            if _TS_LINE.match(ln):
+                seen_ts = True
+                continue
+            if not seen_ts:
+                continue            # cue id / header junk before the timestamp
+            text_lines.append(ln)
+        if not text_lines:
+            continue
+        raw = ' '.join(text_lines)
+        if ':' in raw:
+            speaker, text = raw.split(':', 1)
+            speaker, text = speaker.strip(), text.strip()
+            if len(speaker) > 60:   # sentence containing a colon, not a name
+                speaker, text = '', raw
+        else:
+            speaker, text = '', raw
+        if turns and turns[-1][0] == speaker:
+            turns[-1] = (speaker, turns[-1][1] + ' ' + text)
+        else:
+            turns.append((speaker, text))
+    return '\n'.join(f'{s}: {t}' if s else t for s, t in turns)
+
+
+def _zoom_summary_text(j):
+    """Zoom AI Companion summary JSON → multi-paragraph text. Keeps the section
+    structure (summary_details) that app.py's _parse_summary flattens away —
+    the sections are what stop the drawer being a wall of text."""
+    if not isinstance(j, dict):
+        return str(j or '').strip()
+    parts = []
+    overall = (j.get('overall_summary') or j.get('summary')
+               or j.get('summary_overview') or '').strip()
+    if overall:
+        parts.append(overall)
+    for d in (j.get('summary_details') or []):
+        if not isinstance(d, dict):
+            continue
+        label = (d.get('label') or d.get('summary_title') or '').strip()
+        text = (d.get('summary') or d.get('text') or '').strip()
+        if text:
+            parts.append(f'{label}: {text}' if label else text)
+    return '\n\n'.join(parts) or (j.get('_text') or '').strip()
+
+
+_SUMMARY_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'summary':    {'type': 'string'},
+        'challenges': {'type': 'array', 'items': {'type': 'string'}},
+        'next_steps': {'type': 'array', 'items': {'type': 'string'}},
+        'key_points': {'type': 'array', 'items': {'type': 'string'}},
+    },
+    'required': ['summary', 'challenges', 'next_steps', 'key_points'],
+    'additionalProperties': False,
+}
+
+_SUMMARY_SYSTEM = """You analyze sales-call transcripts for RapidClaims \
+(healthcare revenue-cycle AI). Produce meeting intelligence matching these rules:
+
+- summary: 2-4 short paragraphs separated by a blank line, third person, naming \
+who met and what was discussed and decided. Never one wall of text.
+- challenges: pain points, objections and blockers the CUSTOMER raised. Empty \
+list if none.
+- next_steps: short imperative items ("Bianca to schedule a 30-minute demo."). \
+Only commitments actually made on the call. Empty list if none.
+- key_points: the discussion's most important facts and decisions.
+
+Write plainly; no markdown inside values."""
+
+
+def _summarize_transcript(meta, transcript):
+    """Claude call, structured output. Deferred import so the app boots without
+    the anthropic package installed (summary endpoint then reports the error)."""
+    import anthropic
+    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    if not api_key:
+        raise RuntimeError('ANTHROPIC_API_KEY not set')
+    model = os.environ.get('CLASSIFIER_MODEL', SUMMARY_MODEL_DEFAULT)
+    if len(transcript) > _TRANSCRIPT_CHAR_CAP:
+        transcript = transcript[:_TRANSCRIPT_CHAR_CAP] + '\n[transcript truncated]'
+    user_msg = (f"Meeting: {meta.get('topic') or '—'}\n"
+                f"Kind: {meta.get('kind') or 'sales meeting'}\n"
+                f"When: {meta.get('when') or '—'}, "
+                f"duration {meta.get('duration_min') or '?'} min\n\n"
+                f"Transcript:\n{transcript}")
+    client = anthropic.Anthropic(api_key=api_key)
+    resp = client.messages.create(
+        model=model, max_tokens=2048, thinking={'type': 'disabled'},
+        system=_SUMMARY_SYSTEM,
+        output_config={'format': {'type': 'json_schema', 'schema': _SUMMARY_SCHEMA}},
+        messages=[{'role': 'user', 'content': user_msg}])
+    u = resp.usage
+    print(f'[weekly] summarized {meta.get("topic")}: '
+          f'in={u.input_tokens} out={u.output_tokens} ({model})')
+    return json.loads(next(b.text for b in resp.content if b.type == 'text'))
+
+
+_LEAD_ID_RE = re.compile(r'^[a-zA-Z0-9]{15,18}$')
+
+
+def _lead_live(lead_id):
+    """Fresh single-lead fetch: the Zoom link (not in older snapshots) and the
+    converted Contact id (Nooks identity follows the Contact after conversion)."""
+    recs = _deps['soql']("SELECT Id, Name, Company, Zoom_Meeting_Link_URL__c, "
+                         f"ConvertedContactId FROM Lead WHERE Id = '{lead_id}'")
+    recs = recs.get('records', []) if isinstance(recs, dict) else (recs or [])
+    return recs[0] if recs else None
+
+
+NOOKS_CALL_SELECT = ('id,time,owner_name,contact_name,contact_title,account_name,'
+                     'disposition_name,effective_outcome,duration_sec,is_meeting,'
+                     'is_conversation,has_transcript,talk_ratio_rep,recording_url,'
+                     'call_grade:analysis->>call_grade')
+
+
+def _nooks_calls_for(person_ids):
+    """All Nooks calls for a lead (and its converted Contact), newest first.
+    15-char-prefix match — nooks sf_person_id mixes 15- and 18-char forms."""
+    pids = [sf15(p) for p in person_ids if p and _LEAD_ID_RE.match(p)]
+    if not pids:
+        return []
+    ors = ','.join(f'sf_person_id.like.{p}*' for p in pids)
+    return _sb_get('nooks_calls', {'select': NOOKS_CALL_SELECT,
+                                   'or': f'({ors})',
+                                   'order': 'time.desc', 'limit': 25})
+
+
+def _nooks_turns(call_id):
+    rows = _sb_get('nooks_call_transcripts',
+                   {'select': 'turns,truncated', 'call_id': f'eq.{call_id}',
+                    'limit': 1})
+    turns = (rows[0].get('turns') if rows else None) or []
+    return turns, bool(rows and rows[0].get('truncated'))
+
+
+def _zoom_recording_files(mid):
+    """GET /meetings/{id}/recordings → download URLs for the summary,
+    next-steps and transcript-VTT files. (app.py's _zoom_recording_assets only
+    flags that a transcript exists; the drawer needs the actual URLs.)"""
+    d = _deps['zoom']['get'](f'https://api.zoom.us/v2/meetings/{mid}/recordings')
+    files = (d or {}).get('recording_files', [])
+    out = {'has_recording': bool(files), 'duration': (d or {}).get('duration'),
+           'topic': (d or {}).get('topic'), 'start_time': (d or {}).get('start_time'),
+           'summary_url': None, 'next_steps_url': None, 'vtt_url': None}
+    for f in files:
+        rt, ft = f.get('recording_type'), f.get('file_type')
+        if rt == 'summary':
+            out['summary_url'] = f.get('download_url')
+        elif rt == 'summary_next_steps':
+            out['next_steps_url'] = f.get('download_url')
+        if ft == 'TRANSCRIPT' or rt == 'audio_transcript':
+            out['vtt_url'] = out['vtt_url'] or f.get('download_url')
+    return out
+
+
+def _pick_booking_call(calls):
+    """Best transcript-bearing Nooks call: the meeting-booking call if flagged,
+    else the longest conversation."""
+    cands = [c for c in calls if c.get('has_transcript')]
+    if not cands:
+        return None
+    return sorted(cands, key=lambda c: (not c.get('is_meeting'),
+                                        -(c.get('duration_sec') or 0)))[0]
+
+
+def _generate_summary(lead_id, row):
+    """Walk the source ladder. Returns a cache-entry dict; positives are saved,
+    source=None results are NOT cached (a recording can appear later)."""
+    zoom = _deps.get('zoom') or {}
+    lead = _lead_live(lead_id)
+    reasons = []
+
+    zoom_url = ((lead or {}).get('Zoom_Meeting_Link_URL__c')
+                or (row or {}).get('zoom_url') or '')
+    mid = zoom['extract_id'](zoom_url) if (zoom and zoom_url) else ''
+    assets = None
+    if not zoom:
+        reasons.append('Zoom API not configured')
+    elif not zoom_url:
+        reasons.append('no Zoom link on the lead')
+    elif not mid:
+        reasons.append('Zoom link is a personal room (no numeric meeting id)')
+    else:
+        assets = _zoom_recording_files(mid)
+        if not assets['has_recording']:
+            reasons.append('no Zoom cloud recording for this meeting')
+
+    entry = None
+    when = (assets or {}).get('start_time') or (row or {}).get('scheduled_on')
+
+    # rung 1: Zoom AI Companion summary. Claude restructures Zoom's own text
+    # (paragraphs + challenges/key points — Zoom provides neither); the input is
+    # the short summary, not a transcript, so the call costs ~a cent. If Claude
+    # is unavailable the raw Zoom text still ships rather than failing the rung.
+    if assets and assets['summary_url']:
+        raw = zoom['download'](assets['summary_url'])
+        text = _zoom_summary_text(raw) or zoom['parse_summary'](raw)
+        if text:
+            steps = ''
+            if assets['next_steps_url']:
+                steps = zoom['parse_next_steps'](
+                    zoom['download'](assets['next_steps_url']))
+            steps_list = [s for s in (steps or '').split('\n') if s.strip()]
+            entry = {'source': 'zoom_ai', 'meeting_id': mid, 'when': when,
+                     'duration_min': assets['duration']}
+            try:
+                data = _summarize_transcript(
+                    {'topic': assets.get('topic') or (row or {}).get('company'),
+                     'kind': 'sales meeting — input is the Zoom AI Companion '
+                             'summary of the meeting, not a raw transcript',
+                     'when': when, 'duration_min': assets['duration']},
+                    text + (f"\n\nNext steps per Zoom:\n{steps}" if steps else ''))
+                entry.update(data)
+                if not entry.get('next_steps') and steps_list:
+                    entry['next_steps'] = steps_list
+            except Exception as e:
+                print(f'[weekly] zoom_ai structuring failed, shipping raw: {e}')
+                entry.update({'summary': text, 'next_steps': steps_list,
+                              'challenges': [], 'key_points': []})
+        else:
+            reasons.append('Zoom AI summary file was empty')
+
+    # rung 2: Claude over the Zoom transcript VTT
+    if entry is None and assets and assets['vtt_url']:
+        raw = zoom['download'](assets['vtt_url'])
+        vtt = raw.get('_text', '') if isinstance(raw, dict) else (raw or '')
+        transcript = _vtt_clean(vtt)
+        if transcript.strip():
+            data = _summarize_transcript(
+                {'topic': assets.get('topic') or (row or {}).get('company'),
+                 'kind': 'sales meeting', 'when': when,
+                 'duration_min': assets['duration']}, transcript)
+            entry = {'source': 'zoom_llm', **data, 'meeting_id': mid,
+                     'when': when, 'duration_min': assets['duration']}
+        else:
+            reasons.append('Zoom transcript file was empty')
+    elif entry is None and assets and assets['has_recording']:
+        reasons.append('recording has no transcript or AI summary files')
+
+    # rung 3: Claude over the Nooks BOOKING-CALL transcript
+    if entry is None:
+        pids = [lead_id] + ([lead['ConvertedContactId']]
+                            if lead and lead.get('ConvertedContactId') else [])
+        try:
+            best = _pick_booking_call(_nooks_calls_for(pids))
+        except Exception as e:
+            best = None
+            reasons.append(f'Nooks lookup failed: {e}')
+        if best:
+            turns, _tr = _nooks_turns(best['id'])
+            transcript = '\n'.join(
+                f"{'Rep' if t.get('speaker') == 'rep' else 'Prospect'}: "
+                f"{t.get('text', '')}" for t in turns)
+            if transcript.strip():
+                data = _summarize_transcript(
+                    {'topic': f"booking call — {best.get('account_name') or (row or {}).get('company')}",
+                     'kind': 'cold call that booked the meeting',
+                     'when': best.get('time'),
+                     'duration_min': round((best.get('duration_sec') or 0) / 60)},
+                    transcript)
+                entry = {'source': 'nooks_llm', **data, 'call_id': best['id'],
+                         'when': best.get('time'),
+                         'duration_min': round((best.get('duration_sec') or 0) / 60)}
+            else:
+                reasons.append('Nooks transcript was empty')
+        else:
+            reasons.append('no Nooks call with a transcript')
+
+    if entry is None:
+        return {'source': None, 'reasons': reasons,
+                'ver': SUMMARY_CACHE_VER,
+                'generated_at': datetime.now(IST).isoformat()}
+
+    entry.update({'ver': SUMMARY_CACHE_VER,
+                  'generated_at': datetime.now(IST).isoformat()})
+    _save_summary(sf15(lead_id), entry)
+    return entry
+
+
 # ── Flask wiring ─────────────────────────────────────────────────────────────
 
-def init_app(app, soql, norm_sdr, require_admin, data_dir, sf_base_url=''):
-    global CACHE_PATH
-    _deps.update(soql=soql, norm_sdr=norm_sdr, sf_base_url=sf_base_url)
+def init_app(app, soql, norm_sdr, require_admin, data_dir, sf_base_url='',
+             zoom=None):
+    global CACHE_PATH, SUMMARY_CACHE_PATH
+    _deps.update(soql=soql, norm_sdr=norm_sdr, sf_base_url=sf_base_url,
+                 zoom=zoom or {})
     CACHE_PATH = os.path.join(data_dir, 'weekly_review_cache.json.gz')
+    SUMMARY_CACHE_PATH = os.path.join(data_dir, 'call_summaries.json')
     _load_cache_from_disk()
 
     from flask import jsonify, request
@@ -1177,6 +1514,72 @@ def init_app(app, soql, norm_sdr, require_admin, data_dir, sf_base_url=''):
         if payload.get('ready'):
             payload['rows'] = [_row_view(r, sf_base_url) for r in payload['rows']]
         return jsonify(payload)
+
+    @app.route('/api/weekly/meeting/<lead_id>')
+    def api_weekly_meeting(lead_id):
+        """Drawer payload — fast, never calls the LLM. Salesforce panel comes
+        from the snapshot row; Nooks calls are fetched live (mirrors the
+        cold-calls transcript endpoint: read-only, never cached)."""
+        if not _LEAD_ID_RE.match(lead_id):
+            return jsonify({'error': 'bad lead id'}), 400
+        key = sf15(lead_id)
+        row = next((r for r in ((_WR or {}).get('rows') or [])
+                    if sf15(r['id']) == key), None)
+        if not row:
+            return jsonify({'error': 'meeting not found in snapshot'}), 404
+
+        detail = _row_view(row, sf_base_url)
+        detail['deal_full'] = row.get('deal')      # full _opp_view incl. AI fields
+        detail['deal_rung'] = row.get('deal_rung')
+
+        lead = None
+        try:
+            lead = _lead_live(row['id'])
+        except Exception as e:
+            print(f'[weekly] live lead fetch failed for {key}: {e}')
+        zoom_url = ((lead or {}).get('Zoom_Meeting_Link_URL__c')
+                    or row.get('zoom_url') or '')
+        zoom = _deps.get('zoom') or {}
+        mid = zoom['extract_id'](zoom_url) if (zoom and zoom_url) else ''
+
+        nooks_calls, nooks_err = [], None
+        try:
+            pids = [row['id']] + ([lead['ConvertedContactId']]
+                                  if lead and lead.get('ConvertedContactId') else [])
+            nooks_calls = _nooks_calls_for(pids)
+        except Exception as e:
+            nooks_err = str(e)
+
+        cached = _load_summaries().get(key)
+        if cached and cached.get('ver') != SUMMARY_CACHE_VER:
+            cached = None
+        return jsonify({'row': detail,
+                        'zoom': {'link': bool(zoom_url), 'meeting_id': mid or None},
+                        'nooks_calls': nooks_calls, 'nooks_error': nooks_err,
+                        'summary': cached})
+
+    @app.route('/api/weekly/meeting/<lead_id>/summary', methods=['POST'])
+    def api_weekly_meeting_summary(lead_id):
+        """Generate-and-cache. Positives cached forever in call_summaries.json;
+        source=None responses are never cached so a late-appearing recording
+        gets picked up on the next open. ?force=1 bypasses the cache."""
+        if not _LEAD_ID_RE.match(lead_id):
+            return jsonify({'error': 'bad lead id'}), 400
+        key = sf15(lead_id)
+        if request.args.get('force') != '1':
+            c = _load_summaries().get(key)
+            if c and c.get('ver') == SUMMARY_CACHE_VER:
+                return jsonify({**c, 'cached': True})
+        row = next((r for r in ((_WR or {}).get('rows') or [])
+                    if sf15(r['id']) == key), None)
+        if not row:
+            return jsonify({'error': 'meeting not found in snapshot'}), 404
+        try:
+            entry = _generate_summary(row['id'], row)
+        except Exception as e:
+            print(f'[weekly] summary generation failed for {key}: {e}')
+            return jsonify({'source': None, 'error': str(e)}), 502
+        return jsonify({**entry, 'cached': False})
 
     @app.route('/api/weekly/refresh', methods=['POST'])
     @require_admin

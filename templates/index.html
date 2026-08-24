@@ -8310,7 +8310,7 @@ function wdOutcomeBadge(r) {
 
 function wdTable(d) {
   const rows = d.rows.map(r => `
-    <tr>
+    <tr onclick="wdOpenDrawer('${wdEsc(r.id)}')" style="cursor:pointer" title="Click for meeting detail + call summary">
       <td>${wdEsc(r.generated_on)}<div style="font-size:10.5px;color:var(--text-dim)">${wdEsc(r.week)}</div></td>
       <td style="font-weight:600">${wdEsc(r.company)}
         <div style="font-size:11px;color:var(--text-dim);font-weight:400">
@@ -8340,7 +8340,8 @@ function wdTable(d) {
       <span style="font-weight:800;color:var(--gold)">${d.filtered}</span>
       <span style="font-weight:400;color:var(--text-dim);font-size:11px">
         of ${d.in_scope} in scope · ${d.total} since 1 Jan 2026</span></div>
-    <div class="wr-cov">Every row is one Lead. Deal values carry the same certain/probable
+    <div class="wr-cov">Every row is one Lead — click it for full meeting detail and the
+      call summary. Deal values carry the same certain/probable
       tag as the Review tab. ${d.truncated ? '<b>Showing the first 1000 rows.</b>' : ''}</div>
     <div class="table-wrap" style="max-height:640px;overflow-y:auto"><table>
       <thead><tr><th>Booked</th><th>Company / contact</th><th>Revenue</th>
@@ -8386,6 +8387,193 @@ function wdRender() {
       inp.setSelectionRange(inp.value.length, inp.value.length);
     }
   }
+}
+
+/* ── call detail drawer ─────────────────────────────────────────────────────
+   Slide-out panel per meeting row. Its DOM is created once on document.body,
+   OUTSIDE #wdRoot, so the 10s poll's renderCurrentTab() rebuild can never
+   close it or reset its scroll. Summary sources + measured coverage are in
+   docs/DEFINITIONS.md — 72% of done meetings have some source, 28% none. */
+
+const WDD = { lead: null };
+
+const WDD_SOURCE_LABEL = {
+  zoom_ai:   ['Zoom AI summary', 'Zoom AI Companion summary of this meeting'],
+  zoom_llm:  ['From Zoom transcript', 'Claude summary of the Zoom meeting transcript'],
+  nooks_llm: ['From booking call', 'Claude summary of the Nooks cold call that BOOKED this meeting — the meeting itself was not recorded'],
+};
+
+function wdDrawerEl() {
+  let el = document.getElementById('wdDrawer');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'wdDrawer';
+  el.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1250';
+  el.innerHTML = `<div id="wdDrawerPanel" style="position:absolute;top:0;right:0;height:100%;
+    width:min(560px,96vw);overflow-y:auto;background:var(--bg-main);
+    border-left:1px solid var(--border);padding:20px 22px;box-shadow:-12px 0 40px rgba(0,0,0,.35)"></div>`;
+  el.addEventListener('click', e => { if (e.target === el) wdCloseDrawer(); });
+  document.body.appendChild(el);
+  if (!wdDrawerEl._esc) {
+    wdDrawerEl._esc = true;
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') wdCloseDrawer();
+    });
+  }
+  return el;
+}
+
+function wdCloseDrawer() {
+  const el = document.getElementById('wdDrawer');
+  if (el) el.style.display = 'none';
+  WDD.lead = null;
+}
+
+const wddCard = (title, body) => `
+  <div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px">
+    <div style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;
+      color:var(--text-muted);margin-bottom:8px">${title}</div>${body}</div>`;
+
+const wddKV = pairs => pairs.filter(([, v]) => v !== null && v !== undefined && v !== '')
+  .map(([k, v]) => `<div style="display:flex;gap:10px;font-size:12px;margin-bottom:4px">
+    <span style="flex-shrink:0;width:110px;color:var(--text-dim)">${k}</span>
+    <span style="color:var(--text-secondary)">${v}</span></div>`).join('');
+
+const wddList = items => (items || []).length
+  ? `<ul style="margin:4px 0 0 16px;padding:0">${items.map(i =>
+      `<li style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:3px">${wdEsc(i)}</li>`).join('')}</ul>`
+  : '';
+
+async function wdOpenDrawer(leadId) {
+  const el = wdDrawerEl();
+  const panel = document.getElementById('wdDrawerPanel');
+  el.style.display = 'block';
+  WDD.lead = leadId;
+  panel.innerHTML = '<div style="padding:50px;text-align:center;color:var(--text-dim)">Loading meeting…</div>';
+  let d;
+  try {
+    const r = await fetch('/api/weekly/meeting/' + encodeURIComponent(leadId));
+    d = await r.json();
+    if (d.error) throw new Error(d.error);
+  } catch (e) {
+    panel.innerHTML = `<div style="padding:24px;color:#F87171">Could not load this meeting: ${wdEsc(e.message || e)}</div>
+      <button class="btn btn-ghost btn-sm" onclick="wdCloseDrawer()">✕ Close</button>`;
+    return;
+  }
+  if (WDD.lead !== leadId) return;   // user opened another row meanwhile
+  wdDrawerRender(d, leadId);
+  // Summary: cached → instant; otherwise generate now (first open pays 5-15s once).
+  if (d.summary) wdDrawerSummary(d.summary, leadId);
+  else wdDrawerGenerate(leadId, false);
+}
+
+function wdDrawerRender(d, leadId) {
+  const r = d.row, deal = r.deal_full;
+  const nooks = d.nooks_calls || [];
+  const panel = document.getElementById('wdDrawerPanel');
+
+  const dealBody = !deal ? '' : wddKV([
+    ['Stage', wdEsc(deal.stage || '—') + (r.deal_rung ? ` <span class="wr-rung wr-rung-${r.deal_rung}">${r.deal_rung === 1 ? 'certain' : 'probable'}</span>` : '')],
+    ['Amount', (deal.amount === null || deal.amount === undefined)
+      ? '<span style="color:var(--text-dim)">no amount recorded</span>'
+      : '$' + Number(deal.amount).toLocaleString()],
+    ['Owner', wdEsc(deal.owner || '')],
+    ['Close date', wdEsc(deal.close_date || '')],
+    ['Next steps', wdEsc(deal.next_steps || deal.next_steps_ai || '')],
+    ['AI deal summary', wdEsc(deal.summary_ai || '')],
+    ['Risk', wdEsc(deal.risk || '')],
+    ['Loss reason', wdEsc(deal.loss_reason ? deal.loss_reason + (deal.loss_detail ? ' — ' + deal.loss_detail : '') : '')],
+  ]);
+
+  const nooksBody = !nooks.length
+    ? `<div style="font-size:12px;color:var(--text-dim)">No Nooks calls matched to this lead${d.nooks_error ? ' (lookup failed: ' + wdEsc(d.nooks_error) + ')' : ''}.</div>`
+    : nooks.map(c => `
+      <div style="display:flex;gap:8px;align-items:baseline;font-size:12px;margin-bottom:5px;flex-wrap:wrap">
+        <span style="color:var(--text-dim)">${wdEsc((c.time || '').slice(0, 16).replace('T', ' '))}</span>
+        <span style="color:var(--text-secondary)">${wdEsc(c.disposition_name || c.effective_outcome || '—')}</span>
+        <span style="color:var(--text-dim)">${Math.round(c.duration_sec || 0)}s</span>
+        ${c.is_meeting ? '<span class="badge badge-active" style="font-size:9.5px">booked</span>' : ''}
+        ${c.has_transcript ? '<span style="font-size:10px;color:var(--text-muted)">transcript</span>' : ''}
+        ${c.call_grade ? `<span style="font-size:10px;color:var(--text-muted)">grade ${wdEsc(c.call_grade)}</span>` : ''}
+        ${c.recording_url ? `<a href="${wdEsc(c.recording_url)}" target="_blank" rel="noopener" style="color:var(--gold);font-size:10.5px">rec ↗</a>` : ''}
+      </div>`).join('');
+
+  panel.innerHTML = `
+    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:2px">
+      <div>
+        <div style="font-weight:800;font-size:15px;color:var(--text)">${wdEsc(r.company)}</div>
+        <div style="font-size:12px;color:var(--text-dim)">${wdEsc(r.name)}${r.title ? ' · ' + wdEsc(r.title) : ''}</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="wdCloseDrawer()">✕ Close</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--text-dim);margin:8px 0 14px">
+      ${wdOutcomeBadge(r)}
+      <span>booked ${wdEsc(r.generated_on || '—')}</span>
+      <span>· meeting ${wdEsc(r.scheduled_on || '—')}</span>
+      ${r.sf_url ? `<a href="${wdEsc(r.sf_url)}" target="_blank" rel="noopener" style="color:var(--gold)">SFDC ↗</a>` : ''}
+    </div>
+    <div id="wddSummary">${wddCard('Call summary',
+      '<div style="padding:14px;text-align:center;color:var(--text-dim);font-size:12px">Checking sources…</div>')}</div>
+    ${wddCard('Salesforce', wddKV([
+      ['Meeting status', wdEsc(r.meeting_status || r.status || '—')],
+      ['Seller', wdEsc(r.seller || '—')],
+      ['SDR', wdEsc(r.sdr || '—')],
+      ['Source', wdEsc([r.source, r.channel].filter(Boolean).join(' · ') || '—')],
+      ['Company', [r.revenue_band, r.client_type, r.state].filter(Boolean).map(wdEsc).join(' · ')],
+      ['Converted', wdEsc(r.converted_on || '')],
+    ]) + (deal ? '<div style="border-top:1px solid var(--border);margin:8px 0"></div>' + dealBody : ''))}
+    ${wddCard(`Nooks calls (${nooks.length})`, nooksBody)}
+    <div style="font-size:10.5px;color:var(--text-dim);margin-top:4px">
+      Zoom: ${d.zoom && d.zoom.link ? (d.zoom.meeting_id ? 'meeting ' + wdEsc(d.zoom.meeting_id) : 'personal-room link (no per-meeting recording lookup)') : 'no link on the lead'}</div>`;
+}
+
+function wdDrawerSummary(s, leadId) {
+  const box = document.getElementById('wddSummary');
+  if (!box || WDD.lead !== leadId) return;
+  if (!s || !s.source) {
+    const reasons = (s && s.reasons || []).map(wdEsc).join('; ');
+    box.innerHTML = wddCard('Call summary', `
+      <div style="font-size:12px;color:var(--text-dim);line-height:1.5">
+        No transcript source for this meeting${reasons ? ' — ' + reasons : ''}.<br>
+        <span style="font-size:11px">True for ~28% of done meetings (measured Aug 2026, docs/DEFINITIONS.md).</span></div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px"
+        onclick="wdDrawerGenerate('${wdEsc(leadId)}', true)">↻ Check again</button>`);
+    return;
+  }
+  const [badge, tip] = WDD_SOURCE_LABEL[s.source] || [s.source, ''];
+  const sections = [
+    ['Challenges', s.challenges], ['Next steps', s.next_steps], ['Key points', s.key_points],
+  ].filter(([, v]) => (v || []).length).map(([t, v]) => `
+    <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-top:10px">${t}</div>
+    ${wddList(v)}`).join('');
+  box.innerHTML = wddCard('Call summary', `
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <span class="badge ${s.source === 'nooks_llm' ? 'badge-paused' : 'badge-active'}" title="${wdEsc(tip)}">${wdEsc(badge)}</span>
+      <span style="font-size:10.5px;color:var(--text-dim)">
+        ${s.duration_min ? s.duration_min + ' min · ' : ''}${wdEsc((s.when || '').slice(0, 16).replace('T', ' '))}</span>
+    </div>
+    ${s.source === 'nooks_llm' ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">
+      The meeting itself was not recorded — this summarizes the cold call that booked it.</div>` : ''}
+    <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.55;white-space:pre-wrap">${wdEsc(s.summary || '')}</div>
+    ${sections}`);
+}
+
+async function wdDrawerGenerate(leadId, force) {
+  const box = document.getElementById('wddSummary');
+  if (!box) return;
+  box.innerHTML = wddCard('Call summary', `<div style="padding:14px;text-align:center;color:var(--text-dim);font-size:12px">
+    <span class="spinner" style="display:inline-block;width:12px;height:12px;border:2px solid var(--border);
+      border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px"></span>
+    Generating summary — first open takes a few seconds…</div>`);
+  let s;
+  try {
+    const r = await fetch('/api/weekly/meeting/' + encodeURIComponent(leadId) + '/summary' + (force ? '?force=1' : ''), { method: 'POST' });
+    s = await r.json();
+    if (s.error && !s.source) s = { source: null, reasons: [s.error] };
+  } catch (e) {
+    s = { source: null, reasons: ['request failed: ' + (e.message || e)] };
+  }
+  wdDrawerSummary(s, leadId);
 }
 </script>
 </body>
