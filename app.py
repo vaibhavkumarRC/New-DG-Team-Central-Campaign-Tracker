@@ -103,10 +103,8 @@ def load_ledger():
             # save would overwrite history with a near-empty ledger. Self-heal
             # from the newest good rolling backup instead. The next legitimate
             # save (atomic, under the lock) then rewrites a clean main file.
-            restored = _newest_valid_backup('meeting_ledger.json.')
+            restored = _recover('meeting_ledger.json', 'ledger')
             if restored is not None:
-                print('[ledger] CRITICAL: meeting_ledger.json unreadable — '
-                      'restored from newest rolling backup')
                 return restored
             # No backup to fall back on: fail LOUD rather than destroy the
             # (recoverable) corrupt file by overwriting it with {}.
@@ -116,6 +114,14 @@ def load_ledger():
     return {}
 
 def save_ledger(ledger):
+    # Deliberately NOT guarded by _guard_destructive_write, for two reasons.
+    # Cost: all three callers run per-campaign inside the sync loop, so with
+    # ~394 campaigns the guard would re-read and parse the 5.4 MB ledger
+    # hundreds of times per sync. Benefit: len() on this dict counts CAMPAIGNS,
+    # not lead_ids or meetings, so it would not notice the content actually
+    # being lost anyway. The ledger's protection is atomic writes plus
+    # recover-on-read (rolling backup, then off-box), which cost nothing on the
+    # hot path.
     _atomic_write_json(LEDGER_FILE, ledger)
 
 def backup_data_files():
@@ -187,6 +193,102 @@ def _github_backup(stamp):
             _urllib_req.urlopen(put, timeout=20)
         except Exception as e:
             print(f'[backup] github backup failed for {os.path.basename(path)}: {e}')
+
+class DestructiveWriteBlocked(RuntimeError):
+    """Raised instead of writing a file that would wipe out existing records."""
+
+
+def _guard_destructive_write(path, new_data, what):
+    """Last line of defence, applied at the moment of writing.
+
+    Recovery on read only helps if the bug is on the read side. This catches
+    every path — including ones that don't exist yet — by refusing the single
+    write that can never be legitimate: emptying a file that currently holds
+    real records. Deleting the last remaining record IS allowed (1 -> 0), so
+    normal CRUD is untouched; it is 394 -> 0 that gets stopped.
+
+    Any shrink also takes a pre-write backup first, so even an intentional
+    bulk delete stays recoverable. Best-effort: a failure to back up never
+    blocks a legitimate write."""
+    try:
+        if not os.path.exists(path):
+            return
+        with open(path) as f:
+            current = json.load(f)
+    except Exception:
+        return          # unreadable current file — the loaders handle that
+
+    n_old = len(current) if hasattr(current, '__len__') else 0
+    n_new = len(new_data) if hasattr(new_data, '__len__') else 0
+    if n_new >= n_old:
+        return
+
+    if n_new == 0 and n_old > 1:
+        print(f'[guard] BLOCKED: refusing to write an empty {os.path.basename(path)} '
+              f'over {n_old} existing records')
+        raise DestructiveWriteBlocked(
+            f'refusing to erase {n_old} {what} records — write blocked. '
+            'If this was intentional, remove the records individually.')
+
+    # A severe-but-not-empty shrink (394 -> 1) is deliberately NOT blocked: a
+    # threshold low enough to catch it would also block legitimate bulk edits,
+    # and the pre-write backup below makes it recoverable. It must never pass
+    # silently though, or nobody finds out until the rolling copies age out.
+    if n_old >= 10 and n_new < n_old * 0.5:
+        print(f'[guard] WARNING: severe {what} shrink in ONE write — only '
+              f'{n_new} of {n_old} records would remain. Allowed, and a '
+              f'pre-write backup was kept in {BACKUP_DIR}. If this was not '
+              f'intentional, restore from there NOW.')
+
+    try:                # shrinking — keep a pre-write copy regardless
+        import shutil
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        base = os.path.basename(path)
+        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        shutil.copy2(path, os.path.join(BACKUP_DIR, f'{base}.{stamp}.prewrite.bak'))
+        _prune_backups(f'{base}.', _BACKUP_KEEP)
+        print(f'[guard] {what} shrinking {n_old} -> {n_new}; pre-write backup kept')
+    except Exception as e:
+        print(f'[guard] pre-write backup failed for {path}: {e}')
+
+
+def _github_restore(basename):
+    """Last-resort read of a data file from the off-box BACKUP_REPO.
+
+    _newest_valid_backup only sees /data/backups, which dies with the volume —
+    so without this the off-box copy was write-only: it could be pushed but
+    nothing could ever consume it. Returns the parsed JSON, or None if the
+    backup repo is unconfigured/unreachable/empty. Never raises."""
+    import base64
+    token = os.environ.get('BACKUP_GITHUB_TOKEN', '').strip()
+    if not token:
+        return None
+    url = f'https://api.github.com/repos/{BACKUP_REPO}/contents/{basename}'
+    try:
+        req = _urllib_req.Request(url, headers={
+            'Authorization': f'Bearer {token}',
+            'Accept': 'application/vnd.github+json',
+            'User-Agent': 'dg-dashboard-backup'})
+        with _urllib_req.urlopen(req, timeout=20) as r:
+            meta = json.loads(r.read())
+        return json.loads(base64.b64decode(meta['content']).decode('utf-8'))
+    except Exception as e:
+        print(f'[restore] off-box restore failed for {basename}: {e}')
+        return None
+
+
+def _recover(basename, what):
+    """Rolling on-volume backup first (fast, no network), then the off-box
+    GitHub copy. Returns the recovered object or None."""
+    got = _newest_valid_backup(f'{basename}.')
+    if got is not None:
+        print(f'[{what}] CRITICAL: recovered {basename} from rolling backup')
+        return got
+    got = _github_restore(basename)
+    if got is not None:
+        print(f'[{what}] CRITICAL: recovered {basename} from off-box GitHub backup')
+    return got
+
 
 def _get_or_create_entry(ledger, campaign_id):
     if campaign_id not in ledger:
@@ -1762,12 +1864,45 @@ def bg_loop():
 # ── Campaign config CRUD ──────────────────────────────────────────────────────
 
 def load_campaigns():
+    """Campaign config — user-created and NOT rebuildable from Salesforce, so
+    it gets the same treatment as the ledger.
+
+    The old version returned [] whenever the file was absent. That is the
+    dangerous case, not a harmless one: seven endpoints do
+    load_campaigns() -> modify -> save_campaigns(), so a single missing file
+    (unmounted volume, bad path, stray delete) turned into an empty
+    campaigns.json on disk — and the next sync's backup_data_files() would
+    then faithfully push that emptiness off-box, aging the good copies out of
+    the 14 rolling slots. Recover instead, and only ever return [] when this
+    is genuinely a first run with no backup anywhere."""
     if os.path.exists(CAMPS_FILE):
-        with open(CAMPS_FILE) as f:
-            return json.load(f)
-    return []
+        try:
+            with open(CAMPS_FILE) as f:
+                data = json.load(f)
+            if not isinstance(data, list):
+                raise ValueError('campaigns.json is not a JSON list')
+            return data
+        except Exception as e:
+            print(f'[campaigns] CRITICAL: campaigns.json unreadable ({e})')
+            got = _recover('campaigns.json', 'campaigns')
+            if got is not None:
+                return got
+            # Fail LOUD rather than hand back [] and let a later save
+            # overwrite a corrupt-but-recoverable file with nothing.
+            raise RuntimeError('campaigns.json is corrupt and no backup exists')
+    got = _recover('campaigns.json', 'campaigns')
+    if got is not None:
+        # Heal the volume so the next boot is clean and we stop re-fetching.
+        try:
+            _atomic_write_json(CAMPS_FILE, got, indent=2)
+            print('[campaigns] restored campaigns.json to disk')
+        except Exception as e:
+            print(f'[campaigns] restore write-back failed: {e}')
+        return got
+    return []          # genuine first run — nothing anywhere to recover
 
 def save_campaigns(data):
+    _guard_destructive_write(CAMPS_FILE, data, 'campaigns')
     _atomic_write_json(CAMPS_FILE, data, indent=2)
 
 def effective_end_date(c):
@@ -3974,9 +4109,11 @@ def _load_outcomes_cache():
     return {}
 
 def _save_outcomes_cache(cache):
+    # Atomic like every other data write: a SIGTERM mid-write (Railway
+    # redeploys constantly) would otherwise leave a truncated JSON file that
+    # fails to parse on the next boot.
     try:
-        with open(ZOOM_OUTCOMES_FILE, 'w') as f:
-            json.dump(cache, f)
+        _atomic_write_json(ZOOM_OUTCOMES_FILE, cache)
     except Exception as e:
         print(f'[Zoom] outcomes cache save error: {e}')
 
