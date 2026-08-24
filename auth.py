@@ -4,7 +4,7 @@ Wiring: auth.init_app(app, admin_token=ADMIN_TOKEN) from app.py. The gate
 is OFF until the GOOGLE_OAUTH_CLIENT_ID env var is set (a Google OAuth
 "Web application" client, User type Internal, whose Authorized JavaScript
 origins include the Railway URL plus http://localhost:5001, :5002 and
-:5055), so local dev and existing deploys keep working until the
+:5056), so local dev and existing deploys keep working until the
 credential is configured.
 
 Flow: unauthenticated page requests are answered with the login page —
@@ -26,7 +26,9 @@ session, and each still enforces its own @require_admin.
 
 Env vars: GOOGLE_OAUTH_CLIENT_ID (required to enable), FLASK_SECRET_KEY
 (optional — random per boot otherwise, which just re-prompts sign-in
-after a restart; fine with the single gunicorn worker in start.sh).
+after a restart; fine with the single gunicorn worker in start.sh),
+SESSION_COOKIE_SECURE (optional override — defaults to on when the
+Railway /data volume is present, off for local http:// dev).
 """
 import os
 import secrets
@@ -107,12 +109,23 @@ def init_app(app, admin_token=''):
     if not GOOGLE_CLIENT_ID:
         print('[auth] GOOGLE_OAUTH_CLIENT_ID not set — login gate DISABLED')
         return
-    # Fail at boot, not at first sign-in, if google-auth is missing —
-    # railway.toml's healthcheck then keeps the previous deployment serving.
-    from google.oauth2 import id_token as _boot_check  # noqa: F401
+    # Fail at boot, not at first sign-in, if a verification dependency is
+    # missing — railway.toml's healthcheck then keeps the previous deployment
+    # serving. BOTH imports matter: id_token alone booted clean while
+    # google-auth's requests transport was absent, so the gate engaged and
+    # every sign-in then died with a 500. Healthy healthcheck, locked-out team.
+    from google.oauth2 import id_token as _boot_check          # noqa: F401
+    from google.auth.transport.requests import Request as _bc2  # noqa: F401
     app.secret_key = os.environ.get('FLASK_SECRET_KEY') or secrets.token_hex(32)
+    # Secure cookies in production only: '/data' is the Railway volume and is
+    # the same production signal app.py uses for DATA_DIR. Forcing Secure on
+    # local http:// would silently drop the session cookie and loop the login.
+    _secure = os.environ.get('SESSION_COOKIE_SECURE')
+    _secure = (_secure.lower() in ('1', 'true', 'yes')) if _secure \
+        else os.path.isdir('/data')
     app.config.update(SESSION_COOKIE_HTTPONLY=True,
-                      SESSION_COOKIE_SAMESITE='Lax')
+                      SESSION_COOKIE_SAMESITE='Lax',
+                      SESSION_COOKIE_SECURE=_secure)
     app.permanent_session_lifetime = timedelta(days=30)
     print(f'[auth] login gate ENABLED — @{ALLOWED_DOMAIN} accounts only')
 
@@ -122,12 +135,30 @@ def init_app(app, admin_token=''):
             email = _verify_google_token(
                 (request.get_json(silent=True) or {}).get('credential'))
         except ValueError as e:
-            print(f'[auth] rejected sign-in: {e}')
+            print(f'[auth] rejected sign-in: {e}', flush=True)
             return jsonify({'ok': False, 'error': str(e)}), 403
+        except Exception as e:
+            # Anything not a ValueError (missing dependency, Google's cert
+            # endpoint unreachable, …) would otherwise escape as Flask's HTML
+            # 500 page, which the login card tries to parse as JSON and shows
+            # as "Unexpected token '<'". Keep the response JSON so the user
+            # sees something actionable and the cause reaches the logs.
+            print(f'[auth] sign-in ERROR ({type(e).__name__}): {e}', flush=True)
+            return jsonify({'ok': False,
+                            'error': 'sign-in is temporarily unavailable — '
+                                     'please tell the dashboard admin'}), 500
         session.permanent = True
         session['user'] = email
-        print(f'[auth] signed in: {email}')
+        print(f'[auth] signed in: {email}', flush=True)
         return jsonify({'ok': True, 'user': email})
+
+    @app.route('/auth/whoami')
+    def auth_whoami():
+        """Who the browser is signed in as — powers the header's Sign out
+        link. /auth/* is exempt from the gate, so this is reachable without a
+        session and simply answers {"user": null} in that case. It exposes
+        nothing an already-signed-in browser doesn't already know."""
+        return jsonify({'user': session.get('user')})
 
     @app.route('/auth/logout')
     def auth_logout():
