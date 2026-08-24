@@ -26,6 +26,10 @@ RUN sf --version && \
     rm -f /tmp/smoke_auth.txt && \
     grep -q "INVALID_SFDX_AUTH_URL" /tmp/smoke.log && rm /tmp/smoke.log
 
+# Unbuffered stdout, or app print() telemetry (per-summary token costs,
+# sync progress) never flushes to the Railway container logs.
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
