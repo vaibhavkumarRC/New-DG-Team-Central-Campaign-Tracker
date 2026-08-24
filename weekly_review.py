@@ -1002,6 +1002,11 @@ FILTER_FIELDS = {
     'revenue_band': 'revenue_band',
     'client_type':  'client_type',
     'specialty':    'specialties',
+    # Two different people, deliberately both filterable: `sdr` is
+    # Meeting_Generated_by__c (the SDR who booked the meeting) and `seller` is
+    # Seller_Name__c (the AE who runs it). Conflating them would misattribute
+    # every meeting an SDR booked for someone else to close.
+    'sdr':          'sdr',
     'seller':       'seller',
     'seniority':    'seniority',
     'function':     'function',
