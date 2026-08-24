@@ -4907,6 +4907,10 @@ weekly_review.init_app(app, soql=soql, norm_sdr=norm_sdr,
                              'parse_summary': _parse_summary,
                              'parse_next_steps': _parse_next_steps})
 
+# ── Google sign-in gate (rapidclaims.ai accounts; off until env var set) ─────
+import auth
+auth.init_app(app, admin_token=ADMIN_TOKEN)
+
 print('\n' + '='*55)
 print('  🚀  Campaign Command Center')
 print('  →   http://localhost:5001')

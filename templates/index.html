@@ -740,6 +740,8 @@ td.wr-drill:hover { background:var(--gold-glow); color:var(--gold); font-weight:
     </div>
     <div id="adminBadge" class="admin-badge-center">🔑 Admin View — Vaibhav</div>
     <div class="header-right">
+      <button class="btn-sync" id="signOutBtn" onclick="location.href='/auth/logout'"
+              title="Sign out of the dashboard" style="display:none">↪ Sign out</button>
       <button class="btn-sync" id="themeBtn" onclick="toggleTheme()" title="Switch light/dark theme">🌙 Dark</button>
       <div class="countdown-badge" id="countdown">Next sync in 10:00</div>
       <div class="sync-pill">
@@ -2406,6 +2408,45 @@ function startCountdown() {
     if(el) el.textContent = h > 0 ? `Next sync in ${h}:${m}:${s}` : `Next sync in ${m}:${s}`;
   },1000);
 }
+
+/* ── Session expiry (login gate) ──────────────────────────────────────────────
+   With the Google sign-in gate on, an expired 30-day session makes every
+   /api/ call return 401 JSON. There are 45 fetch() call sites and none of
+   them check the status, so the page would just render empty widgets and the
+   user would report "the dashboard is broken" when they only needed to sign
+   in again. Wrap fetch once, centrally: on the first 401 from a same-origin
+   /api/ call, reload — the gate then serves the login page.
+   Skipped when the gate is off (no /auth/whoami route), so nothing changes
+   for deployments without GOOGLE_OAUTH_CLIENT_ID set. */
+(function () {
+  const _fetch = window.fetch;
+  let redirecting = false;
+  window.fetch = async function (input, init) {
+    const res = await _fetch(input, init);
+    try {
+      const url = new URL((typeof input === 'string' ? input : input.url),
+                          location.origin);
+      if (res.status === 401 && url.origin === location.origin
+          && url.pathname.startsWith('/api/') && !redirecting) {
+        redirecting = true;
+        location.reload();
+      }
+    } catch (e) { /* non-URL input — leave the response untouched */ }
+    return res;
+  };
+})();
+
+/* Reveal the Sign out button only when a session actually exists, so the
+   button never appears on deployments running with the gate disabled. */
+(async function () {
+  try {
+    const r = await fetch('/auth/whoami');
+    if (!r.ok) return;
+    const j = await r.json();
+    const b = document.getElementById('signOutBtn');
+    if (j && j.user && b) { b.style.display = ''; b.title = 'Signed in as ' + j.user; }
+  } catch (e) { /* gate disabled — route absent, leave the button hidden */ }
+})();
 
 // ── TABS ─────────────────────────────────────────────────────────────────────
 /* ── Light/Dark theme toggle (default light; persisted) ── */

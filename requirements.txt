@@ -3,3 +3,5 @@ gunicorn>=21.2.0
 pycryptodome>=3.18.0
 tzdata>=2024.1
 anthropic>=0.69.0
+google-auth>=2.23.0
+requests>=2.31.0
