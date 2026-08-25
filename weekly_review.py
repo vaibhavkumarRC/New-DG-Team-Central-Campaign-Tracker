@@ -1399,6 +1399,12 @@ def _zoom_recording_files(mid):
     return out
 
 
+def _turns_text(turns):
+    return '\n'.join(
+        f"{'Rep' if t.get('speaker') == 'rep' else 'Prospect'}: "
+        f"{t.get('text', '')}" for t in turns)
+
+
 def _pick_booking_call(calls):
     """Best transcript-bearing Nooks call: the meeting-booking call if flagged,
     else the longest conversation."""
@@ -1489,16 +1495,15 @@ def _generate_summary(lead_id, row):
     if entry is None:
         pids = [lead_id] + ([lead['ConvertedContactId']]
                             if lead and lead.get('ConvertedContactId') else [])
+        calls = []
         try:
-            best = _pick_booking_call(_nooks_calls_for(pids))
+            calls = _nooks_calls_for(pids)
         except Exception as e:
-            best = None
             reasons.append(f'Nooks lookup failed: {e}')
+        best = _pick_booking_call(calls)
         if best:
             turns, _tr = _nooks_turns(best['id'])
-            transcript = '\n'.join(
-                f"{'Rep' if t.get('speaker') == 'rep' else 'Prospect'}: "
-                f"{t.get('text', '')}" for t in turns)
+            transcript = _turns_text(turns)
             if transcript.strip():
                 data = _summarize_transcript(
                     {'topic': f"booking call — {best.get('account_name') or (row or {}).get('company')}",
@@ -1515,6 +1520,27 @@ def _generate_summary(lead_id, row):
         else:
             reasons.append('no Nooks call with a transcript')
 
+    # rung 4: nothing summarizable — ship the newest non-empty Nooks
+    # transcript raw. No Claude call, and never cached, so a Zoom recording
+    # or booking-call transcript appearing later still upgrades the entry.
+    if entry is None:
+        for c in calls:
+            if not c.get('has_transcript'):
+                continue
+            try:
+                turns, _tr = _nooks_turns(c['id'])
+            except Exception:
+                continue
+            transcript = _turns_text(turns)
+            if transcript.strip():
+                entry = {'source': 'nooks_raw', 'transcript': transcript,
+                         'reasons': reasons, 'call_id': c['id'],
+                         'disposition': (c.get('disposition_name')
+                                         or c.get('effective_outcome')),
+                         'when': c.get('time'),
+                         'duration_min': round((c.get('duration_sec') or 0) / 60)}
+                break
+
     if entry is None:
         return {'source': None, 'reasons': reasons,
                 'ver': SUMMARY_CACHE_VER,
@@ -1522,7 +1548,8 @@ def _generate_summary(lead_id, row):
 
     entry.update({'ver': SUMMARY_CACHE_VER,
                   'generated_at': datetime.now(IST).isoformat()})
-    _save_summary(sf15(lead_id), entry)
+    if entry['source'] != 'nooks_raw':
+        _save_summary(sf15(lead_id), entry)
     return entry
 
 

@@ -8401,6 +8401,7 @@ const WDD_SOURCE_LABEL = {
   zoom_ai:   ['Zoom AI summary', 'Zoom AI Companion summary of this meeting'],
   zoom_llm:  ['From Zoom transcript', 'Claude summary of the Zoom meeting transcript'],
   nooks_llm: ['From booking call', 'Claude summary of the Nooks cold call that BOOKED this meeting — the meeting itself was not recorded'],
+  nooks_raw: ['Latest call transcript', 'No summary source for this meeting — raw transcript of the newest Nooks call that has one'],
 };
 
 function wdDrawerEl() {
@@ -8541,6 +8542,21 @@ function wdDrawerSummary(s, leadId) {
     return;
   }
   const [badge, tip] = WDD_SOURCE_LABEL[s.source] || [s.source, ''];
+  if (s.source === 'nooks_raw') {
+    const reasons = (s.reasons || []).map(wdEsc).join('; ');
+    box.innerHTML = wddCard('Call summary', `
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+        <span class="badge badge-paused" title="${wdEsc(tip)}">${wdEsc(badge)}</span>
+        <span style="font-size:10.5px;color:var(--text-dim)">
+          ${s.duration_min ? s.duration_min + ' min · ' : ''}${wdEsc((s.when || '').slice(0, 16).replace('T', ' '))}${s.disposition ? ' · ' + wdEsc(s.disposition) : ''}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">
+        No summary source for this meeting${reasons ? ' (' + reasons + ')' : ''} — showing the transcript of the latest call instead.</div>
+      <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;white-space:pre-wrap;max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:10px">${wdEsc(s.transcript || '')}</div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px"
+        onclick="wdDrawerGenerate('${wdEsc(leadId)}', true)">↻ Check again</button>`);
+    return;
+  }
   const sections = [
     ['Challenges', s.challenges], ['Next steps', s.next_steps], ['Key points', s.key_points],
   ].filter(([, v]) => (v || []).length).map(([t, v]) => `
