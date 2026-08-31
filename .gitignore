@@ -3,6 +3,10 @@ __pycache__/
 *.pyc
 data_cache.json
 campaigns.json
+sdrs.json
+segments.json
+meeting_ledger.json
+backups/
 .env
 *.key
 *.pem
