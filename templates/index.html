@@ -1634,26 +1634,15 @@ td.wr-drill:hover { background:var(--gold-glow); color:var(--gold); font-weight:
           <div class="form-grid-2">
             <div class="form-group">
               <label class="form-label">SDR Owner <span style="color:#F87171">*</span></label>
-              <select class="form-select" name="sdr_owner">
+              <select class="form-select" name="sdr_owner" id="addSdrSelect" onchange="handleAddSdrChange(this.value)">
                 <option value="">— Select SDR —</option>
-                <option>Akhilesh Stan</option>
-                <option>Akil Krishna</option>
-                <option>Ananya Rao</option>
-                <option>Anurup Bhattacharjee</option>
-                <option>Anushka HB</option>
-                <option>Deborah Deborah</option>
-                <option>Felix Sam</option>
-                <option>Hreeman Saha</option>
-                <option>Isaac Bartels</option>
-                <option>Michelle B</option>
-                <option>Rithick S</option>
-                <option>Saka Thapa</option>
-                <option>Samridhi Dutta</option>
-                <option>Shahana Abbasi</option>
-                <option>Soham Saha</option>
-                <option>SriRam</option>
-                <option>Sukhneet Sukhneet</option>
               </select>
+              <div id="addNewSdrRow" style="display:none;margin-top:6px">
+                <div style="display:flex;gap:6px">
+                  <input class="form-input" id="addNewSdrInput" placeholder="New SDR name…" style="margin:0;flex:1">
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="saveNewSdr()">Save</button>
+                </div>
+              </div>
             </div>
             <div class="form-group">
               <label class="form-label">Email Owner</label>
@@ -1998,26 +1987,15 @@ td.wr-drill:hover { background:var(--gold-glow); color:var(--gold); font-weight:
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label">SDR Owner</label>
-          <select class="form-select" id="editSdr">
+          <select class="form-select" id="editSdr" onchange="handleEditSdrChange(this.value)">
             <option value="">— Select SDR —</option>
-            <option>Akhilesh Stan</option>
-            <option>Akil Krishna</option>
-            <option>Ananya Rao</option>
-            <option>Anurup Bhattacharjee</option>
-            <option>Anushka HB</option>
-            <option>Deborah Deborah</option>
-            <option>Felix Sam</option>
-            <option>Hreeman Saha</option>
-            <option>Isaac Bartels</option>
-            <option>Michelle B</option>
-            <option>Rithick S</option>
-            <option>Saka Thapa</option>
-            <option>Samridhi Dutta</option>
-            <option>Shahana Abbasi</option>
-            <option>Soham Saha</option>
-            <option>SriRam</option>
-            <option>Sukhneet Sukhneet</option>
           </select>
+          <div id="editNewSdrRow" style="display:none;margin-top:6px">
+            <div style="display:flex;gap:6px">
+              <input class="form-input" id="editNewSdrInput" placeholder="New SDR name…" style="margin:0;flex:1">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="saveNewSdrEdit()">Save</button>
+            </div>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Email Owner</label>
@@ -2189,6 +2167,7 @@ const S = {
   periodData:        null,
   lbMetric:          'meetings',
   segments:          [],
+  sdrs:              [],
   bulkSelected:      new Set(),
 };
 
@@ -2676,6 +2655,90 @@ async function saveNewSegmentEdit() {
     }
   } catch(e) { alert('Failed to save segment: ' + e.message); }
 }
+
+// ── SDRS ─────────────────────────────────────────────────────────────────────
+async function loadSdrs() {
+  try {
+    const r = await fetch('/api/sdrs');
+    const d = await r.json();
+    S.sdrs = d.sdrs || [];
+  } catch(e) {
+    S.sdrs = ['Akhilesh Stan','Akil Krishna','Ananya Rao','Anurup Bhattacharjee','Anushka HB',
+      'Deborah Deborah','Felix Sam','Hreeman Saha','Isaac Bartels','Michelle B','Rithick S',
+      'Saka Thapa','Samridhi Dutta','Shahana Abbasi','Soham Saha','SriRam','Sukhneet Sukhneet'];
+  }
+  populateSdrDropdowns();
+}
+
+function sdrOptions(current) {
+  const list = (current && !S.sdrs.includes(current)) ? S.sdrs.concat([current]) : S.sdrs;
+  return list.map(s =>
+    `<option value="${esc(s)}" ${current===s?'selected':''}>${esc(s)}</option>`
+  ).join('') + `<option value="__new__">+ Add new SDR</option>`;
+}
+
+function populateSdrDropdowns() {
+  const addSdr = q('addSdrSelect');
+  if(addSdr) {
+    const cur = addSdr.value;
+    addSdr.innerHTML = '<option value="">— Select SDR —</option>' + sdrOptions(cur);
+    if(cur && cur !== '__new__') addSdr.value = cur;
+  }
+  const editSdr = q('editSdr');
+  if(editSdr) {
+    const cur = (editSdr.value && editSdr.value !== '__new__') ? editSdr.value : '';
+    editSdr.innerHTML = '<option value="">— Select SDR —</option>' + sdrOptions(cur);
+    if(cur) editSdr.value = cur;
+  }
+}
+
+function handleAddSdrChange(val) {
+  const newRow = q('addNewSdrRow');
+  if(val === '__new__') {
+    newRow.style.display = 'block';
+    q('addNewSdrInput').focus();
+    q('addSdrSelect').value = '';   // never submit __new__
+  } else {
+    newRow.style.display = 'none';
+  }
+}
+
+function handleEditSdrChange(val) {
+  const newRow = q('editNewSdrRow');
+  if(val === '__new__') {
+    newRow.style.display = 'block';
+    q('editNewSdrInput').focus();
+    q('editSdr').value = '';
+  } else {
+    newRow.style.display = 'none';
+  }
+}
+
+async function saveNewSdrTo(inputId, rowId, selectId) {
+  const name = (q(inputId)?.value||'').trim();
+  if(!name) return;
+  try {
+    const r = await fetch('/api/sdrs', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-Admin-Token':S.adminToken},
+      body: JSON.stringify({name})
+    });
+    const d = await r.json();
+    if(d.sdrs) {
+      S.sdrs = d.sdrs;
+      populateSdrDropdowns();
+      const sel = q(selectId);
+      if(sel) sel.value = name;
+      q(rowId).style.display = 'none';
+      q(inputId).value = '';
+    } else if(d.error) {
+      alert('Failed to save SDR: ' + d.error);
+    }
+  } catch(e) { alert('Failed to save SDR: ' + e.message); }
+}
+
+function saveNewSdr()     { saveNewSdrTo('addNewSdrInput',  'addNewSdrRow',  'addSdrSelect'); }
+function saveNewSdrEdit() { saveNewSdrTo('editNewSdrInput', 'editNewSdrRow', 'editSdr'); }
 
 function getAddSegmentValue() {
   const sel = q('addSegmentSelect');
@@ -4912,7 +4975,12 @@ function openEditModal(id) {
 
   q('editCampaignId').value   = c.id;
   q('editName').value         = c.name;
-  q('editSdr').value          = c.sdr_owner   || '';
+{  // repopulate so a legacy/unknown SDR name still shows as selected
+    const sel = q('editSdr');
+    sel.innerHTML = '<option value="">— Select SDR —</option>' + sdrOptions(c.sdr_owner || '');
+    sel.value = c.sdr_owner || '';
+    q('editNewSdrRow').style.display = 'none';
+  }
   q('editEmail').value        = c.email_owner || '';
   q('editStatus').value       = c.status      || 'Active';
   q('editStartDate').value    = c.start_date  || '';
@@ -7229,6 +7297,7 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeModal(); cl
 initAdminMode();
 fetchData();
 loadSegments();
+loadSdrs();
 populatePodDropdowns();
 startCountdown();
 setInterval(fetchData, 10000);   // Poll Flask every 10s to pick up sync progress updates

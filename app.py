@@ -19,6 +19,7 @@ SNAPSHOTS_FILE = os.path.join(BASE, 'quarter_snapshots.json')
 # Frozen Q1/Q2 record snapshots for the SDR Reporting tables (meetings/mql/sql/s1).
 REPORTING_SNAPSHOTS_FILE = os.path.join(BASE, 'reporting_snapshots.json')
 SEGMENTS_FILE = os.path.join(DATA_DIR, 'segments.json')
+SDRS_FILE     = os.path.join(DATA_DIR, 'sdrs.json')
 LEDGER_FILE   = os.path.join(DATA_DIR, 'meeting_ledger.json')
 
 # ── Data durability (Tier 0) ─────────────────────────────────────────────────
@@ -607,6 +608,26 @@ def load_segments():
 
 def save_segments(segs):
     _atomic_write_json(SEGMENTS_FILE, segs)
+
+DEFAULT_SDRS = [
+    'Akhilesh Stan', 'Akil Krishna', 'Ananya Rao', 'Anurup Bhattacharjee',
+    'Anushka HB', 'Deborah Deborah', 'Felix Sam', 'Hreeman Saha',
+    'Isaac Bartels', 'Michelle B', 'Rithick S', 'Saka Thapa',
+    'Samridhi Dutta', 'Shahana Abbasi', 'Soham Saha', 'SriRam',
+    'Sukhneet Sukhneet',
+]
+
+def load_sdrs():
+    if os.path.exists(SDRS_FILE):
+        try:
+            with open(SDRS_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+def save_sdrs(sdrs):
+    _atomic_write_json(SDRS_FILE, sdrs)
 SF_ORG      = os.environ.get('SF_ORG',      'vaibhavkumar@rapidclaims.ai')
 SF_BASE_URL = os.environ.get('SF_BASE_URL', 'https://data-page-6243.my.salesforce.com')
 NPV_START_DATE = '2026-07-01T00:00:00Z'   # Q3 2026: Opportunities created after 30 June 2026
@@ -3754,6 +3775,28 @@ def api_segments_add():
         save_segments(custom)
     all_segs = DEFAULT_SEGMENTS + [s for s in custom if s not in DEFAULT_SEGMENTS]
     return jsonify({'segments': all_segs, 'defaults': DEFAULT_SEGMENTS})
+
+# ── SDRs ──────────────────────────────────────────────────────────────────────
+
+@app.route('/api/sdrs', methods=['GET'])
+def api_sdrs_get():
+    custom = load_sdrs()
+    all_sdrs = sorted(set(DEFAULT_SDRS) | set(custom), key=str.lower)
+    return jsonify({'sdrs': all_sdrs, 'defaults': DEFAULT_SDRS})
+
+@app.route('/api/sdrs', methods=['POST'])
+@require_admin
+def api_sdrs_add():
+    d = request.json or {}
+    name = (d.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'SDR name required'}), 400
+    custom = load_sdrs()
+    if name not in DEFAULT_SDRS and name not in custom:
+        custom.append(name)
+        save_sdrs(custom)
+    all_sdrs = sorted(set(DEFAULT_SDRS) | set(custom), key=str.lower)
+    return jsonify({'sdrs': all_sdrs, 'defaults': DEFAULT_SDRS})
 
 # ── SDR Reporting 2026 – Meeting Leads ───────────────────────────────────────
 
