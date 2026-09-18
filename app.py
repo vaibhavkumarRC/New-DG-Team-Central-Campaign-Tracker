@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import wraps
 import urllib.request as _urllib_req
 import urllib.parse
+import definitions as DEFS   # shared metric definitions (single source of truth)
 
 app = Flask(__name__)
 
@@ -464,19 +465,11 @@ _BATCH_SIZE = 500
 # Nooks dispositions whose Outcome is "Connect" or "Meeting" in Nooks's
 # disposition→outcome mapping (logged on the Task CallDisposition field).
 # A call with any of these counts as a live connect.
-CONNECT_DISPOSITIONS = (
-    "'Answered - Booked Meeting','Answered - Follow Up Required',"
-    "'Answered - No Longer with Company','Answered - Wrong Person, Gave Referral',"
-    "'Answered - Wrong Person, No Referral','Busy - Call Later','Connected','DNC',"
-    "'Meeting','Meeting Generated- Cold','Meeting Generated- Conference',"
-    "'Not Interested','Objection: Already Have Solution','Objection: Asked to Send Info',"
-    "'Objection: Not A Priority','Prospect Disconnected','Retired','Strong Follow up',"
-    "'Wrong Number'"
-)
+CONNECT_DISPOSITIONS = DEFS.CONNECT_DISPOSITIONS
 
 # A connect counts as a "conversation" when the call lasted at least this long
 # (mirrors Nooks's default Conversation Threshold of 60 seconds).
-CONVERSATION_THRESHOLD_SECS = 60
+CONVERSATION_THRESHOLD_SECS = DEFS.CONVERSATION_THRESHOLD_SECS
 
 def _count_tasks_for_ids(lead_ids, subject_filter, dt_task):
     """Count Tasks matching subject_filter for a list of lead IDs.
@@ -1287,6 +1280,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
     # and must stay frozen even though its leads are later enrolled in new active
     # campaigns. (The normal workflow only reassigns a lead after its previous
     # campaign has completed, so the old campaign keeps its full history.)
+    moved = {}   # lead_id → new campaign name (leads pruned this sync; recorded by history.py)
     if (c.get('status') or 'Active') == 'Active':
         cur_set = set(current_lead_ids)
         # Candidates = lead_ids in the ledger PLUS any lead that still has a
@@ -1357,9 +1351,9 @@ def campaign_metrics(c, start_override=None, end_override=None):
         fresh_sf_meetings = sf_meeting_records
 
     nooks_meeting_records = []
+    nooks_who = {}
     if frozen_lead_ids:
-        BOOK_DISP = ("'Answered - Booked Meeting','Meeting Generated- Cold',"
-                     "'Meeting Generated- Conference'")
+        BOOK_DISP = DEFS.BOOKING_DISPOSITIONS
         already   = {r.get('Id') for r in fresh_sf_meetings}
         nooks_who = {}   # WhoId -> (booking_date, sdr_name)
         for i in range(0, len(frozen_lead_ids), _BATCH_SIZE):
@@ -1369,7 +1363,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
                   f"WHERE WhoId IN ({ids_str}) "
                   f"AND Subject LIKE '[Nooks Call]%' "
                   f"AND CallDisposition IN ({BOOK_DISP}) "
-                  f"AND ActivityDate >= 2026-04-15 "
+                  f"AND ActivityDate >= {DEFS.NOOKS_BOOKING_MIN_DATE} "
                   f"ORDER BY ActivityDate ASC LIMIT 5000")
             tres = soql(tq, paginate=False)
             for r in (tres or {}).get('records', []):
@@ -1413,8 +1407,8 @@ def campaign_metrics(c, start_override=None, end_override=None):
     # Using frozen_lead_ids (not live Campaign__c filter) ensures counts are
     # correct even after leads are reassigned to a different campaign.
     if frozen_lead_ids:
-        call_subj  = "Subject LIKE '%Orum%' OR Subject LIKE '[Nooks Call]%'"
-        email_subj = "Subject LIKE '%Smartlead%' OR Subject LIKE '%Outreach%'"
+        call_subj  = DEFS.CALL_SUBJ
+        email_subj = DEFS.EMAIL_SUBJ
         # LinkedIn (HeyReach) connection-request tasks. _SENT and _ACCEPTED are
         # distinct substrings, so each filter is unambiguous; the legacy
         # "Skipped: Outplay…" tasks contain neither and are excluded.
@@ -1437,11 +1431,9 @@ def campaign_metrics(c, start_override=None, end_override=None):
         # "Meeting Done" = ANY completed-meeting status (incl. Meeting Done-SQL),
         # OR the lead reached S1 (its meeting must have happened). Matches the SDR
         # Performance table definition so all "Meeting Done" numbers agree.
-        done_filter   = ("((Meeting_Status__c LIKE 'Meeting Done%'"
-                         " OR Status = 'S1 Converted')"
-                         f"{dt_mtg})")
-        noshow_filter = f"(Meeting_Status__c = 'Meeting No Show'{dt_mtg})"
-        sql_filter    = "Status = 'SQL'"
+        done_filter   = f"({DEFS.DONE_CLAUSE}{dt_mtg})"
+        noshow_filter = f"({DEFS.NOSHOW_CLAUSE}{dt_mtg})"
+        sql_filter    = DEFS.SQL_CLAUSE
         stssdr_filter = (done_filter + " OR " + noshow_filter)
 
         # Connects = Nooks calls whose disposition outcome is Connect/Meeting
@@ -1547,7 +1539,7 @@ def campaign_metrics(c, start_override=None, end_override=None):
     _prev_sd = (_prev_campaign_result(c['id']) or {}).get('settled_date') or ''
     settled_date = max(_new_sd, _prev_sd)
 
-    return {
+    _result = {
         **c,
         'settled_date':             settled_date,
         'total_leads':              total_leads,
@@ -1574,6 +1566,13 @@ def campaign_metrics(c, start_override=None, end_override=None):
         'status_sdr_breakdown': [{'name': k, **v} for k, v in status_sdr_bk.items()],
         'synced_at':          datetime.now().isoformat()
     }
+    # History layer (append-only Supabase project). In-memory only here; the
+    # network work happens once in history.flush() at the end of the full sync.
+    try:
+        history.record_campaign(c, _result, current_lead_ids, frozen_lead_ids, frozen_meetings, moved, list(nooks_who.keys()))
+    except Exception as _he:
+        print(f'[history] record_campaign failed: {_he}')
+    return _result
 
 # ── Opportunity stats fetch (S1 count + NPV) ─────────────────────────────────
 
@@ -1800,6 +1799,12 @@ def _run_sync():
         backup_data_files()
     except Exception as e:
         print(f'[backup] backup_data_files failed: {e}')
+    # History layer: write this sync's facts to dg-campaign-history. Bounded,
+    # never raises, and runs AFTER the dashboard's own files are safe.
+    try:
+        history.flush()
+    except Exception as e:
+        print(f'[history] flush failed: {e}')
 
 def persist_cache():
     """Write the in-memory campaign cache to disk so single-campaign syncs and
@@ -1846,6 +1851,7 @@ def _notify_slack_sync():
             f"📞 Calls: *{calls:,}*    ✉️ Emails: *{emails:,}*",
             f"🤝 Meetings Done: *{totals.get('meeting_done', 0)}*    🚫 No-Show: *{totals.get('meeting_noshow', 0)}*",
             f"💎 SQL: *{totals.get('sql_gen', 0)}*    🏆 S1: *{totals.get('s1', 0)}*",
+            f"🗄️ {history.summary()}",
         ]
         if errors:
             lines.append(f"*⚠️ {len(errors)} campaign error(s)* (copy to Claude to fix):")
@@ -2858,9 +2864,9 @@ def api_status_leads():
     camp_status       = request.args.get('camp_status', '').strip()   # Active|Completed|Paused
 
     STATUS_FILTERS = {
-        'done':   "(Meeting_Status__c LIKE 'Meeting Done%' OR Status = 'S1 Converted')",
-        'noshow': "Meeting_Status__c = 'Meeting No Show'",
-        'sql':    "Status = 'SQL'",
+        'done':   DEFS.DONE_CLAUSE,
+        'noshow': DEFS.NOSHOW_CLAUSE,
+        'sql':    DEFS.SQL_CLAUSE,
     }
     if status not in STATUS_FILTERS:
         return jsonify({'leads': [], 'total': 0})
@@ -3443,10 +3449,10 @@ def api_emails_trend():
 
 
 # LinkedIn (HeyReach) Task subjects, shared by trend + leads routes.
-LI_SENT_SUBJ  = "Subject LIKE '%CONNECTION_REQUEST_SENT%'"
-LI_ACC_SUBJ   = "Subject LIKE '%CONNECTION_REQUEST_ACCEPTED%'"
-LI_MSG_SUBJ   = "Subject LIKE '%HeyReach - MESSAGE_SENT%'"
-LI_REPLY_SUBJ = "Subject LIKE '%HeyReach - MESSAGE_REPLY_RECEIVED%'"
+LI_SENT_SUBJ  = DEFS.LI_SENT_SUBJ
+LI_ACC_SUBJ   = DEFS.LI_ACC_SUBJ
+LI_MSG_SUBJ   = DEFS.LI_MSG_SUBJ
+LI_REPLY_SUBJ = DEFS.LI_REPLY_SUBJ
 
 # type → subject filter, used by the (now legacy) trend routes.
 LI_SUBJ_BY_TYPE = {
@@ -5090,6 +5096,12 @@ weekly_review.init_app(app, soql=soql, norm_sdr=norm_sdr,
 # ── Google sign-in gate (rapidclaims.ai accounts; off until env var set) ─────
 import auth
 auth.init_app(app, admin_token=ADMIN_TOKEN)
+
+# ── Campaign history writer (dg-campaign-history Supabase project) ───────────
+# Enabled only when HISTORY_SUPABASE_URL + HISTORY_SUPABASE_KEY are set; unset = off.
+import history
+history.init_app(app, soql=soql, load_campaigns=load_campaigns, norm_sdr=norm_sdr,
+                 data_dir=DATA_DIR, sf_base_url=SF_BASE_URL, cache=cache, require_admin=require_admin)
 
 print('\n' + '='*55)
 print('  🚀  Campaign Command Center')
