@@ -439,7 +439,7 @@ def _sync_membership(run_id, pending, stats):
                     chunk = ids[i:i+200]
                     _patch('campaign_leads', {'campaign_id': f'eq.{e["db_id"]}', 'lead_id': f'in.({",".join(chunk)})', 'removed_at': 'is.null'},
                            {'removed_at': _iso(), 'removed_reason': (f'moved_to:{target}' if target else 'campaign_blanked')})
-            e.setdefault('pruned', []).extend(moved.keys()); stats['members_removed'] += len(moved)
+            e.setdefault('pruned', []).extend(k for k in moved if k not in e.get('pruned', [])); stats['members_removed'] += len(moved)
 
 def _write_members(run_id, e, ids, source, stats):
     if not ids: return
@@ -661,10 +661,19 @@ def _msh(mid, st, now, run_id):
 def _sync_snapshots(run_id, pending, stats):
     by_dash = {e['dashboard_id']: e for e in _state['campaigns'].values() if e.get('dashboard_id')}
     today = _today_ist(); rows = []
+    # Prefer the dashboard's FINAL cached row for this campaign: _run_sync applies a
+    # zero-guard after campaign_metrics() (keeps old calls/emails when a query returned 0),
+    # and the history must show exactly what the dashboard shows.
+    shown = {c.get('id'): c for c in ((_deps.get('cache') or {}).get('campaigns') or [])}
     for did, p in pending.items():
         e = by_dash.get(did)
         if not e: continue
-        r = p['result']; h = _metric_hash(r); last = e.get('last_snapshot') or {}
+        r = dict(p['result'])
+        cached = shown.get(did)
+        if cached and cached.get('synced_at') == r.get('synced_at'):
+            for k in _METRIC_KEYS + ('call_dispositions',):
+                if k in cached: r[k] = cached[k]
+        h = _metric_hash(r); last = e.get('last_snapshot') or {}
         settled = r.get('settled_date') or (e.get('config') or {}).get('settled_date')
         final_now = bool((e.get('config') or {}).get('status') == 'Completed' and settled and settled < today and not last.get('final'))
         if h == last.get('h') and last.get('as_of') == today and not final_now:
