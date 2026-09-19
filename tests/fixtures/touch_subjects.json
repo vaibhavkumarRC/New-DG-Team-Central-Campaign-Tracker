@@ -1,0 +1,533 @@
+[
+ {
+  "subject": "[Nooks Call] - No Answer - by SDR One",
+  "task_subtype": "Call",
+  "type": "Call",
+  "expected": [
+   "call",
+   "nooks",
+   "call",
+   [
+    "call"
+   ]
+  ]
+ },
+ {
+  "subject": "[Nooks Call] - Connected - by SDR Two",
+  "task_subtype": "Call",
+  "type": "Call",
+  "expected": [
+   "call",
+   "nooks",
+   "call",
+   [
+    "call"
+   ]
+  ]
+ },
+ {
+  "subject": "[Orum] call 15550000000 - No Answer",
+  "task_subtype": "Call",
+  "type": "Call",
+  "expected": [
+   "call",
+   "orum",
+   "call",
+   [
+    "call"
+   ]
+  ]
+ },
+ {
+  "subject": "[Orum] call 15550000001 - Gatekeeper",
+  "task_subtype": "Call",
+  "type": "Call",
+  "expected": [
+   "call",
+   "orum",
+   "call",
+   [
+    "call"
+   ]
+  ]
+ },
+ {
+  "subject": "Smartlead Email Sent: RE: Pat - quick question on your denial exposure",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "smartlead",
+   "email_sent",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "Smartlead Email Opened: Pat - quick question on your denial exposure",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "smartlead",
+   "email_opened",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "Smartlead Email Reply: Pat , are you capturing every HCC condition?",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "smartlead",
+   "email_reply",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "[Outreach] [Email] [Out] Coding & claims at Example Health",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "outreach",
+   "email_sent",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "[Outreach] [Email] [Out] Re: Fw: EHR access",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "outreach",
+   "email_sent",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "[Outreach] [Email] [Delivered] Coding & claims at Example Health",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "outreach",
+   "email_sent",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "[Outreach] [Email] [Opened] Coding & claims at Example Health",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "outreach",
+   "email_opened",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "[Outreach] [Email] [Clicked] Coding & claims at Example Health",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "outreach",
+   "email_clicked",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "[Outreach] [Email] [In] Re: Coding & claims at Example Health",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "outreach",
+   "email_reply",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "[Outreach] [Email] [In] Automatic reply: Coding & claims at Example Health",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "outreach",
+   "email_autoreply",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "[Outreach] [Email] [Bounced] Coding & claims at Example Health",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "outreach",
+   "email_bounced",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "[Outreach] [Call] [Outbound] [No Answer] Example Health",
+  "task_subtype": "Call",
+  "type": "Call",
+  "expected": [
+   "call",
+   "outreach",
+   "call",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "[Outreach] [Other] LinkedIn task",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "other",
+   "outreach",
+   "other",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "[Outreach] [Other] Deliver Quick note",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "other",
+   "outreach",
+   "other",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "[Outreach] [Email] [Out] Invitation to the CFO Forum",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "outreach",
+   "email_sent",
+   [
+    "call",
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "Notes from the revenue forum",
+  "task_subtype": "Task",
+  "type": null,
+  "expected": [
+   "other",
+   "unknown",
+   "other",
+   [
+    "call"
+   ]
+  ]
+ },
+ {
+  "subject": "[OS] [HeyReach - CONNECTION_REQUEST_SENT]  - Campaign A - Sender One",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "linkedin",
+   "heyreach",
+   "li_request_sent",
+   [
+    "linkedin"
+   ]
+  ]
+ },
+ {
+  "subject": "[OS] [HeyReach - CONNECTION_REQUEST_ACCEPTED]  - Campaign A - Sender One",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "linkedin",
+   "heyreach",
+   "li_request_accepted",
+   [
+    "linkedin"
+   ]
+  ]
+ },
+ {
+  "subject": "[OS] [HeyReach - MESSAGE_SENT]  - Campaign A - Sender One",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "linkedin",
+   "heyreach",
+   "li_message_sent",
+   [
+    "linkedin"
+   ]
+  ]
+ },
+ {
+  "subject": "[OS] [HeyReach - MESSAGE_REPLY_RECEIVED]  - Campaign A - Sender One",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "linkedin",
+   "heyreach",
+   "li_reply",
+   [
+    "linkedin"
+   ]
+  ]
+ },
+ {
+  "subject": "[OS] [HeyReach - INMAIL_REPLY_RECEIVED]  - Campaign A - Sender One",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "linkedin",
+   "heyreach",
+   "li_reply",
+   []
+  ]
+ },
+ {
+  "subject": "[OS] [HeyReach - CONNECTION_REQUEST_SENT]  - Outreach 2 - Sender One",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "linkedin",
+   "heyreach",
+   "li_request_sent",
+   [
+    "email",
+    "linkedin"
+   ]
+  ]
+ },
+ {
+  "subject": "[OS] [HeyReach - MESSAGE_SENT]  - Outreach 2 - Sender One",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "linkedin",
+   "heyreach",
+   "li_message_sent",
+   [
+    "email",
+    "linkedin"
+   ]
+  ]
+ },
+ {
+  "subject": "[OS] [HeyReach - SOMETHING_ELSE]  - Campaign A - Sender One",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "linkedin",
+   "heyreach",
+   "other",
+   []
+  ]
+ },
+ {
+  "subject": "[OS] [Instantly - EMAIL_SENT]  - Instantly | Campaign B - sender@example.com",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "email",
+   "instantly",
+   "email_sent",
+   []
+  ]
+ },
+ {
+  "subject": "[OS] [Instantly - REPLY_RECEIVED]  - Instantly | Campaign B - sender@example.com",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "email",
+   "instantly",
+   "email_reply",
+   []
+  ]
+ },
+ {
+  "subject": "[OS] [Instantly - EMAIL_OPENED]  - Instantly | Campaign B - sender@example.com",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "email",
+   "instantly",
+   "email_opened",
+   []
+  ]
+ },
+ {
+  "subject": "[OS] [Instantly - EMAIL_SENT]  - Outreach test - sender@example.com",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "email",
+   "instantly",
+   "email_sent",
+   [
+    "email"
+   ]
+  ]
+ },
+ {
+  "subject": "Email: Meeting Invite: Example Health <> RapidClaims",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "manual_email",
+   "email_other",
+   []
+  ]
+ },
+ {
+  "subject": "Email: Re: Following up on our call",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "manual_email",
+   "email_reply",
+   []
+  ]
+ },
+ {
+  "subject": "Email Follow Up",
+  "task_subtype": "Email",
+  "type": "Email",
+  "expected": [
+   "email",
+   "manual_email",
+   "email_other",
+   []
+  ]
+ },
+ {
+  "subject": "Check In - staffing shortage, follow up later",
+  "task_subtype": "Email",
+  "type": null,
+  "expected": [
+   "email",
+   "manual_email",
+   "email_other",
+   []
+  ]
+ },
+ {
+  "subject": "Called Left VM",
+  "task_subtype": "Call",
+  "type": "Call",
+  "expected": [
+   "call",
+   "unknown",
+   "call",
+   []
+  ]
+ },
+ {
+  "subject": "Left VM",
+  "task_subtype": "Call",
+  "type": null,
+  "expected": [
+   "call",
+   "unknown",
+   "call",
+   []
+  ]
+ },
+ {
+  "subject": "Call",
+  "task_subtype": null,
+  "type": "Call",
+  "expected": [
+   "call",
+   "unknown",
+   "call",
+   []
+  ]
+ },
+ {
+  "subject": "Connected on LI",
+  "task_subtype": "Task",
+  "type": null,
+  "expected": [
+   "other",
+   "unknown",
+   "other",
+   []
+  ]
+ },
+ {
+  "subject": "Deal Task: send BAA, NDA and documentation requirements",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "other",
+   "unknown",
+   "other",
+   []
+  ]
+ },
+ {
+  "subject": "[Outplay] Skipped step",
+  "task_subtype": "Task",
+  "type": "Other",
+  "expected": [
+   "other",
+   "outplay",
+   "other",
+   []
+  ]
+ },
+ {
+  "subject": "[RC] ESCALATION: follow up",
+  "task_subtype": null,
+  "type": null,
+  "expected": null
+ },
+ {
+  "subject": "[RC] ESCALATION: Example Health - call back",
+  "task_subtype": "Task",
+  "type": null,
+  "expected": null
+ }
+]

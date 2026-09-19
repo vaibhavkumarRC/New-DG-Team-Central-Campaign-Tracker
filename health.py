@@ -10,6 +10,7 @@ Checks (thresholds per Vaibhav, 19 Sep 2026):
   • Weekly Review snapshot age > 36 h → ⚠️; last refresh error text
   • Cold-calls cache       age > 72 h → ⚠️; last refresh error text
   • History writer         errors / queued batches / last ok > 24 h; disabled → ℹ️
+  • Touches (P1)           ingest error → ❌; not run / stale > 30 h / partial (cap or budget) → ⚠️
   • Backups                on-volume copy + GitHub push per file → ❌ on failure
   • Supabase keys          live probe of intelligence_dashboard (SUPABASE_SERVICE_KEY)
                            and dg-campaign-history (HISTORY_SUPABASE_KEY) → ❌ on 401/other
@@ -21,6 +22,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 WEEKLY_STALE_H = 36
 COLDCALLS_STALE_H = 72
 HISTORY_STALE_H = 24
+TOUCHES_STALE_H = 30
 
 def _age_h(iso):
     if not iso: return None
@@ -120,6 +122,24 @@ def build(*, cache=None, weekly=None, coldcalls=None, history=None, backup_statu
                 okbits.append('History')
     except Exception as e:
         issue(f'⚠️ health check (history) crashed: {e}')
+
+    # 4b. Touches ingestion (P1) — only when the history writer is enabled
+    try:
+        if history is not None and getattr(history, '_summary', {}).get('enabled'):
+            ts = getattr(getattr(history, 'T', None), 'status', None) or {}
+            age = _age_h(ts.get('last_ok_at'))
+            if ts.get('error'):
+                issue(f"❌ Touches: {ts['error'][:260]}")
+            elif not ts.get('last_ok_at'):
+                issue(f"⚠️ Touches: not ingested this sync ({ts.get('skipped') or 'step did not run'})")
+            elif age is not None and age > TOUCHES_STALE_H:
+                issue(f'⚠️ Touches: last successful ingest {age} h ago')
+            elif ts.get('backlog') or ts.get('skipped'):
+                issue(f"⚠️ Touches: partial — {ts.get('skipped') or 'row cap reached'}; catching up next sync (+{ts.get('new', 0)} this run)")
+            else:
+                okbits.append(f"Touches +{ts.get('new', 0)}")
+    except Exception as e:
+        issue(f'⚠️ health check (touches) crashed: {e}')
 
     # 5. Backups (on-volume + GitHub)
     try:

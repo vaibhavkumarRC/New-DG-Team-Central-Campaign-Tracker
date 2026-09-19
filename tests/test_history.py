@@ -24,7 +24,9 @@ class FakeRest:
     def __init__(self):
         self.writes = []; self.fail_tables = set(); self.next_id = 100
         self.db = {'campaigns': [], 'campaign_leads': [], 'meetings': [], 'meeting_attributions': [], 'v_campaign_latest_snapshot': [], 'people': [
-            {'display_name': 'Soham Saha', 'aliases': ['Soham', 'Soham Saha']}], 'dq_findings': [], 'metric_definitions': [{'version': 2}]}
+            {'person_key': 'soham_saha', 'display_name': 'Soham Saha', 'aliases': ['Soham', 'Soham Saha']}], 'dq_findings': [], 'metric_definitions': [{'version': 2}, {'version': 3}],
+            'touch_ingest_state': [{'watermark_created': '2026-09-19T06:54:52+00:00', 'updated_at': '2026-09-19T07:00:00+00:00'}], 'touches': [], 'touch_attributions': []}
+        self.rpc = []
     def __call__(self, method, path, params=None, body=None, prefer=None, timeout=90, base=None, key=None):
         if base:                                  # intelligence_dashboard lookups
             return [{'id': 'c0', 'company_name': 'Wellstar', 'salesforce_account_id': '001AAA000000001', 'rc_account_id': 'RC0000001', 'organisation_type': 'HS', 'revenue_estimate_usd': 5e9, 'specialty_type': ['Oncology'], 'is_provider': True}]
@@ -32,6 +34,10 @@ class FakeRest:
             rows = self.db.get(path, []); off = int((params or {}).get('offset', 0)); lim = int((params or {}).get('limit', 1000))
             return rows[off:off+lim]
         if path in self.fail_tables: raise urllib.error.HTTPError('u', 500, 'boom', {}, None)
+        if path.startswith('rpc/'):
+            self.rpc.append((path, body))
+            if path == 'rpc/attribute_touches': return [{'inserted_primary': len(body['p_touch_ids']), 'inserted_context': 0, 'superseded': 0, 'campaign_ids': ['uuid-101']}]
+            return [{'rows_upserted': 1, 'rows_deleted': 0}]
         self.writes.append((method, path, params, body))
         if COLS and method == 'POST' and path in COLS:
             for r in body:
@@ -45,9 +51,10 @@ class FakeRest:
         return []
 
 class FakeSoql:
-    def __init__(self): self.calls = []; self.leads = {}; self.stamps = []
+    def __init__(self): self.calls = []; self.leads = {}; self.stamps = []; self.tasks = []
     def __call__(self, q, paginate=True, **kw):
         self.calls.append(q)
+        if 'FROM Task WHERE CreatedDate' in q: return {'records': list(self.tasks)}
         if 'GROUP BY Campaign__c' in q: return {'records': [{'Campaign__c': s, 'expr0': n} for s, n in self.stamps]}
         if q.startswith('SELECT Id FROM Lead WHERE Campaign__c'): return {'records': [{'Id': i} for i in ('00QUNREG1', '00QUNREG2')]}
         if 'FROM Lead WHERE Id IN' in q:
@@ -92,7 +99,7 @@ class HistoryWriter(unittest.TestCase):
         m = self.writes('meetings')[0][0]
         self.assertEqual((m['meeting_id'], m['generated_by'], m['seller'], m['booked_via'], m['opp_stage'], m['opp_amount'], m['is_done']), ('00QA2:2026-09-10', 'Soham Saha', 'Matt Bates', 'sfdc_field', 'S2', 250000.0, False))
         a = self.writes('meeting_attributions')[0][0]; self.assertTrue(a['is_primary'] and a['in_window']); self.assertEqual(a['rule'], 'member_in_window')
-        s = self.writes('campaign_metric_snapshots')[0][0]; self.assertEqual((s['snapshot_kind'], s['definition_version'], s['meetings'], s['is_final']), ('sync', 2, 1, False))
+        s = self.writes('campaign_metric_snapshots')[0][0]; self.assertEqual((s['snapshot_kind'], s['definition_version'], s['meetings'], s['is_final']), ('sync', 3, 1, False))
         self.assertTrue(any(w[0]['source'] == 'dashboard_sync' for w in self.writes('sync_runs')))
         self.assertIn('history: +2 members, +1 meetings', H.summary()); self.assertEqual(H._summary['stats']['errors'], 0)
         self.assertTrue(os.path.exists(os.path.join(self.tmp, 'history_state.json.gz')))
@@ -148,6 +155,32 @@ class HistoryWriter(unittest.TestCase):
 
     def test_disabled_is_noop(self):
         H._summary['enabled'] = False; self.run_sync(); self.assertEqual(self.rest.writes, [])
+
+    def test_touches_step_runs_last_and_processes_new_member_backlog(self):
+        self.soql.tasks = [{'Id': '00TNEW1', 'Subject': '[Nooks Call] Outbound', 'TaskSubtype': 'Call', 'Type': 'Call', 'WhoId': '00QA1', 'OwnerId': '005X', 'Owner': {'Name': 'Soham Saha'},
+                            'CreatedDate': '2026-09-19T08:10:00.000+0000', 'ActivityDate': '2026-09-19', 'CallDisposition': 'Connected', 'CallDurationInSeconds': 95, 'CallType': 'Outbound', 'Not_Relevant__c': False},
+                           {'Id': '00TESC', 'Subject': '[RC] ESCALATION x', 'WhoId': None, 'CreatedDate': '2026-09-19T08:11:00.000+0000', 'ActivityDate': '2026-09-19'}]
+        self.rest.db['touches'] = [{'touch_id': '00TOLD1'}]      # an older touch of a lead that is being enrolled now
+        self.run_sync()
+        t = self.writes('touches')[0][0]
+        self.assertEqual((t['touch_id'], t['channel'], t['tool'], t['is_connect'], t['is_conversation'], t['is_counted_by_dashboard'], t['dashboard_cards'], t['owner_person_key'], t['definition_version'], t['occurred_at']), ('00TNEW1', 'call', 'nooks', True, True, True, ['call'], 'soham_saha', 3, '2026-09-19T08:10:00Z'))
+        self.assertEqual(len(self.writes('touches')[0]), 1)                                  # escalation dropped
+        attributed = [b['p_touch_ids'] for p, b in self.rest.rpc if p == 'rpc/attribute_touches']
+        self.assertIn(['00TNEW1'], attributed)                                               # new touch attributed
+        self.assertTrue(any('00TOLD1' in ids for ids in attributed), attributed)             # backlog: existing touch of the new member re-evaluated
+        self.assertTrue(any(p == 'rpc/refresh_campaign_lead_activity_for_touches' and set(b['p_touch_ids']) >= {'00TNEW1', '00TOLD1'} for p, b in self.rest.rpc), self.rest.rpc)
+        wm = [b for m, p, _, b in self.rest.writes if p == 'touch_ingest_state'][-1][0]
+        self.assertEqual(wm['watermark_created'], '2026-09-19T08:11:00Z')                     # advanced over the whole fetched slice (incl. skipped rows)
+        self.assertEqual(H._summary['stats']['errors'], 0); self.assertIn('touches +1 of 2 seen', H.summary())
+        self.assertEqual(H._state.get('touch_backlog'), {'members': []})
+        # order: touches is the last step — its sync_runs row is patched after everything
+        self.assertEqual(H.T.status['new'], 1)
+
+    def test_touches_without_watermark_is_an_error_not_a_guess(self):
+        self.rest.db['touch_ingest_state'] = []
+        self.run_sync()
+        self.assertFalse(self.writes('touches')); self.assertFalse(self.soql.tasks)
+        self.assertTrue(any('no watermark' in e for e in H._errors), H._errors); self.assertIn('touches ERROR', H.summary())
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
