@@ -30,6 +30,7 @@ from datetime import datetime, date, timedelta, timezone
 
 import definitions as D
 import touches as T
+import quarter_close as Q
 
 IST = timezone(timedelta(hours=5, minutes=30))
 _BATCH = 500                      # SOQL IN-clause size (matches app.py)
@@ -291,6 +292,7 @@ def flush(app_version=None):
                  ('membership', lambda: _sync_membership(run_id, pending, stats)),
                  ('meetings', lambda: _sync_meetings(run_id, pending, stats)),
                  ('snapshots', lambda: _sync_snapshots(run_id, pending, stats)),
+                 ('quarter_close', lambda: Q.run(run_id, stats, _this)),         # first sync after a quarter ends: freeze it (no-op otherwise)
                  ('reconcile', lambda: _reconcile(run_id, pending, stats)),
                  ('touches', lambda: T.ingest(run_id, stats, _this, deadline=t0 + budget))]   # last: P0 facts first, touches catch up via watermark
         T.status['skipped'] = 'not run this sync'
@@ -317,7 +319,7 @@ def flush(app_version=None):
             _log(f'could not close run: {e}')
         _summary['text'] = (f"history: +{stats['members_new']} members, +{stats['meetings_new']} meetings ({stats['meetings_updated']} updated), "
                             f"{stats['snapshots']} snapshots, {stats['unregistered_new']} new unregistered, {stats['mismatches']} mismatches, "
-                            f"{stats['dq']} dq, {stats['errors']} errors, {stats['seconds']}s; touches {touch_summary()}")
+                            f"{stats['dq']} dq, {stats['errors']} errors, {stats['seconds']}s; touches {touch_summary()}" + (f"; {Q.summary()}" if Q.summary() else ''))
         _summary['stats'] = stats; _summary['run_id'] = run_id
         _log(_summary['text'])
 
@@ -758,7 +760,8 @@ def init_app(app, *, soql, load_campaigns, norm_sdr, data_dir, sf_base_url='', c
         except Exception: pass
         return {'enabled': True, 'url': url, 'summary': _summary, 'pending_campaigns': pend, 'queued_batches': qn, 'last_ok_at': _last_ok_at,
                 'state_campaigns': len((_state or {}).get('campaigns', {})), 'definitions_version': D.DEFINITION_VERSION, 'definitions_hash': D.definitions_hash(),
-                'touches': dict(T.status), 'touch_backlog': {k: len(v) for k, v in ((_state or {}).get('touch_backlog') or {}).items()}}
+                'touches': dict(T.status), 'touch_backlog': {k: len(v) for k, v in ((_state or {}).get('touch_backlog') or {}).items()},
+                'quarter_close': dict(Q.status), 'quarters_closed': list((_state or {}).get('quarter_closed') or [])}
 
     if require_admin:
         @app.route('/api/history/flush', methods=['POST'])
