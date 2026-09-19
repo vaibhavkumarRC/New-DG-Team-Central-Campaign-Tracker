@@ -27,7 +27,8 @@ class FakeRest:
             {'person_key': 'soham_saha', 'display_name': 'Soham Saha', 'aliases': ['Soham', 'Soham Saha']}], 'dq_findings': [], 'metric_definitions': [{'version': 2}, {'version': 3}],
             'touch_ingest_state': [{'watermark_created': '2026-09-19T06:54:52+00:00', 'updated_at': '2026-09-19T07:00:00+00:00'}], 'touches': [], 'touch_attributions': [],
             'quarter_closes': [{'quarter': q, 'closed_at': 'x'} for q in ('2025-Q4', '2026-Q1', '2026-Q2', '2026-Q3', '2026-Q4', '2027-Q1', '2027-Q2', '2027-Q3', '2027-Q4')],
-            'lead_history_ingest_state': [{'watermark_created': '2026-09-19T07:16:09+00:00'}], 'lead_field_changes': []}
+            'lead_history_ingest_state': [{'watermark_created': '2026-09-19T07:16:09+00:00'}], 'lead_field_changes': [],
+            'opp_ingest_state': [{'watermark_modified': '2026-09-19T07:00:00+00:00', 'watermark_history': '2026-09-19T07:00:00+00:00'}], 'opportunities': [], 'opportunity_stage_history': []}
         self.rpc = []
     def __call__(self, method, path, params=None, body=None, prefer=None, timeout=90, base=None, key=None):
         if base:                                  # intelligence_dashboard lookups
@@ -59,7 +60,7 @@ class FakeSoql:
     def __call__(self, q, paginate=True, **kw):
         self.calls.append(q)
         if 'FROM Task WHERE CreatedDate' in q: return {'records': list(self.tasks)}
-        if 'FROM LeadHistory' in q or 'IsDeleted = true' in q: return {'records': []}
+        if 'FROM LeadHistory' in q or 'IsDeleted = true' in q or 'FROM OpportunityHistory' in q or q.startswith('SELECT Id, Name, AccountId'): return {'records': []}
         if 'GROUP BY Campaign__c' in q: return {'records': [{'Campaign__c': s, 'expr0': n} for s, n in self.stamps]}
         if q.startswith('SELECT Id FROM Lead WHERE Campaign__c'): return {'records': [{'Id': i} for i in ('00QUNREG1', '00QUNREG2')]}
         if 'FROM Lead WHERE Id IN' in q:

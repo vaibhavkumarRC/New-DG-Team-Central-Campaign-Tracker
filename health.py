@@ -13,6 +13,7 @@ Checks (thresholds per Vaibhav, 19 Sep 2026):
   • Touches (P1)           ingest error → ❌; not run / stale > 30 h / partial (cap or budget) → ⚠️
   • Quarter close (P1)     error → ❌; ended quarter not closed → ⚠️
   • Lead history (P1)      same rules as Touches
+  • Opportunities (P1)     same rules as Touches
   • Backups                on-volume copy + GitHub push per file → ❌ on failure
   • Supabase keys          live probe of intelligence_dashboard (SUPABASE_SERVICE_KEY)
                            and dg-campaign-history (HISTORY_SUPABASE_KEY) → ❌ on 401/other
@@ -160,6 +161,22 @@ def build(*, cache=None, weekly=None, coldcalls=None, history=None, backup_statu
                 okbits.append(f"Lead history +{ls.get('new', 0)}")
     except Exception as e:
         issue(f'⚠️ health check (lead history) crashed: {e}')
+
+    # 4e. Opportunities (P1 part 3)
+    try:
+        if history is not None and getattr(history, '_summary', {}).get('enabled'):
+            os_ = getattr(getattr(history, 'OP', None), 'status', None) or {}
+            age = _age_h(os_.get('last_ok_at'))
+            if os_.get('error'):
+                issue(f"❌ Opportunities: {os_['error'][:260]}")
+            elif not os_.get('last_ok_at'):
+                issue(f"⚠️ Opportunities: not ingested this sync ({os_.get('skipped') or 'step did not run'})")
+            elif age is not None and age > TOUCHES_STALE_H:
+                issue(f'⚠️ Opportunities: last successful ingest {age} h ago')
+            else:
+                okbits.append(f"Opps +{os_.get('new', 0)}")
+    except Exception as e:
+        issue(f'⚠️ health check (opportunities) crashed: {e}')
 
     # 4c. Quarter close (P1 part 4) — overdue or failed closes must be visible
     try:

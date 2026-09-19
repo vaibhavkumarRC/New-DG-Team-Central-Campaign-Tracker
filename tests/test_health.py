@@ -14,7 +14,8 @@ class HealthBlock(unittest.TestCase):
         self.hist = types.SimpleNamespace(_summary={'enabled': True, 'stats': {'errors': 0}}, _errors=[], _last_ok_at=iso(1), _queue_path=lambda: os.path.join(self.tmp, 'q.jsonl'),
                                           T=types.SimpleNamespace(status={'last_ok_at': iso(1), 'watermark': iso(2), 'error': None, 'backlog': False, 'new': 12, 'skipped': None}),
                                           Q=types.SimpleNamespace(status={'last_closed': '2026-Q2', 'due': '2026-Q2', 'closed_this_run': None, 'error': None}),
-                                          LH=types.SimpleNamespace(status={'last_ok_at': iso(1), 'error': None, 'backlog': False, 'new': 4, 'skipped': None}))
+                                          LH=types.SimpleNamespace(status={'last_ok_at': iso(1), 'error': None, 'backlog': False, 'new': 4, 'skipped': None}),
+                                          OP=types.SimpleNamespace(status={'last_ok_at': iso(1), 'error': None, 'new': 1, 'skipped': None}))
         self.backup = {'stamp': 'x', 'local': {'meeting_ledger.json': 'ok', 'campaigns.json': 'ok', 'segments.json': 'ok'}, 'github': {'meeting_ledger.json': 'ok', 'campaigns.json': 'ok', 'segments.json': 'ok'}}
         os.environ['SUPABASE_SERVICE_KEY'] = 'k'; os.environ['HISTORY_SUPABASE_URL'] = 'https://h.example'; os.environ['HISTORY_SUPABASE_KEY'] = 'k2'
     def run_(self, probe=lambda url, key: None):
@@ -22,7 +23,7 @@ class HealthBlock(unittest.TestCase):
 
     def test_all_ok(self):
         ok, lines = self.run_(); self.assertTrue(ok); self.assertEqual(len(lines), 1)
-        for w in ('Sync', 'Weekly Review', 'Cold calls', 'History', 'Touches +12', 'Lead history +4', 'Backups 3/3', 'Supabase keys'): self.assertIn(w, lines[0])
+        for w in ('Sync', 'Weekly Review', 'Cold calls', 'History', 'Touches +12', 'Lead history +4', 'Opps +1', 'Backups 3/3', 'Supabase keys'): self.assertIn(w, lines[0])
 
     def test_stale_weekly_with_error_text(self):
         self.weekly._WR = {'fetched_at': iso(14 * 24), 'error': 'refresh failed 2026-09-18: HTTP Error 401: Unauthorized'}
