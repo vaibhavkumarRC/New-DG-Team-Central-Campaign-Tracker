@@ -29,6 +29,7 @@ import urllib.request, urllib.parse, urllib.error
 from datetime import datetime, date, timedelta, timezone
 
 import definitions as D
+import touches as T
 
 IST = timezone(timedelta(hours=5, minutes=30))
 _BATCH = 500                      # SOQL IN-clause size (matches app.py)
@@ -123,7 +124,7 @@ def _insert(table, rows, on_conflict=None, prefer='resolution=ignore-duplicates'
         for i in range(0, len(grp), _POST_BATCH):
             chunk = grp[i:i + _POST_BATCH]
             params = {'on_conflict': on_conflict} if on_conflict else {}
-            if count_col and not returning: params['select'] = count_col
+            if count_col: params['select'] = count_col          # with returning=True: only that column comes back
             pref = prefer + (',return=representation' if (returning or count_col) else ',return=minimal')
             try:
                 res = _http('POST', table, params or None, chunk, prefer=pref)
@@ -273,7 +274,8 @@ def flush(app_version=None):
     t0 = time.time(); budget = float(_cfg.get('budget', 420))
     _errors.clear()
     stats = {'members_new': 0, 'members_removed': 0, 'meetings_new': 0, 'meetings_updated': 0, 'attributions': 0, 'snapshots': 0,
-             'campaigns_new': 0, 'campaigns_changed': 0, 'unregistered_new': 0, 'dq': 0, 'queued_replayed': 0, 'mismatches': 0}
+             'campaigns_new': 0, 'campaigns_changed': 0, 'unregistered_new': 0, 'dq': 0, 'queued_replayed': 0, 'mismatches': 0,
+             'touches_seen': 0, 'touches_new': 0, 'touches_attributed': 0, 'touches_superseded': 0, 'touches_rollup': 0}
     with _lock:
         pending = dict(_pending); _pending.clear()
     _flush_pending.clear(); _flush_pending.update(pending)
@@ -289,9 +291,12 @@ def flush(app_version=None):
                  ('membership', lambda: _sync_membership(run_id, pending, stats)),
                  ('meetings', lambda: _sync_meetings(run_id, pending, stats)),
                  ('snapshots', lambda: _sync_snapshots(run_id, pending, stats)),
-                 ('reconcile', lambda: _reconcile(run_id, pending, stats))]
+                 ('reconcile', lambda: _reconcile(run_id, pending, stats)),
+                 ('touches', lambda: T.ingest(run_id, stats, _this, deadline=t0 + budget))]   # last: P0 facts first, touches catch up via watermark
+        T.status['skipped'] = 'not run this sync'
         for name, fn in steps:
             if time.time() - t0 > budget:
+                if name == 'touches': T.status['skipped'] = 'flush budget exhausted before the touches step; catches up next sync'
                 _err(f'time budget exhausted before step {name}; remaining steps skipped (facts stay pending on disk state)'); break
             try:
                 fn()
@@ -312,11 +317,20 @@ def flush(app_version=None):
             _log(f'could not close run: {e}')
         _summary['text'] = (f"history: +{stats['members_new']} members, +{stats['meetings_new']} meetings ({stats['meetings_updated']} updated), "
                             f"{stats['snapshots']} snapshots, {stats['unregistered_new']} new unregistered, {stats['mismatches']} mismatches, "
-                            f"{stats['dq']} dq, {stats['errors']} errors, {stats['seconds']}s")
+                            f"{stats['dq']} dq, {stats['errors']} errors, {stats['seconds']}s; touches {touch_summary()}")
         _summary['stats'] = stats; _summary['run_id'] = run_id
         _log(_summary['text'])
 
 def summary(): return _summary['text']
+
+def touch_summary():
+    st = T.status
+    if st.get('error'): return f"ERROR {st['error'][:120]}"
+    if st.get('skipped') and not st.get('last_ok_at'): return f"skipped ({st['skipped'][:80]})"
+    wm = st.get('watermark')
+    try: wm_txt = datetime.fromisoformat(wm.replace('Z', '+00:00')).astimezone(IST).strftime('%d %b %H:%M IST')
+    except Exception: wm_txt = str(wm)
+    return f"+{st.get('new', 0)} of {st.get('seen', 0)} seen, {st.get('attributed', 0)} attributed, watermark {wm_txt}" + (' — BACKLOG (cap hit, catching up)' if st.get('backlog') else '') + (f" — partial: {st['skipped']}" if st.get('skipped') else '')
 
 def _start_run(app_version, n):
     rows = _insert('sync_runs', [{'source': 'dashboard_sync', 'app_version': app_version or os.environ.get('RAILWAY_GIT_COMMIT_SHA', '')[:12] or 'local', 'campaigns_processed': n, 'notes': f'definitions v{D.DEFINITION_VERSION} {D.definitions_hash()}'}], returning=True)
@@ -385,6 +399,7 @@ def _sync_campaigns(run_id, stats):
             _insert('campaign_config_history', [{'campaign_id': e['db_id'], 'field': k, 'old_value': None if o is None else str(o), 'new_value': None if n is None else str(n), 'changed_by': 'dashboard', 'sync_run_id': run_id} for k, o, n in changes])
             if any(k in ('start_date', 'end_date') for k, _, _ in changes) and old.get('start_date'):
                 _dq(run_id, 'window_edit', 'info', 'campaign', e['db_id'], f"{e['sf_name']}: " + '; '.join(f'{k} {o}→{n}' for k, o, n in changes if k in ('start_date','end_date')) + f' at {_iso()}', stats)
+                T.note_window_change(_state, e['db_id'], old.get('start_date'), old.get('end_date'), cfg.get('start_date'), cfg.get('end_date'))
             e['config'] = {**old, **cfg}; stats['campaigns_changed'] += 1
         if e.get('deleted'):
             _patch('campaigns', {'id': f'eq.{e["db_id"]}'}, {'deleted_at': None}); e['deleted'] = False
@@ -479,6 +494,7 @@ def _write_members(run_id, e, ids, source, stats):
     _insert('leads', lead_rows, on_conflict='lead_id', prefer='resolution=merge-duplicates')
     n = _insert('campaign_leads', rows, on_conflict='campaign_id,lead_id', count_col='lead_id')
     e['leads'].extend(ids); stats['members_new'] += n
+    T.note_members(_state, e['db_id'], [lid for lid in ids if lid in leads])   # their existing touches get attributed in the touches step
 
 def _lead_row(r, now):
     return {'lead_id': r['Id'], 'last_seen_at': now, 'name': r.get('Name'), 'current_title': r.get('Title'), 'current_company': r.get('Company'),
@@ -718,11 +734,14 @@ def _reconcile(run_id, pending, stats):
         _insert('reconciliations', [{'sync_run_id': run_id, 'campaign_id': None, 'metric': 'summary', 'dashboard_value': len(rows), 'history_value': sum(1 for r in rows if r['matched']), 'matched': all(r['matched'] for r in rows)}])
 
 # ─────────────────────────────────────────────────────────────── init ──
+import sys as _sys
+_this = _sys.modules[__name__]        # handed to touches.ingest (REST helpers, deps, state) — no circular import
 def init_app(app, *, soql, load_campaigns, norm_sdr, data_dir, sf_base_url='', cache=None, require_admin=None):
     global _summary
     _deps.update({'soql': soql, 'load_campaigns': load_campaigns, 'norm_sdr': norm_sdr, 'cache': cache})
     url = os.environ.get('HISTORY_SUPABASE_URL', '').strip().rstrip('/'); key = os.environ.get('HISTORY_SUPABASE_KEY', '').strip()
     _cfg.update({'url': url, 'key': key, 'data_dir': data_dir, 'budget': os.environ.get('HISTORY_TIME_BUDGET_S', '600'), 'max_unreg': os.environ.get('HISTORY_MAX_UNREG_PER_RUN', '20'),
+                 'touch_budget': os.environ.get('HISTORY_TOUCHES_BUDGET_S', '240'), 'touch_max_rows': os.environ.get('HISTORY_TOUCHES_MAX_ROWS', '20000'),
                  'intel_url': os.environ.get('SUPABASE_URL', 'https://gvszpwyajzehqsofxzou.supabase.co').rstrip('/'), 'intel_key': os.environ.get('SUPABASE_SERVICE_KEY', '').strip()})
     _summary['enabled'] = bool(url and key)
     if not _summary['enabled']:
@@ -738,7 +757,8 @@ def init_app(app, *, soql, load_campaigns, norm_sdr, data_dir, sf_base_url='', c
         try: qn = sum(1 for _ in open(_queue_path()))
         except Exception: pass
         return {'enabled': True, 'url': url, 'summary': _summary, 'pending_campaigns': pend, 'queued_batches': qn, 'last_ok_at': _last_ok_at,
-                'state_campaigns': len((_state or {}).get('campaigns', {})), 'definitions_version': D.DEFINITION_VERSION, 'definitions_hash': D.definitions_hash()}
+                'state_campaigns': len((_state or {}).get('campaigns', {})), 'definitions_version': D.DEFINITION_VERSION, 'definitions_hash': D.definitions_hash(),
+                'touches': dict(T.status), 'touch_backlog': {k: len(v) for k, v in ((_state or {}).get('touch_backlog') or {}).items()}}
 
     if require_admin:
         @app.route('/api/history/flush', methods=['POST'])

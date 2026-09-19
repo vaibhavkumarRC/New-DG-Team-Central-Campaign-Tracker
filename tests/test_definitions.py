@@ -47,10 +47,37 @@ class DefinitionsMatchDeployed(unittest.TestCase):
 
     def test_version_hash_guard(self):
         # If this fails, definitions changed: bump DEFINITION_VERSION + CHANGELOG, then update EXPECTED.
-        EXPECTED = {2: D.definitions_hash()}   # pinned at first run; see test output
-        self.assertEqual(D.DEFINITION_VERSION, 2)
+        self.assertEqual(D.DEFINITION_VERSION, 3)   # v3 = v2 + touch rules (no dashboard rule changed)
         self.assertIn(D.DEFINITION_VERSION, D.CHANGELOG)
         self.assertEqual(len(D.definitions_hash()), 16)
+
+class TouchClassification(unittest.TestCase):
+    """classify_touch must reproduce the 19 Sep backfill (staged rows carry the expected labels)."""
+    def test_fixture_from_backfill(self):
+        import json
+        fx = os.path.join(HERE, 'fixtures', 'touch_subjects.json')
+        rows = json.load(open(fx))
+        self.assertGreater(len(rows), 40)
+        for r in rows:
+            got = D.classify_touch(r['subject'], r['task_subtype'], r['type'])
+            exp = r['expected']
+            self.assertEqual(list(got) if got else None, exp[:3] if exp else None, r['subject'])
+            self.assertEqual(D.dashboard_cards(r['subject']), exp[3] if exp else [], r['subject'])
+
+    def test_cards_mirror_card_soql_case_insensitively(self):
+        # SOQL LIKE is case-insensitive; dashboard_cards must be too, and must ignore what the row "is"
+        self.assertEqual(D.dashboard_cards('[nooks call] x'), ['call']); self.assertEqual(D.dashboard_cards('Prep for forum'), ['call'])
+        self.assertEqual(D.dashboard_cards('x [Nooks Call] y'), [])            # LIKE '[Nooks Call]%' is anchored at the start
+        self.assertEqual(D.dashboard_cards('SMARTLEAD ping'), ['email']); self.assertEqual(D.dashboard_cards('via outreach'), ['email'])
+        self.assertEqual(D.dashboard_cards('[Orum] Outreach'), ['call', 'email'])
+        self.assertEqual(D.dashboard_cards('heyreach - message_sent'), ['linkedin']); self.assertEqual(D.dashboard_cards(None), [])
+
+    def test_touch_flags(self):
+        self.assertEqual(D.touch_flags('call', True, '[Nooks Call] x', 'Connected', 75), (True, True, False))
+        self.assertEqual(D.touch_flags('call', True, '[Nooks Call] x', 'Answered - Booked Meeting', 10), (True, False, True))
+        self.assertEqual(D.touch_flags('call', True, '[Orum] x', 'Connected', 75), (False, False, False))   # connects are Nooks-only, as on the card
+        self.assertEqual(D.touch_flags('call', False, 'call', 'Connected', 75), (False, False, False))
+        self.assertEqual(D.touch_flags('email', True, 'Smartlead', None, None), (False, False, False))
 
 if __name__ == '__main__':
     unittest.main()
