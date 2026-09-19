@@ -25,13 +25,15 @@ class FakeRest:
         self.writes = []; self.fail_tables = set(); self.next_id = 100
         self.db = {'campaigns': [], 'campaign_leads': [], 'meetings': [], 'meeting_attributions': [], 'v_campaign_latest_snapshot': [], 'people': [
             {'person_key': 'soham_saha', 'display_name': 'Soham Saha', 'aliases': ['Soham', 'Soham Saha']}], 'dq_findings': [], 'metric_definitions': [{'version': 2}, {'version': 3}],
-            'touch_ingest_state': [{'watermark_created': '2026-09-19T06:54:52+00:00', 'updated_at': '2026-09-19T07:00:00+00:00'}], 'touches': [], 'touch_attributions': []}
+            'touch_ingest_state': [{'watermark_created': '2026-09-19T06:54:52+00:00', 'updated_at': '2026-09-19T07:00:00+00:00'}], 'touches': [], 'touch_attributions': [],
+            'quarter_closes': [{'quarter': q, 'closed_at': 'x'} for q in ('2025-Q4', '2026-Q1', '2026-Q2', '2026-Q3', '2026-Q4', '2027-Q1', '2027-Q2', '2027-Q3', '2027-Q4')]}
         self.rpc = []
     def __call__(self, method, path, params=None, body=None, prefer=None, timeout=90, base=None, key=None):
         if base:                                  # intelligence_dashboard lookups
             return [{'id': 'c0', 'company_name': 'Wellstar', 'salesforce_account_id': '001AAA000000001', 'rc_account_id': 'RC0000001', 'organisation_type': 'HS', 'revenue_estimate_usd': 5e9, 'specialty_type': ['Oncology'], 'is_provider': True}]
         if method == 'GET':
             rows = self.db.get(path, []); off = int((params or {}).get('offset', 0)); lim = int((params or {}).get('limit', 1000))
+            if path == 'quarter_closes': rows = [r for r in rows if r['quarter'] == (params or {}).get('quarter', '')[3:]]
             return rows[off:off+lim]
         if path in self.fail_tables: raise urllib.error.HTTPError('u', 500, 'boom', {}, None)
         if path.startswith('rpc/'):

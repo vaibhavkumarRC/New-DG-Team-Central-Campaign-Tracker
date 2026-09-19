@@ -11,6 +11,7 @@ Checks (thresholds per Vaibhav, 19 Sep 2026):
   • Cold-calls cache       age > 72 h → ⚠️; last refresh error text
   • History writer         errors / queued batches / last ok > 24 h; disabled → ℹ️
   • Touches (P1)           ingest error → ❌; not run / stale > 30 h / partial (cap or budget) → ⚠️
+  • Quarter close (P1)     error → ❌; ended quarter not closed → ⚠️
   • Backups                on-volume copy + GitHub push per file → ❌ on failure
   • Supabase keys          live probe of intelligence_dashboard (SUPABASE_SERVICE_KEY)
                            and dg-campaign-history (HISTORY_SUPABASE_KEY) → ❌ on 401/other
@@ -140,6 +141,19 @@ def build(*, cache=None, weekly=None, coldcalls=None, history=None, backup_statu
                 okbits.append(f"Touches +{ts.get('new', 0)}")
     except Exception as e:
         issue(f'⚠️ health check (touches) crashed: {e}')
+
+    # 4c. Quarter close (P1 part 4) — overdue or failed closes must be visible
+    try:
+        if history is not None and getattr(history, '_summary', {}).get('enabled'):
+            qs = getattr(getattr(history, 'Q', None), 'status', None) or {}
+            if qs.get('error'):
+                issue(f"❌ Quarter close: {qs['error'][:260]}")
+            elif qs.get('due') and qs.get('last_closed') != qs.get('due'):
+                issue(f"⚠️ Quarter close: {qs['due']} has ended but is not closed yet (step did not complete this sync)")
+            elif qs.get('closed_this_run'):
+                okbits.append(f"Quarter {qs['closed_this_run']['quarter']} closed")
+    except Exception as e:
+        issue(f'⚠️ health check (quarter close) crashed: {e}')
 
     # 5. Backups (on-volume + GitHub)
     try:

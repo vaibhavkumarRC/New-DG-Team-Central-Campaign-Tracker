@@ -12,7 +12,8 @@ class HealthBlock(unittest.TestCase):
         self.weekly = types.SimpleNamespace(_WR={'fetched_at': iso(3), 'error': None})
         self.cold = types.SimpleNamespace(_CC={'fetched_at': iso(20), 'error': None})
         self.hist = types.SimpleNamespace(_summary={'enabled': True, 'stats': {'errors': 0}}, _errors=[], _last_ok_at=iso(1), _queue_path=lambda: os.path.join(self.tmp, 'q.jsonl'),
-                                          T=types.SimpleNamespace(status={'last_ok_at': iso(1), 'watermark': iso(2), 'error': None, 'backlog': False, 'new': 12, 'skipped': None}))
+                                          T=types.SimpleNamespace(status={'last_ok_at': iso(1), 'watermark': iso(2), 'error': None, 'backlog': False, 'new': 12, 'skipped': None}),
+                                          Q=types.SimpleNamespace(status={'last_closed': '2026-Q2', 'due': '2026-Q2', 'closed_this_run': None, 'error': None}))
         self.backup = {'stamp': 'x', 'local': {'meeting_ledger.json': 'ok', 'campaigns.json': 'ok', 'segments.json': 'ok'}, 'github': {'meeting_ledger.json': 'ok', 'campaigns.json': 'ok', 'segments.json': 'ok'}}
         os.environ['SUPABASE_SERVICE_KEY'] = 'k'; os.environ['HISTORY_SUPABASE_URL'] = 'https://h.example'; os.environ['HISTORY_SUPABASE_KEY'] = 'k2'
     def run_(self, probe=lambda url, key: None):
@@ -59,6 +60,14 @@ class HealthBlock(unittest.TestCase):
         ok, lines = self.run_(); self.assertTrue(any('Touches: partial' in l and 'row cap' in l for l in lines), lines)
         self.hist.T.status = {'last_ok_at': iso(1), 'error': None, 'skipped': None, 'backlog': False, 'new': 0}
         ok, lines = self.run_(); self.assertTrue(ok, lines); self.assertIn('Touches +0', lines[0])
+
+    def test_quarter_close_states(self):
+        self.hist.Q.status = {'last_closed': '2026-Q2', 'due': '2026-Q3', 'closed_this_run': None, 'error': None}
+        ok, lines = self.run_(); self.assertFalse(ok); self.assertTrue(any('Quarter close: 2026-Q3 has ended but is not closed' in l for l in lines), lines)
+        self.hist.Q.status = {'last_closed': '2026-Q3', 'due': '2026-Q3', 'closed_this_run': {'quarter': '2026-Q3'}, 'error': None}
+        ok, lines = self.run_(); self.assertTrue(ok, lines); self.assertIn('Quarter 2026-Q3 closed', lines[0])
+        self.hist.Q.status = {'last_closed': None, 'due': '2026-Q3', 'closed_this_run': None, 'error': 'HTTP 500 boom'}
+        ok, lines = self.run_(); self.assertTrue(any('❌ Quarter close' in l and '500' in l for l in lines), lines)
 
 if __name__ == '__main__':
     unittest.main()
