@@ -912,7 +912,7 @@ _soql_cli_fallback_lock = threading.Lock()
 
 _cli_semaphore = threading.Semaphore(4)  # limit concurrent sf CLI processes
 
-def _soql_via_cli(query):
+def _soql_via_cli(query, all_rows=False):
     """Execute SOQL using 'sf data query' subprocess.
     Used as fallback when REST API auth is broken (token redacted by newer SF CLI).
     Uses a semaphore to cap concurrent Node.js (sf) processes on Railway."""
@@ -930,7 +930,7 @@ def _soql_via_cli(query):
                 ['sf', 'data', 'query',
                  '--file', tmp_path,
                  '--target-org', SF_ORG,
-                 '--json'],
+                 '--json'] + (['--all-rows'] if all_rows else []),
                 capture_output=True, text=True, timeout=90, env=env
             )
         # SF CLI sometimes emits warnings/preamble before the JSON blob
@@ -960,12 +960,15 @@ def _soql_via_cli(query):
     return None
 
 
-def soql(query, retries=2, paginate=True):
+def soql(query, retries=2, paginate=True, all_rows=False):
     """Run a SOQL query via Salesforce REST API — fast, no sf CLI subprocess.
     paginate=True  → follows nextRecordsUrl to retrieve all pages (needed for
                      large Lead ID queries that exceed the 2000-row page size).
     paginate=False → single-page only (use for Task COUNT/WhoId queries to avoid
                      excessive API calls that trigger Salesforce rate limits).
+
+    all_rows=True  → queryAll endpoint (includes recycle-bin rows; history layer
+                     uses it to read merged leads' MasterRecordId). Default off.
 
     Falls back to 'sf data query' CLI subprocess automatically when REST auth
     returns a redacted/invalid token (SF CLI v2.x behaviour)."""
@@ -973,7 +976,7 @@ def soql(query, retries=2, paginate=True):
 
     # Fast path: if we already know REST is broken, go straight to CLI
     if _soql_use_cli_fallback:
-        return _soql_via_cli(query)
+        return _soql_via_cli(query, all_rows)
 
     import urllib.error as _urllib_err
     for attempt in range(retries):
@@ -982,11 +985,11 @@ def soql(query, retries=2, paginate=True):
             print('[SOQL] No access token — switching to CLI fallback')
             with _soql_cli_fallback_lock:
                 _soql_use_cli_fallback = True
-            return _soql_via_cli(query)
+            return _soql_via_cli(query, all_rows)
         try:
             all_records = []
             total_size  = 0
-            url = f"{instance_url}/services/data/v59.0/query?q={urllib.parse.quote(query)}"
+            url = f"{instance_url}/services/data/v59.0/{'queryAll' if all_rows else 'query'}?q={urllib.parse.quote(query)}"
             while url:
                 req = _urllib_req.Request(url, headers={'Authorization': f'Bearer {token}'})
                 with _urllib_req.urlopen(req, timeout=30) as resp:
@@ -1006,7 +1009,7 @@ def soql(query, retries=2, paginate=True):
                     _sf_token_cache['token'] = None
                 with _soql_cli_fallback_lock:
                     _soql_use_cli_fallback = True
-                return _soql_via_cli(query)
+                return _soql_via_cli(query, all_rows)
             print(f'[SOQL] HTTP error (attempt {attempt+1}): {e}')
             with _sf_token_lock:
                 _sf_token_cache['token'] = None

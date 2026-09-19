@@ -12,6 +12,7 @@ Checks (thresholds per Vaibhav, 19 Sep 2026):
   • History writer         errors / queued batches / last ok > 24 h; disabled → ℹ️
   • Touches (P1)           ingest error → ❌; not run / stale > 30 h / partial (cap or budget) → ⚠️
   • Quarter close (P1)     error → ❌; ended quarter not closed → ⚠️
+  • Lead history (P1)      same rules as Touches
   • Backups                on-volume copy + GitHub push per file → ❌ on failure
   • Supabase keys          live probe of intelligence_dashboard (SUPABASE_SERVICE_KEY)
                            and dg-campaign-history (HISTORY_SUPABASE_KEY) → ❌ on 401/other
@@ -141,6 +142,24 @@ def build(*, cache=None, weekly=None, coldcalls=None, history=None, backup_statu
                 okbits.append(f"Touches +{ts.get('new', 0)}")
     except Exception as e:
         issue(f'⚠️ health check (touches) crashed: {e}')
+
+    # 4d. Lead history ingestion (P1 part 2)
+    try:
+        if history is not None and getattr(history, '_summary', {}).get('enabled'):
+            ls = getattr(getattr(history, 'LH', None), 'status', None) or {}
+            age = _age_h(ls.get('last_ok_at'))
+            if ls.get('error'):
+                issue(f"❌ Lead history: {ls['error'][:260]}")
+            elif not ls.get('last_ok_at'):
+                issue(f"⚠️ Lead history: not ingested this sync ({ls.get('skipped') or 'step did not run'})")
+            elif age is not None and age > TOUCHES_STALE_H:
+                issue(f'⚠️ Lead history: last successful ingest {age} h ago')
+            elif ls.get('backlog') or ls.get('skipped'):
+                issue(f"⚠️ Lead history: partial — {ls.get('skipped') or 'row cap reached'}; catching up next sync")
+            else:
+                okbits.append(f"Lead history +{ls.get('new', 0)}")
+    except Exception as e:
+        issue(f'⚠️ health check (lead history) crashed: {e}')
 
     # 4c. Quarter close (P1 part 4) — overdue or failed closes must be visible
     try:
