@@ -126,26 +126,33 @@ def save_ledger(ledger):
     # hot path.
     _atomic_write_json(LEDGER_FILE, ledger)
 
+_backup_status = {}   # last backup outcome per file, reported in the Slack health block
+
 def backup_data_files():
     """Snapshot the critical data files after a successful sync:
       1) rolling timestamped copies on the /data volume (fast local safety net)
       2) push to the private off-box GitHub repo (survives total volume loss)
-    Best-effort: never raises into the sync path."""
+    Best-effort: never raises into the sync path. Outcome per file is recorded
+    in _backup_status so the Slack health block can flag a failed push."""
     import shutil
     stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    _backup_status.clear(); _backup_status.update({'stamp': stamp, 'local': {}, 'github': {}})
     for path in (LEDGER_FILE, CAMPS_FILE, SEGMENTS_FILE):
+        base = os.path.basename(path)
         try:
             if not os.path.exists(path):
-                continue
+                _backup_status['local'][base] = 'missing'; continue
             os.makedirs(BACKUP_DIR, exist_ok=True)
-            base = os.path.basename(path)                       # e.g. meeting_ledger.json
             shutil.copy2(path, os.path.join(BACKUP_DIR, f'{base}.{stamp}.bak'))
             _prune_backups(f'{base}.', _BACKUP_KEEP)
+            _backup_status['local'][base] = 'ok'
         except Exception as e:
+            _backup_status['local'][base] = str(e)[:150]
             print(f'[backup] local backup failed for {path}: {e}')
     try:
         _github_backup(stamp)
     except Exception as e:
+        _backup_status['github']['_step'] = str(e)[:150]
         print(f'[backup] github backup step failed: {e}')
 
 def _prune_backups(prefix, keep):
@@ -167,6 +174,7 @@ def _github_backup(stamp):
     import urllib.error as _urllib_err
     token = os.environ.get('BACKUP_GITHUB_TOKEN', '').strip()
     if not token:
+        _backup_status.setdefault('github', {})['_skipped'] = True
         return   # not configured yet — graceful no-op
     hdrs = {'Authorization': f'Bearer {token}',
             'Accept': 'application/vnd.github+json',
@@ -193,7 +201,9 @@ def _github_backup(stamp):
             put = _urllib_req.Request(url, method='PUT', data=json.dumps(body).encode(),
                                       headers={**hdrs, 'Content-Type': 'application/json'})
             _urllib_req.urlopen(put, timeout=20)
+            _backup_status.setdefault('github', {})[base] = 'ok'
         except Exception as e:
+            _backup_status.setdefault('github', {})[os.path.basename(path)] = str(e)[:150]
             print(f'[backup] github backup failed for {os.path.basename(path)}: {e}')
 
 class DestructiveWriteBlocked(RuntimeError):
@@ -1831,13 +1841,17 @@ def _notify_slack_sync():
     ist    = datetime.utcnow() + timedelta(hours=5, minutes=30)
     ts     = ist.strftime('%d %b %Y, %I:%M %p IST')
 
+    try:
+        _h_ok, health_lines = health.build(cache=cache, weekly=weekly_review, coldcalls=cold_calls, history=history, backup_status=_backup_status)
+    except Exception as _he:
+        health_lines = [f'🩺 Health: ⚠️ health check crashed: {_he}']
     if fatal:
         # Sync crashed entirely — send the full traceback so it can be fixed.
         text = (
             f"*❌ Campaign Dashboard sync FAILED*\n"
             f"🕒 {ts}\n"
             f"The sync crashed before finishing. Full error (copy this to Claude):\n"
-            f"```{fatal[-2800:]}```"
+            f"```{fatal[-2800:]}```\n" + '\n'.join(health_lines)
         )
     else:
         calls  = sum(c.get('total_calls', 0)  or 0 for c in camps)
@@ -1859,6 +1873,7 @@ def _notify_slack_sync():
                 lines.append(f"• {str(e)[:350]}")
             if len(errors) > 8:
                 lines.append(f"…and {len(errors) - 8} more")
+        lines += health_lines
         text = '\n'.join(lines)
 
     try:
@@ -5102,6 +5117,15 @@ auth.init_app(app, admin_token=ADMIN_TOKEN)
 import history
 history.init_app(app, soql=soql, load_campaigns=load_campaigns, norm_sdr=norm_sdr,
                  data_dir=DATA_DIR, sf_base_url=SF_BASE_URL, cache=cache, require_admin=require_admin)
+
+# ── Health block (Slack sync message + /api/health) ──────────────────────────
+import health
+
+@app.route('/api/health')
+@require_admin
+def api_health():
+    ok, lines = health.build(cache=cache, weekly=weekly_review, coldcalls=cold_calls, history=history, backup_status=_backup_status)
+    return jsonify({'ok': ok, 'lines': lines, 'backup_status': _backup_status})
 
 print('\n' + '='*55)
 print('  🚀  Campaign Command Center')

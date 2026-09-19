@@ -598,6 +598,17 @@ def _sync_meetings(run_id, pending, stats):
         if st.get('meeting_status') or st.get('lead_status'):
             _msh(mid, st, now, run_id)
     _insert('leads', hist, on_conflict='lead_id', prefer='resolution=merge-duplicates')
+    # accounts referenced by new meetings must exist in the accounts dimension too
+    acct_rows = []
+    for aid, a in accts.items():
+        co = comps.get(_sf15(aid)) or comps.get((a.get('RC_Account_ID__c') or '').strip()) or {}
+        acct_rows.append({'account_sf_id': aid, 'rc_account_id': (a.get('RC_Account_ID__c') or '').strip() or None, 'name': a.get('Name') or co.get('company_name'),
+                          'org_type_sfdc': a.get('Organization_Type__c'), 'revenue_bucket_sfdc': a.get('Revenue_Bucket__c'), 'region': a.get('Region__c'),
+                          'territory': a.get('Account_Territory__c') or a.get('Territory__c'), 'state': a.get('State__c') or a.get('BillingState'),
+                          'sb_company_id': co.get('id'), 'org_type_sb': co.get('organisation_type'), 'revenue_estimate_usd': co.get('revenue_estimate_usd'),
+                          'specialties': co.get('specialty_type') if isinstance(co.get('specialty_type'), list) else None,
+                          'is_provider': co.get('is_provider') if co.get('is_provider') is not None else (bool(a.get('Is_Healthcare_Provider__c')) if a else None), 'last_seen_at': now})
+    _insert('accounts', acct_rows, on_conflict='account_sf_id', prefer='resolution=merge-duplicates')
     stats['meetings_new'] += _insert('meetings', rows, on_conflict='meeting_id', count_col='meeting_id')
     stats['attributions'] += _insert('meeting_attributions', attrs, count_col='id')
     # 1b) an existing meeting seen in a NEW campaign's ledger (recycled lead) → non-primary link, never re-primary
