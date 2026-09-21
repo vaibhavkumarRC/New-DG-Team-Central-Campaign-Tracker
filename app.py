@@ -1821,11 +1821,17 @@ def _run_sync():
     # Weekly Review + Cold-calls snapshots: refresh with every sync so they never depend on
     # someone opening the tab (they went stale over weekends). Same refresh functions the tabs
     # use; bounded; a failure keeps the old snapshot serving and shows in the health block.
-    for _name, _mod in (('weekly_review', weekly_review), ('cold_calls', cold_calls)):
-        try:
-            print(f'[{_name}] sync-triggered refresh: {_mod.refresh_from_sync()}')
-        except Exception as e:
-            print(f'[{_name}] sync-triggered refresh crashed: {e}')
+    # Both run at the same time (cold calls alone took >120 s on Railway on 21 Sep, so a serial
+    # wait let the Slack message go out before it finished); wait up to 300 s for both.
+    _res = {}
+    def _kick(name, mod):
+        try: _res[name] = mod.refresh_from_sync(timeout_s=300)
+        except Exception as e: _res[name] = f'crashed: {e}'
+    _ths = [threading.Thread(target=_kick, args=(n, m), daemon=True) for n, m in (('weekly_review', weekly_review), ('cold_calls', cold_calls))]
+    for _t in _ths: _t.start()
+    for _t in _ths: _t.join(300)
+    for _n in ('weekly_review', 'cold_calls'):
+        print(f'[{_n}] sync-triggered refresh: {_res.get(_n, "still running after 300s (continues in background)")}')
 
 def persist_cache():
     """Write the in-memory campaign cache to disk so single-campaign syncs and

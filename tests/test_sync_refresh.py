@@ -35,10 +35,11 @@ class SyncRefresh(unittest.TestCase):
 
     def test_sync_calls_both_after_history_flush(self):
         src = open(os.path.join(ROOT, 'app.py')).read()
-        i_flush = src.index('history.flush()'); i_ref = src.index("_mod.refresh_from_sync()")
+        i_flush = src.index('history.flush()'); i_ref = src.index("mod.refresh_from_sync(timeout_s=300)")
         self.assertLess(i_flush, i_ref)                                            # after the history layer, before the Slack message
         self.assertLess(i_ref, src.index('def _notify_slack_sync'))
         self.assertIn("('weekly_review', weekly_review), ('cold_calls', cold_calls)", src)
+        self.assertIn('for _t in _ths: _t.start()', src)                                    # both at once, then join
 
 if __name__ == '__main__':
     unittest.main()
