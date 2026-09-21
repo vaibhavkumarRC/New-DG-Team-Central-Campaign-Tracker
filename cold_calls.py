@@ -184,6 +184,34 @@ def _maybe_background_refresh():
     threading.Thread(target=run, daemon=True).start()
 
 
+def refresh_from_sync(timeout_s=120):
+    """Called by the dashboard sync (05:00 / 17:00 IST) so the snapshot never depends on someone
+    opening the tab. Runs the SAME refresh in a thread and waits up to timeout_s; a slow or failed
+    refresh never blocks or breaks the sync — the old snapshot keeps serving and the health block
+    reports the age/error. Returns a short status string for the sync log."""
+    global _refreshing
+    with _cc_lock:
+        if _refreshing:
+            return 'skipped: a refresh is already running'
+        _refreshing = True
+    result = {}
+    def run():
+        global _refreshing
+        try:
+            refresh_cold_calls(); result['ok'] = True
+        except Exception as e:
+            result['error'] = str(e)[:300]
+            print(f"[cold_calls] sync-triggered refresh failed (cache keeps serving): {e}")
+            with _cc_lock:
+                if _CC is not None:
+                    _CC['error'] = f"refresh failed {datetime.now(IST).isoformat()}: {e}"
+        finally:
+            _refreshing = False
+    t = threading.Thread(target=run, daemon=True); t.start(); t.join(timeout_s)
+    if t.is_alive(): return f'still running after {timeout_s}s (continues in background)'
+    return 'refreshed' if result.get('ok') else f"failed: {result.get('error')}"
+
+
 # ── campaign match sets ───────────────────────────────────────────────────────
 
 def _campaign_sets():

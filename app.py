@@ -1818,6 +1818,14 @@ def _run_sync():
         history.flush()
     except Exception as e:
         print(f'[history] flush failed: {e}')
+    # Weekly Review + Cold-calls snapshots: refresh with every sync so they never depend on
+    # someone opening the tab (they went stale over weekends). Same refresh functions the tabs
+    # use; bounded; a failure keeps the old snapshot serving and shows in the health block.
+    for _name, _mod in (('weekly_review', weekly_review), ('cold_calls', cold_calls)):
+        try:
+            print(f'[{_name}] sync-triggered refresh: {_mod.refresh_from_sync()}')
+        except Exception as e:
+            print(f'[{_name}] sync-triggered refresh crashed: {e}')
 
 def persist_cache():
     """Write the in-memory campaign cache to disk so single-campaign syncs and
