@@ -1706,6 +1706,14 @@ td.wr-drill:hover { background:var(--gold-glow); color:var(--gold); font-weight:
         </form>
       </div>
 
+      <div class="admin-only" style="margin-bottom:18px">
+        <div class="section-hdr">
+          <div class="section-title">Segments</div>
+          <div style="font-size:11px;color:var(--text-dim)">Rename updates the dropdown and every campaign carrying the old name. Delete only works for unused names. Numbers never change.</div>
+        </div>
+        <div id="segmentAdminList" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+
       <div>
         <div class="section-hdr">
           <div class="section-title">Manage Campaigns</div>
@@ -4091,7 +4099,50 @@ function toggleSdrCamps(ev, id, n){
 }
 
 // ── MANAGE TAB ───────────────────────────────────────────────────────────────
+function renderSegmentAdmin() {
+  const box = q('segmentAdminList'); if(!box) return;
+  const allCps = S.data.campaigns||[];
+  const counts = {};
+  allCps.forEach(c => { const k=(c.segment||'').trim(); if(k) counts[k]=(counts[k]||0)+1; });
+  const names = [...new Set([...(S.segments||[]), ...Object.keys(counts)])].sort((a,b)=>a.localeCompare(b));
+  box.innerHTML = names.map(sg => {
+    const n = counts[sg]||0;
+    return `<div style="display:flex;align-items:center;gap:8px;font-size:12px">
+      <span style="min-width:220px">${esc(sg)}</span>
+      <span style="color:var(--text-dim);min-width:90px">${n} campaign${n===1?'':'s'}</span>
+      <input class="form-input" style="height:26px;font-size:12px;margin:0;width:220px" placeholder="new name…" id="segRen_${btoa(unescape(encodeURIComponent(sg))).replace(/=/g,'')}">
+      <button class="btn btn-sm" onclick="renameSegment(${JSON.stringify(sg)})">Rename</button>
+      ${n===0 ? `<button class="btn btn-ghost btn-sm" onclick="deleteSegment(${JSON.stringify(sg)})">✕ Delete</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function renameSegment(old) {
+  const inp = q('segRen_' + btoa(unescape(encodeURIComponent(old))).replace(/=/g,''));
+  const nw = (inp?.value||'').trim(); if(!nw) return alert('Type the new name first');
+  if(!confirm(`Rename segment "${old}" → "${nw}" on every campaign that carries it?`)) return;
+  try {
+    const r = await fetch('/api/segments/rename', {method:'POST', headers:{'Content-Type':'application/json','X-Admin-Token':S.adminToken}, body: JSON.stringify({old, new: nw})});
+    const d = await r.json();
+    if(!r.ok) return alert(d.error||'Rename failed');
+    S.segments = d.segments; (S.data.campaigns||[]).forEach(c => { if((c.segment||'').trim()===old) c.segment = nw; });
+    populateSegmentDropdowns(); renderAll();
+    alert(`Renamed on ${d.renamed} campaign(s).`);
+  } catch(e) { alert('Rename failed: ' + e.message); }
+}
+
+async function deleteSegment(name) {
+  if(!confirm(`Remove "${name}" from the segment dropdown?`)) return;
+  try {
+    const r = await fetch('/api/segments/' + encodeURIComponent(name), {method:'DELETE', headers:{'X-Admin-Token':S.adminToken}});
+    const d = await r.json();
+    if(!r.ok) return alert(d.error||'Delete failed');
+    S.segments = d.segments; populateSegmentDropdowns(); renderAll();
+  } catch(e) { alert('Delete failed: ' + e.message); }
+}
+
 function renderManage() {
+  renderSegmentAdmin();
   const allCps = S.data.campaigns||[];
   const sdrSel = q('manageSdrFilter');
   const podSel = q('managePodFilter');
