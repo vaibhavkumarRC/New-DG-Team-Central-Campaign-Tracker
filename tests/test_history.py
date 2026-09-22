@@ -188,5 +188,13 @@ class HistoryWriter(unittest.TestCase):
         self.assertFalse(self.writes('touches')); self.assertFalse(self.soql.tasks)
         self.assertTrue(any('no watermark' in e for e in H._errors), H._errors); self.assertIn('touches ERROR', H.summary())
 
+    def test_people_roster_refreshed_every_flush(self):
+        self.run_sync()
+        self.rest.db['people'].append({'person_key': 'mohammad_fadi', 'display_name': 'Mohammad Fadi', 'aliases': ['Fadi']})
+        self.soql.leads['00QA2']['Meeting_Generated_by__c'] = 'Fadi'
+        self.run_sync(meetings={'00QA2': {'date': '2026-09-12', 'sdr': 'Fadi', 'name': 'x', 'title': 't', 'company': 'c'}})
+        self.assertIn('fadi', H._state['people'])
+        self.assertFalse([r for w in self.writes('dq_findings') for r in w if r['check_name'] == 'unknown_sdr_alias'], 'a person added to the roster must not be flagged')
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
