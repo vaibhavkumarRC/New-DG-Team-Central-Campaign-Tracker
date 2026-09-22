@@ -598,7 +598,7 @@ def _agg_disposition_for_ids(lead_ids, dt_task, min_dur=None):
                 out[d] = out.get(d, 0) + int(rec.get('expr0', 0) or 0)
     return out
 
-DEFAULT_SEGMENTS = ['EPIC Campaign', 'TruBridge Campaign', 'Factors Data', 'Hiring Data', 'High Intent Data']
+DEFAULT_SEGMENTS = ['EPIC Campaign', 'TruBridge Campaign', 'Factors Data', 'High Intent Data']   # 'Hiring Data' → 'Hiring Signal Data' (22 Sep 2026; lives in segments.json)
 
 def load_segments():
     if os.path.exists(SEGMENTS_FILE):
@@ -3819,6 +3819,52 @@ def api_segments_add():
         save_segments(custom)
     all_segs = DEFAULT_SEGMENTS + [s for s in custom if s not in DEFAULT_SEGMENTS]
     return jsonify({'segments': all_segs, 'defaults': DEFAULT_SEGMENTS})
+
+@app.route('/api/segments/rename', methods=['POST'])
+@require_admin
+def api_segments_rename():
+    """Rename a segment everywhere in ONE step: the dropdown list and every campaign that carries
+    the old name (config file + in-memory cache). Numbers are untouched — segment is a label.
+    Renaming onto an existing name merges the two. The history layer logs each campaign's change."""
+    d = request.json or {}
+    old = (d.get('old') or '').strip(); new = (d.get('new') or '').strip()
+    if not old or not new:
+        return jsonify({'error': 'old and new segment names required'}), 400
+    if old == new:
+        return jsonify({'error': 'old and new are the same'}), 400
+    camps = load_campaigns(); n = 0
+    for c in camps:
+        if (c.get('segment') or '').strip() == old:
+            c['segment'] = new; n += 1
+    if n:
+        save_campaigns(camps)
+        for cc in cache['campaigns']:
+            if (cc.get('segment') or '').strip() == old:
+                cc['segment'] = new
+    custom = load_segments()
+    custom = [x for x in custom if x != old]
+    if new not in DEFAULT_SEGMENTS and new not in custom:
+        custom.append(new)
+    save_segments(custom)
+    all_segs = DEFAULT_SEGMENTS + [x for x in custom if x not in DEFAULT_SEGMENTS]
+    print(f'[segments] renamed {old!r} → {new!r} on {n} campaign(s)')
+    return jsonify({'renamed': n, 'old': old, 'new': new, 'segments': all_segs})
+
+@app.route('/api/segments/<path:name>', methods=['DELETE'])
+@require_admin
+def api_segments_delete(name):
+    """Remove a segment from the dropdown. Refused while any campaign still carries it."""
+    name = (name or '').strip()
+    in_use = sum(1 for c in load_campaigns() if (c.get('segment') or '').strip() == name)
+    if in_use:
+        return jsonify({'error': f'{in_use} campaign(s) still use this segment — rename them first', 'in_use': in_use}), 409
+    if name in DEFAULT_SEGMENTS:
+        return jsonify({'error': 'built-in segment; edit DEFAULT_SEGMENTS to remove it'}), 409
+    custom = [x for x in load_segments() if x != name]
+    save_segments(custom)
+    all_segs = DEFAULT_SEGMENTS + [x for x in custom if x not in DEFAULT_SEGMENTS]
+    print(f'[segments] removed {name!r} from the dropdown')
+    return jsonify({'removed': name, 'segments': all_segs})
 
 # ── SDRs ──────────────────────────────────────────────────────────────────────
 
