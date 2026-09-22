@@ -1706,15 +1706,16 @@ td.wr-drill:hover { background:var(--gold-glow); color:var(--gold); font-weight:
         </form>
       </div>
 
-      <div class="admin-only" style="margin-bottom:18px">
-        <div class="section-hdr">
-          <div class="section-title">Segments</div>
-          <div style="font-size:11px;color:var(--text-dim)">Rename updates the dropdown and every campaign carrying the old name. Delete only works for unused names. Numbers never change.</div>
-        </div>
-        <div id="segmentAdminList" style="display:flex;flex-direction:column;gap:6px"></div>
-      </div>
-
       <div>
+        <!-- Segments panel lives INSIDE the right column: .manage-layout is a 2-column grid (form | list),
+             a third direct child wraps the campaign list into the 380px form column. -->
+        <div class="admin-only" style="margin-bottom:18px">
+          <div class="section-hdr">
+            <div class="section-title">Segments</div>
+            <div style="font-size:11px;color:var(--text-dim)">Rename updates the dropdown and every campaign carrying the old name. Delete only works for unused names. Numbers never change.</div>
+          </div>
+          <div id="segmentAdminList" style="display:flex;flex-direction:column;gap:6px"></div>
+        </div>
         <div class="section-hdr">
           <div class="section-title">Manage Campaigns</div>
           <div style="font-size:11px;color:var(--text-dim)" id="manageCampCount"></div>

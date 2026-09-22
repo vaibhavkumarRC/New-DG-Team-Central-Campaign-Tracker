@@ -41,5 +41,28 @@ class Segments(unittest.TestCase):
         self.assertEqual(self.c.post('/api/segments/rename', data=json.dumps({'old': '', 'new': 'b'}), headers=self.h).status_code, 400)
         self.assertEqual(json.load(open(A.CAMPS_FILE))[0]['segment'], 'High Intent')                                   # nothing changed
 
+class ManageLayout(unittest.TestCase):
+    def test_manage_grid_has_exactly_two_columns(self):
+        """.manage-layout is a 2-column grid (form | list); a third direct child wraps the campaign list into the narrow form column."""
+        from html.parser import HTMLParser
+        src = open(os.path.join(ROOT, 'templates', 'index.html')).read()
+        VOID = {'input', 'br', 'img', 'hr', 'meta', 'link', 'option'}
+        class P(HTMLParser):
+            def __init__(self): super().__init__(); self.depth = None; self.stack = 0; self.children = []; self.seg_depth = None
+            def handle_starttag(self, tag, attrs):
+                if tag in VOID: return
+                a = dict(attrs); self.stack += 1
+                if 'manage-layout' in (a.get('class') or ''): self.depth = self.stack
+                elif self.depth and self.stack == self.depth + 1: self.children.append(a.get('class') or tag)
+                if a.get('id') == 'segmentAdminList' and self.depth: self.seg_depth = self.stack
+            def handle_endtag(self, tag):
+                if tag in VOID: return
+                if self.depth and self.stack == self.depth: self.depth = None
+                self.stack -= 1
+        p = P(); p.feed(src)
+        self.assertEqual(len(p.children), 2, p.children)
+        self.assertEqual(p.children[0], 'form-card')
+        self.assertIsNotNone(p.seg_depth)                                                                   # segments panel sits inside column 2
+
 if __name__ == '__main__':
     unittest.main()
