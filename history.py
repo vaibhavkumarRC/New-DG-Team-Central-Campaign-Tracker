@@ -238,6 +238,15 @@ def _seed_state_from_db():
     _save_state()
     _log(f'state seeded from DB in {time.time()-t0:.0f}s: {len(camps)} campaigns, {len(rows)} memberships, {len(st["meetings"])} meetings')
 
+def _refresh_people():
+    """Re-read the people roster every flush so a name added to the `people` table is known
+    immediately (the state file used to hold a copy taken at first seed only)."""
+    try:
+        fresh = _people_aliases()
+        if fresh: _state['people'] = fresh
+    except Exception as e:
+        _err(f'people roster refresh failed (using the cached copy): {_short(e)}')
+
 def _people_aliases():
     out = {}
     for p in _get_all('people', {'select': 'display_name,aliases'}, order='person_key.asc'):
@@ -289,6 +298,7 @@ def flush(app_version=None):
         if _state is None: _seed_state_from_db()
         run_id = _start_run(app_version, len(pending))
         _ensure_definitions()
+        _refresh_people()                            # roster can change between syncs (new SDR / alias); one small read
         steps = [('campaigns', lambda: _sync_campaigns(run_id, stats)),
                  ('unregistered', lambda: _discover_unregistered(run_id, stats)),
                  ('membership', lambda: _sync_membership(run_id, pending, stats)),
