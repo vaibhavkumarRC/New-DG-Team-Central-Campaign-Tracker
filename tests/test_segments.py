@@ -64,5 +64,15 @@ class ManageLayout(unittest.TestCase):
         self.assertEqual(p.children[0], 'form-card')
         self.assertIsNotNone(p.seg_depth)                                                                   # segments panel sits inside column 2
 
+    def test_segments_panel_collapsed_by_default(self):
+        """The admin Segments panel is a <details> that starts closed: 'Segments (N) ▸' with the rows hidden until clicked."""
+        import re
+        src = open(os.path.join(ROOT, 'templates', 'index.html')).read()
+        m = re.search(r'<details([^>]*)id="segmentAdminToggle"([^>]*)>(.*?)</details>', src, re.S)
+        self.assertIsNotNone(m); attrs = m.group(1) + m.group(2)
+        self.assertNotIn(' open', attrs)                                                                    # collapsed on load
+        self.assertIn('id="segmentAdminCount"', m.group(3)); self.assertIn('id="segmentAdminList"', m.group(3))
+        self.assertIn("q('segmentAdminCount')", src)                                                        # count filled by renderSegmentAdmin
+
 if __name__ == '__main__':
     unittest.main()
