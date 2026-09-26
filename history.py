@@ -33,6 +33,7 @@ import touches as T
 import quarter_close as Q
 import lead_history as LH
 import opportunities as OP
+import attribution as A
 
 IST = timezone(timedelta(hours=5, minutes=30))
 _BATCH = 500                      # SOQL IN-clause size (matches app.py)
@@ -308,18 +309,22 @@ def flush(app_version=None):
                  ('reconcile', lambda: _reconcile(run_id, pending, stats)),
                  ('touches', lambda: T.ingest(run_id, stats, _this, deadline=t0 + budget)),   # P0 facts first; touches/lead history catch up via watermark
                  ('lead_history', lambda: LH.ingest(run_id, stats, _this, deadline=t0 + budget)),
-                 ('opportunities', lambda: OP.ingest(run_id, stats, _this, deadline=t0 + budget))]
+                 ('opportunities', lambda: OP.ingest(run_id, stats, _this, deadline=t0 + budget)),
+                 ('attribution', lambda: A.run(run_id, stats, _this))]                        # last: grace rule, done_on, digest (needs meetings + opps in)
         T.status['skipped'] = 'not run this sync'; LH.status['skipped'] = 'not run this sync'; OP.status['skipped'] = 'not run this sync'
+        A.status.clear(); A.status['skipped'] = 'not run this sync'
         for name, fn in steps:
             if time.time() - t0 > budget:
                 if name == 'touches': T.status['skipped'] = 'flush budget exhausted before the touches step; catches up next sync'
                 if name == 'lead_history': LH.status['skipped'] = 'flush budget exhausted before the lead-history step; catches up next sync'
                 if name == 'opportunities': OP.status['skipped'] = 'flush budget exhausted before the opportunities step; catches up next sync'
+                if name == 'attribution': A.status['skipped'] = 'flush budget exhausted before the attribution step; digest catches up next sync'
                 _err(f'time budget exhausted before step {name}; remaining steps skipped (facts stay pending on disk state)'); break
             try:
                 fn()
             except Exception:
                 _err(f'step {name} crashed: {traceback.format_exc()[-600:]}')
+                if name == 'attribution': A.status['error'] = traceback.format_exc().strip().splitlines()[-1][:300]
             _save_state()
         _last_ok_at = _iso()
     except Exception:
@@ -335,11 +340,16 @@ def flush(app_version=None):
             _log(f'could not close run: {e}')
         _summary['text'] = (f"history: +{stats['members_new']} members, +{stats['meetings_new']} meetings ({stats['meetings_updated']} updated), "
                             f"{stats['snapshots']} snapshots, {stats['unregistered_new']} new unregistered, {stats['mismatches']} mismatches, "
-                            f"{stats['dq']} dq, {stats['errors']} errors, {stats['seconds']}s; touches {touch_summary()}; lead history {lead_history_summary()}; opps {OP.summary()}" + (f"; {Q.summary()}" if Q.summary() else ''))
+                            f"{stats['dq']} dq, {stats['errors']} errors, {stats['seconds']}s; touches {touch_summary()}; lead history {lead_history_summary()}; opps {OP.summary()}; {A.summary()}" + (f"; {Q.summary()}" if Q.summary() else ''))
         _summary['stats'] = stats; _summary['run_id'] = run_id
         _log(_summary['text'])
 
 def summary(): return _summary['text']
+
+def digest_line():
+    """The 📣 'since last sync' line for Slack (empty string when the writer is disabled)."""
+    if not _summary['enabled']: return ''
+    return A.digest_line()
 
 def lead_history_summary():
     st = LH.status
