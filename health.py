@@ -126,6 +126,24 @@ def build(*, cache=None, weekly=None, coldcalls=None, history=None, backup_statu
     except Exception as e:
         issue(f'⚠️ health check (history) crashed: {e}')
 
+    # 4f. Attribution tracking (0019) — grace rule, done_on, digest; runs last in the flush
+    try:
+        amod = getattr(history, 'A', None) if history is not None else None
+        if amod is not None and getattr(history, '_summary', {}).get('enabled'):
+            a = getattr(amod, 'status', None) or {}
+            if not a:
+                issue('⚠️ Attribution: not run yet (no history flush since start)')
+            elif a.get('error'):
+                issue(f"❌ Attribution: {a['error'][:260]}")
+            elif a.get('skipped'):
+                issue(f"⚠️ Attribution: not computed this sync ({a.get('skipped')})")
+            elif not a.get('line') and not a.get('digest'):
+                issue('⚠️ Attribution: digest empty — build_daily_digest returned nothing')
+            else:
+                okbits.append(f"Attribution {a.get('flags', 0)} flag(s)" if a.get('flags') else 'Attribution')
+    except Exception as e:
+        issue(f'⚠️ health check (attribution) crashed: {e}')
+
     # 4b. Touches ingestion (P1) — only when the history writer is enabled
     try:
         if history is not None and getattr(history, '_summary', {}).get('enabled'):

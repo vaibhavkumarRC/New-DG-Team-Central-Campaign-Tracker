@@ -1890,6 +1890,11 @@ def _notify_slack_sync():
             f"💎 SQL: *{totals.get('sql_gen', 0)}*    🏆 S1: *{totals.get('s1', 0)}*",
             f"🗄️ {history.summary()}",
         ]
+        try:
+            _dl = history.digest_line()
+            if _dl: lines.append(_dl)                  # 📣 attribution since last sync — meetings generated / became done / deals created / flags
+        except Exception as _de:
+            lines.append(f'📣 attribution since last sync — ⚠️ line unavailable: {_de}')
         if errors:
             lines.append(f"*⚠️ {len(errors)} campaign error(s)* (copy to Claude to fix):")
             for e in errors[:8]:
