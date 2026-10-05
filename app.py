@@ -1767,9 +1767,9 @@ def _run_sync():
     # between campaigns (frozen-ID approach counts them in every campaign they
     # ever belonged to, inflating per-campaign sums).  These single queries
     # count each lead exactly once.
-    global_done   = cnt(soql("SELECT COUNT(Id) FROM Lead WHERE Meeting_Status__c IN "
-                             "('Meeting Done-Nurture','Meeting Done- Not Interested',"
-                             "'Meeting Done-Unqualified')")) or 0
+    # Every "Meeting Done" status counts — incl. Done-SQL and Done-Qualified/Follow Up
+    # (Vaibhav, 5 Oct 2026; the tile used to count only Nurture / Not Interested / Unqualified).
+    global_done   = cnt(soql("SELECT COUNT(Id) FROM Lead WHERE Meeting_Status__c LIKE 'Meeting Done%'")) or 0
     global_noshow = cnt(soql("SELECT COUNT(Id) FROM Lead WHERE Meeting_Status__c = 'Meeting No Show'")) or 0
     global_sql    = cnt(soql("SELECT COUNT(Id) FROM Lead WHERE Status = 'SQL'")) or 0
     global_s1     = sum(v['s1'] for v in sdr_opp_stats.values()) if sdr_opp_stats else 0
