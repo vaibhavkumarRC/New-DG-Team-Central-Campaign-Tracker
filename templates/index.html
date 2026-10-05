@@ -1025,8 +1025,29 @@ td.wr-drill:hover { background:var(--gold-glow); color:var(--gold); font-weight:
         <div id="sdrpModalBody" style="overflow-y:auto;padding:12px 18px"></div>
       </div>
     </div>
+    <!-- Q4 2026 — live cards (targets added once set) -->
+    <div id="sdrQ4Section" style="margin-top:6px">
+      <div style="display:flex;align-items:baseline;gap:10px;margin:6px 0 4px">
+        <div style="font-size:15px;font-weight:800;color:var(--text)">📊 Q4 2026 — SDR-wise Performance Card</div>
+        <span style="font-size:11px;color:var(--green)">● Live</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:14px">Live Q4 numbers. Meetings generated from 1 Oct 2026; S1 &amp; NPV count deals created on or after 1 Oct 2026; calls, emails and leads come from campaigns starting in Q4. Targets will be added once set. Click a card for the detail breakdown.</div>
+      <div class="sdr-grid" id="sdrGridQ4"></div>
+    </div>
+    <!-- Q3 2026 — frozen cards vs Q3 targets, collapsed like Q2 -->
+    <div id="sdrQ3Section" style="margin-top:34px">
+      <div style="display:flex;align-items:center;gap:10px;margin:6px 0 14px">
+        <div style="font-size:15px;font-weight:800;color:var(--text)">📊 Q3 2026 — SDR-wise Performance Card</div>
+        <span style="font-size:11px;color:var(--text-dim)">🔒 Frozen</span>
+        <button id="sdrCardsToggleQ3" onclick="toggleSdrCards('sdrQ3Body','sdrCardsToggleQ3')" style="margin-left:auto;background:var(--gold);color:#0a0a0a;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">Show all cards ▾</button>
+      </div>
+      <div id="sdrQ3Body" style="display:none">
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:14px">Final Q3 numbers vs each SDR's Q3 target, locked on 5 Oct 2026. Meetings generated 1 Jul – 30 Sep 2026; S1 &amp; NPV count deals created 1 Jul – 30 Sep 2026. Click a card for the detail breakdown.</div>
+        <div class="sdr-grid" id="sdrGridQ3"></div>
+      </div>
+    </div>
     <!-- SDR CARDS -->
-    <div style="display:flex;align-items:center;gap:10px;margin:6px 0 14px">
+    <div style="display:flex;align-items:center;gap:10px;margin:34px 0 14px">
       <div style="font-size:15px;font-weight:800;color:var(--text)">📊 Q2 2026 — SDR-wise Performance Card</div>
       <span style="font-size:11px;color:var(--text-dim)">🔒 Frozen</span>
       <button id="sdrCardsToggle" onclick="toggleSdrCards()" style="margin-left:auto;background:var(--gold);color:#0a0a0a;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">Show all cards ▾</button>
@@ -1035,15 +1056,6 @@ td.wr-drill:hover { background:var(--gold-glow); color:var(--gold); font-weight:
     <div id="sdrEmpty" class="empty" style="display:none">
       <div class="empty-icon">👥</div>
       No SDR data yet. Sync data from Salesforce first.
-    </div>
-    <!-- Q3 2026 — live cards vs Q3 targets -->
-    <div id="sdrQ3Section" style="margin-top:34px">
-      <div style="display:flex;align-items:baseline;gap:10px;margin:6px 0 4px">
-        <div style="font-size:15px;font-weight:800;color:var(--text)">📊 Q3 2026 — SDR-wise Performance Card</div>
-        <span style="font-size:11px;color:var(--text-dim)">🔒 Frozen</span>
-      </div>
-      <div style="font-size:11px;color:var(--text-dim);margin-bottom:14px">Final Q3 numbers vs each SDR's Q3 target, locked on 5 Oct 2026. Meetings generated 1 Jul – 30 Sep 2026; S1 &amp; NPV count deals created 1 Jul – 30 Sep 2026. Click a card for the detail breakdown.</div>
-      <div class="sdr-grid" id="sdrGridQ3"></div>
     </div>
   </div>
 
@@ -2130,6 +2142,30 @@ const SDR_TARGETS_Q3 = {
   'Akhilesh Stan':        { meeting_generated: 25, meeting_done: 18, s1: 6, npv: 1300000 },
   'Saka Thapa':           { meeting_generated: 25, meeting_done: 18, s1: 6, npv: 1300000 },
 };
+
+// Q4 2026 — every SDR with a Nooks seat gets a card (Vaibhav, 5 Oct 2026).
+// Targets are added to SDR_TARGETS_Q4 once set; a card without a target shows
+// numbers only. S1/NPV count deals created on or after 1 Oct 2026.
+const Q4_START = '2026-10-01', Q4_END = '2026-12-31';
+const SDR_ROSTER_Q4 = [
+  'Akhilesh Stan', 'Akil Krishna', 'Ananya Rao', 'Ankit Singh', 'Anurup Bhattacharjee',
+  'Anusha Jangra', 'Anushka HB', 'Armaan', 'Deep Jajodia', 'Felix Sam', 'Hussain Abubaker',
+  'Isaac Bartels', 'Michelle B', 'Mohammad Fadi', 'Rithick S', 'Ruchira Mishra', 'Saka Thapa',
+  'Samridhi Dutta', 'Soham Saha', 'SriRam', 'Sukhneet Sukhneet',
+];
+const SDR_TARGETS_Q4 = {};   // name -> { meeting_generated, meeting_done, s1, npv }
+// Campaign owners are sometimes saved by first name only.
+const Q4_OWNER_ALIAS = { 'Deep': 'Deep Jajodia', 'Ankit': 'Ankit Singh', 'Ruchira': 'Ruchira Mishra', 'Anusha': 'Anusha Jangra' };
+// Q4 opportunity stats per SDR ({ s1, npv }) — fetched once for the Q4 window.
+let Q4_OPP = null;
+function loadQ4Opp() {
+  if (Q4_OPP) return;   // loaded or in-flight
+  Q4_OPP = 'loading';
+  fetch(`/api/sdr-s1?from=${Q4_START}&to=${Q4_END}`)
+    .then(r => r.json())
+    .then(d => { Q4_OPP = { s1: d.s1 || {}, npv: d.npv || {} }; if (S.activeTab === 'sdr') renderSDR(); })
+    .catch(() => { Q4_OPP = null; });
+}
 
 const POD_TEAM_GROUPS = [
   { label: 'Q3 & Q4 2026 PODs', pods: [
@@ -3853,9 +3889,9 @@ function renderLeaderboard(containerId, sdrs) {
     </div>`;
 }
 
-function toggleSdrCards() {
-  const g = document.getElementById('sdrGrid');
-  const b = document.getElementById('sdrCardsToggle');
+function toggleSdrCards(gridId = 'sdrGrid', btnId = 'sdrCardsToggle') {
+  const g = document.getElementById(gridId);
+  const b = document.getElementById(btnId);
   if (!g) return;
   const show = g.style.display === 'none';
   g.style.display = show ? '' : 'none';
@@ -4064,15 +4100,15 @@ function renderSDR() {
                s1: st.s1_count || 0, npv: st.npv_generated || 0, tgt: SDR_TARGETS_Q3[name] };
     }).sort((a, b) => b.mGen - a.mGen);
 
-    q3.innerHTML = roster.map((s, i) => {
+    const cardHTML = (s, i, qLabel, from, to) => {
       const t = s.tgt;
-      const npvPct = t.npv ? Math.min(100, (s.npv / t.npv * 100)).toFixed(1) : '0';
+      const npvPct = (t && t.npv) ? Math.min(100, (s.npv / t.npv * 100)).toFixed(1) : '0';
       const npvCol = parseFloat(npvPct) >= 100 ? 'var(--green)' : parseFloat(npvPct) >= 60 ? 'var(--amber)' : 'var(--red)';
       return `
-      <div class="sdr-card" onclick="openSdrDetailModal('${esc(s.name).replace(/'/g,"\\'")}','2026-07-01','2026-09-30')">
+      <div class="sdr-card" onclick="openSdrDetailModal('${esc(s.name).replace(/'/g,"\\'")}','${from}','${to}')">
         <div class="sdr-card-header">
           <div class="sdr-avatar">${initials(s.name)}</div>
-          <div><div class="sdr-card-name">${esc(s.name)}</div><div class="sdr-card-camps">Q3 2026</div></div>
+          <div><div class="sdr-card-name">${esc(s.name)}</div><div class="sdr-card-camps">${qLabel}</div></div>
           <div style="margin-left:auto;font-size:11px;color:var(--text-dim)">#${i + 1}</div>
         </div>
         <div class="sdr-stats-row" style="gap:10px;margin-bottom:10px">
@@ -4087,16 +4123,59 @@ function renderSDR() {
           <div class="sdr-stat"><div class="sdr-stat-val" style="color:var(--blue);font-size:15px">${fmt(s.leads)}</div><div class="sdr-stat-lbl">Leads</div></div>
           <div class="sdr-stat"><div class="sdr-stat-val" style="color:#F472B6;font-size:15px">${fmt(s.s1)}</div><div class="sdr-stat-lbl">S1</div></div>
         </div>
-        <div style="border-top:1px solid var(--border);padding-top:12px;margin-bottom:4px">
+        ${t ? `<div style="border-top:1px solid var(--border);padding-top:12px;margin-bottom:4px">
           <div style="font-size:10px;font-weight:700;color:var(--text-dim);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">Target Progress</div>
           <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">Meeting Generated</div>${tbar(s.mGen, t.meeting_generated, '#A78BFA')}
           <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">Meeting Done</div>${tbar(s.mDone, t.meeting_done, '#34D399')}
           <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">S1 Created</div>${tbar(s.s1, t.s1, '#F472B6')}
           <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:3px;font-weight:600">NPV Generated</div>
           <div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;margin-bottom:4px"><span style="color:var(--text-muted);font-weight:600">${fmtCurrency(s.npv)} <span style="color:var(--text-dim);font-weight:400">/ ${fmtCurrency(t.npv)}</span></span><span style="font-weight:700;color:${npvCol}">${npvPct}%</span></div><div style="background:var(--surface3);border-radius:4px;height:6px;overflow:hidden"><div style="width:${npvPct}%;height:100%;background:${npvCol};border-radius:4px;transition:width .8s ease"></div></div></div>
-        </div>
+        </div>` : `<div style="border-top:1px solid var(--border);padding-top:12px;margin-bottom:4px">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px"><span style="color:var(--text-muted);font-weight:600">NPV Generated</span><span style="color:var(--text);font-weight:700">${fmtCurrency(s.npv)}</span></div>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:8px">Targets to be added</div>
+        </div>`}
       </div>`;
-    }).join('');
+    };
+    q3.innerHTML = roster.map((s, i) => cardHTML(s, i, 'Q3 2026', '2026-07-01', '2026-09-30')).join('');
+
+    // Q4 2026 — live cards. Meetings by Meeting_Generated_on inside Q4; calls /
+    // emails / leads from campaigns starting in Q4; S1/NPV from opportunities
+    // created on or after 1 Oct (own window — independent of NPV_START_DATE).
+    const q4 = document.getElementById('sdrGridQ4');
+    if (q4) {
+      loadQ4Opp();
+      const opp = (Q4_OPP && Q4_OPP !== 'loading') ? Q4_OPP : { s1: {}, npv: {} };
+      const q4Live = {};
+      (MTG.data || []).forEach(r => {
+        const g = r.generated_on || '';
+        if (g < Q4_START || g > Q4_END) return;
+        const n = r.generated_by || '—';
+        const m = q4Live[n] || (q4Live[n] = { mGen: 0, mDone: 0, mNoShow: 0, mSql: 0 });
+        m.mGen++;
+        if (SDRP_IS_DONE(r))                m.mDone++;
+        if (r.status === 'Meeting No Show') m.mNoShow++;
+        if (r.lead_status === 'SQL')        m.mSql++;
+      });
+      const q4Camp = {};
+      (src.campaigns || []).forEach(c => {
+        const sd = c.start_date || '';
+        if (sd < Q4_START || sd > Q4_END) return;
+        let owner = (c.sdr_owner || '').trim();
+        owner = Q4_OWNER_ALIAS[owner] || owner;
+        if (!owner) return;
+        const m = q4Camp[owner] || (q4Camp[owner] = { calls: 0, emails: 0, leads: 0 });
+        m.calls  += c.total_calls  || 0;
+        m.emails += c.total_emails || 0;
+        m.leads  += c.total_leads  || 0;
+      });
+      const roster4 = SDR_ROSTER_Q4.map(name => {
+        const lv = q4Live[name] || { mGen: 0, mDone: 0, mNoShow: 0, mSql: 0 };
+        const cs = q4Camp[name] || { calls: 0, emails: 0, leads: 0 };
+        return { name, ...lv, calls: cs.calls, emails: cs.emails, leads: cs.leads,
+                 s1: opp.s1[name] || 0, npv: opp.npv[name] || 0, tgt: SDR_TARGETS_Q4[name] || null };
+      }).sort((a, b) => (b.mGen - a.mGen) || (b.calls - a.calls) || a.name.localeCompare(b.name));
+      q4.innerHTML = roster4.map((s, i) => cardHTML(s, i, 'Q4 2026', Q4_START, Q4_END)).join('');
+    }
   }
 }
 

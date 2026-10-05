@@ -3914,7 +3914,8 @@ def api_sdr_s1():
     frm = (request.args.get('from') or '').strip() or None
     to  = (request.args.get('to')   or '').strip() or None
     stats = fetch_sdr_opp_stats(frm, to)
-    return jsonify({'s1': {name: v['s1'] for name, v in stats.items()}})
+    return jsonify({'s1':  {name: v['s1']  for name, v in stats.items()},
+                    'npv': {name: v['npv'] for name, v in stats.items()}})
 
 @app.route('/api/quarter-snapshots')
 def api_quarter_snapshots():
