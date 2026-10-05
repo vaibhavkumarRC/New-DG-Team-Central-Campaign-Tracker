@@ -1,7 +1,8 @@
 {
   "frozen": [
     "2026-Q1",
-    "2026-Q2"
+    "2026-Q2",
+    "2026-Q3"
   ],
   "snapshots": {
     "2026-Q1": {
@@ -227,9 +228,149 @@
         "done": 0,
         "s1": 1
       }
+    },
+    "2026-Q3": {
+      "Sukhneet Sukhneet": {
+        "generated": 66,
+        "done": 38,
+        "sqlgen": 30,
+        "s1": 8
+      },
+      "Ananya Rao": {
+        "generated": 57,
+        "done": 14,
+        "sqlgen": 10,
+        "s1": 7
+      },
+      "Akhilesh Stan": {
+        "generated": 51,
+        "done": 30,
+        "sqlgen": 24,
+        "s1": 6
+      },
+      "Anurup Bhattacharjee": {
+        "generated": 46,
+        "done": 7,
+        "sqlgen": 5,
+        "s1": 9
+      },
+      "Soham Saha": {
+        "generated": 44,
+        "done": 19,
+        "sqlgen": 12,
+        "s1": 9
+      },
+      "SriRam": {
+        "generated": 37,
+        "done": 11,
+        "sqlgen": 6,
+        "s1": 2
+      },
+      "Samridhi Dutta": {
+        "generated": 27,
+        "done": 15,
+        "sqlgen": 15,
+        "s1": 5
+      },
+      "\u2014": {
+        "generated": 24,
+        "done": 0,
+        "sqlgen": 0,
+        "s1": 0
+      },
+      "Rithick S": {
+        "generated": 23,
+        "done": 5,
+        "sqlgen": 4,
+        "s1": 6
+      },
+      "Akil Krishna": {
+        "generated": 15,
+        "done": 5,
+        "sqlgen": 4,
+        "s1": 5
+      },
+      "Felix Sam": {
+        "generated": 15,
+        "done": 4,
+        "sqlgen": 3,
+        "s1": 5
+      },
+      "Saka Thapa": {
+        "generated": 14,
+        "done": 6,
+        "sqlgen": 2,
+        "s1": 3
+      },
+      "Deep Jajodia": {
+        "generated": 10,
+        "done": 0,
+        "sqlgen": 0,
+        "s1": 0
+      },
+      "Michelle B": {
+        "generated": 8,
+        "done": 4,
+        "sqlgen": 4,
+        "s1": 1
+      },
+      "Isaac Bartels": {
+        "generated": 7,
+        "done": 2,
+        "sqlgen": 2,
+        "s1": 1
+      },
+      "Mohammad Fadi": {
+        "generated": 4,
+        "done": 1,
+        "sqlgen": 1,
+        "s1": 1
+      },
+      "Ruchira Mishra": {
+        "generated": 4,
+        "done": 0,
+        "sqlgen": 0,
+        "s1": 0
+      },
+      "Aditya Dev Pandey": {
+        "generated": 2,
+        "done": 1,
+        "sqlgen": 1,
+        "s1": 12
+      },
+      "Shefali Maddali": {
+        "generated": 1,
+        "done": 0,
+        "sqlgen": 0,
+        "s1": 0
+      },
+      "Ankit Singh": {
+        "generated": 1,
+        "done": 1,
+        "sqlgen": 1,
+        "s1": 0
+      },
+      "Armaan": {
+        "generated": 1,
+        "done": 0,
+        "sqlgen": 0,
+        "s1": 0
+      },
+      "Ashish": {
+        "generated": 1,
+        "done": 0,
+        "sqlgen": 0,
+        "s1": 0
+      },
+      "Anushka HB": {
+        "generated": 1,
+        "done": 0,
+        "sqlgen": 0,
+        "s1": 0
+      }
     }
   },
-  "note": "Locked snapshot of SDR Performance Table (meetings generated/done lead-based by Meeting_Generated_on; S1 opp-based by CreatedDate). Frozen 2026-07-02. | q2_cards frozen 2026-07-03 (SDR-wise Performance Card).",
+  "note": "Locked snapshot of SDR Performance Table (meetings generated/done lead-based by Meeting_Generated_on; S1 opp-based by CreatedDate). Frozen 2026-07-02. | q2_cards frozen 2026-07-03 (SDR-wise Performance Card). | 2026-Q3 table + q3_cards frozen 2026-10-05 (meetings generated 1 Jul-30 Sep; S1/NPV = opps created 1 Jul-30 Sep; card calls/emails/leads = Q3-start campaigns).",
   "q2_cards": [
     {
       "name": "Soham Saha",
@@ -1520,6 +1661,176 @@
       "mDone": 3,
       "mNoShow": 0,
       "mSql": 0
+    }
+  ],
+  "q3_cards": [
+    {
+      "name": "Sukhneet Sukhneet",
+      "mGen": 66,
+      "mDone": 38,
+      "mNoShow": 4,
+      "mSql": 20,
+      "calls": 6995,
+      "emails": 366,
+      "leads": 18657,
+      "s1": 8,
+      "npv": 1230000.0
+    },
+    {
+      "name": "Ananya Rao",
+      "mGen": 57,
+      "mDone": 14,
+      "mNoShow": 6,
+      "mSql": 1,
+      "calls": 8254,
+      "emails": 524,
+      "leads": 6306,
+      "s1": 7,
+      "npv": 2100000.0
+    },
+    {
+      "name": "Akhilesh Stan",
+      "mGen": 51,
+      "mDone": 30,
+      "mNoShow": 9,
+      "mSql": 4,
+      "calls": 10343,
+      "emails": 477,
+      "leads": 10304,
+      "s1": 6,
+      "npv": 540000.0
+    },
+    {
+      "name": "Anurup Bhattacharjee",
+      "mGen": 46,
+      "mDone": 7,
+      "mNoShow": 1,
+      "mSql": 0,
+      "calls": 4614,
+      "emails": 83,
+      "leads": 7055,
+      "s1": 9,
+      "npv": 3550000.0
+    },
+    {
+      "name": "Soham Saha",
+      "mGen": 44,
+      "mDone": 19,
+      "mNoShow": 2,
+      "mSql": 2,
+      "calls": 10982,
+      "emails": 907,
+      "leads": 13720,
+      "s1": 9,
+      "npv": 1690000.0
+    },
+    {
+      "name": "SriRam",
+      "mGen": 37,
+      "mDone": 11,
+      "mNoShow": 18,
+      "mSql": 2,
+      "calls": 16480,
+      "emails": 10,
+      "leads": 9163,
+      "s1": 2,
+      "npv": 600000.0
+    },
+    {
+      "name": "Samridhi Dutta",
+      "mGen": 27,
+      "mDone": 15,
+      "mNoShow": 1,
+      "mSql": 1,
+      "calls": 12947,
+      "emails": 150,
+      "leads": 11461,
+      "s1": 5,
+      "npv": 700000.0
+    },
+    {
+      "name": "Rithick S",
+      "mGen": 23,
+      "mDone": 5,
+      "mNoShow": 0,
+      "mSql": 0,
+      "calls": 19377,
+      "emails": 58,
+      "leads": 20193,
+      "s1": 6,
+      "npv": 530000.0
+    },
+    {
+      "name": "Akil Krishna",
+      "mGen": 15,
+      "mDone": 5,
+      "mNoShow": 7,
+      "mSql": 0,
+      "calls": 7029,
+      "emails": 139,
+      "leads": 19036,
+      "s1": 5,
+      "npv": 1850000.0
+    },
+    {
+      "name": "Felix Sam",
+      "mGen": 15,
+      "mDone": 4,
+      "mNoShow": 7,
+      "mSql": 0,
+      "calls": 7744,
+      "emails": 52,
+      "leads": 4262,
+      "s1": 5,
+      "npv": 330000.0
+    },
+    {
+      "name": "Saka Thapa",
+      "mGen": 14,
+      "mDone": 6,
+      "mNoShow": 7,
+      "mSql": 0,
+      "calls": 9841,
+      "emails": 123,
+      "leads": 5691,
+      "s1": 3,
+      "npv": 1150000.0
+    },
+    {
+      "name": "Michelle B",
+      "mGen": 8,
+      "mDone": 4,
+      "mNoShow": 1,
+      "mSql": 0,
+      "calls": 14130,
+      "emails": 76,
+      "leads": 6556,
+      "s1": 1,
+      "npv": 150000.0
+    },
+    {
+      "name": "Isaac Bartels",
+      "mGen": 7,
+      "mDone": 2,
+      "mNoShow": 0,
+      "mSql": 1,
+      "calls": 9232,
+      "emails": 68,
+      "leads": 12895,
+      "s1": 1,
+      "npv": 250000.0
+    },
+    {
+      "name": "Anushka HB",
+      "mGen": 1,
+      "mDone": 0,
+      "mNoShow": 0,
+      "mSql": 0,
+      "calls": 3772,
+      "emails": 881,
+      "leads": 3498,
+      "s1": 0,
+      "npv": 0.0
     }
   ]
 }
