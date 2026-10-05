@@ -1040,8 +1040,9 @@ td.wr-drill:hover { background:var(--gold-glow); color:var(--gold); font-weight:
     <div id="sdrQ3Section" style="margin-top:34px">
       <div style="display:flex;align-items:baseline;gap:10px;margin:6px 0 4px">
         <div style="font-size:15px;font-weight:800;color:var(--text)">📊 Q3 2026 — SDR-wise Performance Card</div>
+        <span style="font-size:11px;color:var(--text-dim)">🔒 Frozen</span>
       </div>
-      <div style="font-size:11px;color:var(--text-dim);margin-bottom:14px">Live Q3 numbers vs each SDR's Q3 target. Meeting funnel from 1 Jul 2026; S1 &amp; NPV count deals created after 30 Jun 2026. Click a card for the detail breakdown.</div>
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:14px">Final Q3 numbers vs each SDR's Q3 target, locked on 5 Oct 2026. Meetings generated 1 Jul – 30 Sep 2026; S1 &amp; NPV count deals created 1 Jul – 30 Sep 2026. Click a card for the detail breakdown.</div>
       <div class="sdr-grid" id="sdrGridQ3"></div>
     </div>
   </div>
@@ -1222,6 +1223,7 @@ td.wr-drill:hover { background:var(--gold-glow); color:var(--gold); font-weight:
           <button id="mtg-qtd"    class="chip active" onclick="setMtgPeriod('qtd')">QTD</button>
           <button id="mtg-q1"     class="chip"        onclick="setMtgPeriod('q1')">🔒 Q1 2026</button>
           <button id="mtg-q2"     class="chip"        onclick="setMtgPeriod('q2')">🔒 Q2 2026</button>
+          <button id="mtg-q3"     class="chip"        onclick="setMtgPeriod('q3')">🔒 Q3 2026</button>
           <button id="mtg-custom" class="chip"        onclick="setMtgPeriod('custom')">📅 Custom</button>
         </div>
         <div id="mtgCustomPicker" style="display:none;align-items:center;gap:6px">
@@ -1308,6 +1310,7 @@ td.wr-drill:hover { background:var(--gold-glow); color:var(--gold); font-weight:
             <button id="mql-qtd"    class="chip active" onclick="setRptPeriod('mql','qtd')">QTD</button>
             <button id="mql-q1"     class="chip"       onclick="setRptPeriod('mql','q1')">🔒 Q1</button>
             <button id="mql-q2"     class="chip"       onclick="setRptPeriod('mql','q2')">🔒 Q2</button>
+            <button id="mql-q3"     class="chip"       onclick="setRptPeriod('mql','q3')">🔒 Q3</button>
             <button id="mql-custom" class="chip"       onclick="setRptPeriod('mql','custom')">📅 Custom</button>
           </div>
           <div id="mqlCustomPicker" style="display:none;align-items:center;gap:6px">
@@ -1391,6 +1394,7 @@ td.wr-drill:hover { background:var(--gold-glow); color:var(--gold); font-weight:
             <button id="sql-qtd"    class="chip active" onclick="setRptPeriod('sql','qtd')">QTD</button>
             <button id="sql-q1"     class="chip"        onclick="setRptPeriod('sql','q1')">🔒 Q1</button>
             <button id="sql-q2"     class="chip"        onclick="setRptPeriod('sql','q2')">🔒 Q2</button>
+            <button id="sql-q3"     class="chip"        onclick="setRptPeriod('sql','q3')">🔒 Q3</button>
             <button id="sql-custom" class="chip"        onclick="setRptPeriod('sql','custom')">📅 Custom</button>
           </div>
           <div id="sqlCustomPicker" style="display:none;align-items:center;gap:6px">
@@ -1531,6 +1535,7 @@ td.wr-drill:hover { background:var(--gold-glow); color:var(--gold); font-weight:
             <button id="s1r-qtd" class="chip active" onclick="setRptPeriod('s1r','qtd')">QTD</button>
             <button id="s1r-q1"  class="chip"        onclick="setRptPeriod('s1r','q1')">🔒 Q1</button>
             <button id="s1r-q2"  class="chip"        onclick="setRptPeriod('s1r','q2')">🔒 Q2</button>
+            <button id="s1r-q3"  class="chip"        onclick="setRptPeriod('s1r','q3')">🔒 Q3</button>
           </div>
           <span id="s1rDateRange" style="font-size:10.5px;color:var(--text-dim);white-space:nowrap"></span>
         </div>
@@ -2127,7 +2132,7 @@ const SDR_TARGETS_Q3 = {
 };
 
 const POD_TEAM_GROUPS = [
-  { label: 'Q3 2026 PODs', pods: [
+  { label: 'Q3 & Q4 2026 PODs', pods: [
     'Matt - Akil; Isaac',
     'Lisa - Anurup; Sukhneet',
     'Abhishek - Soham; Ananya',
@@ -4009,14 +4014,15 @@ function renderSDR() {
     </div>`;
   }).join('');
 
-  // Q3 2026 — live cards vs the Q3 targets. Roster = SDR_TARGETS_Q3 keys (SriRam
-  // added; Shahana off). Meeting funnel is Q3-only (Meeting_Generated_on ≥ Jul 1);
-  // S1/NPV come from sdr_stats (backend NPV_START_DATE = Jul 1 = Q3 deals).
+  // Q3 2026 cards are FROZEN — served from the locked snapshot (q3_cards) so Q4
+  // meetings and deals never leak in. Roster = SDR_TARGETS_Q3 keys (SriRam added;
+  // Shahana off). The live path below is only a fallback while the snapshot loads,
+  // and is capped at 30 Sep.
   const q3 = document.getElementById('sdrGridQ3');
   if (q3) {
     const q3Live = {};
     (MTG.data || []).forEach(r => {
-      if ((r.generated_on || '') < '2026-07-01') return;
+      if ((r.generated_on || '') < '2026-07-01' || (r.generated_on || '') > '2026-09-30') return;
       const n = r.generated_by || '—';
       const m = q3Live[n] || (q3Live[n] = { mGen: 0, mDone: 0, mNoShow: 0, mSql: 0 });
       m.mGen++;
@@ -4047,7 +4053,10 @@ function renderSDR() {
       const col = parseFloat(pct) >= 100 ? 'var(--green)' : parseFloat(pct) >= 60 ? 'var(--amber)' : 'var(--red)';
       return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;margin-bottom:4px"><span style="color:var(--text-muted);font-weight:600">${achieved} <span style="color:var(--text-dim);font-weight:400">/ ${target} target</span></span><span style="font-weight:700;color:${col}">${pct}%</span></div><div style="background:var(--surface3);border-radius:4px;height:6px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${col};border-radius:4px;transition:width .8s ease"></div></div></div>`;
     };
+    const q3Frozen = {};
+    ((FROZEN_QUARTERS && FROZEN_QUARTERS.q3_cards) || []).forEach(c => q3Frozen[c.name] = c);
     const roster = Object.keys(SDR_TARGETS_Q3).map(name => {
+      if (q3Frozen[name]) return { ...q3Frozen[name], tgt: SDR_TARGETS_Q3[name] };
       const lv = q3Live[name] || { mGen: 0, mDone: 0, mNoShow: 0, mSql: 0 };
       const st = statBy[name] || {};
       const cs = q3Camp[name] || { calls: 0, emails: 0, leads: 0 };
@@ -5680,7 +5689,7 @@ const MTG = { data: null, filtered: null, sortKey: 'generated_on', sortDir: -1, 
 
 function setMtgPeriod(period) {
   MTG.period = period;
-  ['all','7d','30d','qtd','q1','q2','custom'].forEach(p => {
+  ['all','7d','30d','qtd','q1','q2','q3','custom'].forEach(p => {
     const el = document.getElementById(`mtg-${p}`);
     if (el) el.classList.toggle('active', p === period);
   });
@@ -5705,6 +5714,8 @@ function setMtgPeriod(period) {
       lbl.textContent = 'Q1 2026 (Jan–Mar) · 🔒 Frozen';
     } else if (period === 'q2') {
       lbl.textContent = 'Q2 2026 (Apr–Jun) · 🔒 Frozen';
+    } else if (period === 'q3') {
+      lbl.textContent = 'Q3 2026 (Jul–Sep) · 🔒 Frozen';
     } else if (period === 'all') {
       lbl.textContent = 'Since Apr 1, 2026';
     } else {
@@ -5817,7 +5828,7 @@ function loadReportingSnapshots() {
 }
 // A frozen-quarter period value → snapshot quarter key, else null.
 function rptFrozenKey(period) {
-  return period === 'q1' ? '2026-Q1' : period === 'q2' ? '2026-Q2' : null;
+  return period === 'q1' ? '2026-Q1' : period === 'q2' ? '2026-Q2' : period === 'q3' ? '2026-Q3' : null;
 }
 
 // Call-activity meetings (the trend chart's purple "Meeting Generated" line).
@@ -6638,8 +6649,8 @@ document.addEventListener('click', (e) => {
 });
 
 function applyMtgFilters() {
-  // Frozen Q1/Q2 → the locked snapshot (no date-bounds filter; the data IS the quarter).
-  const fk = (MTG.period === 'q1') ? '2026-Q1' : (MTG.period === 'q2') ? '2026-Q2' : null;
+  // Frozen Q1/Q2/Q3 → the locked snapshot (no date-bounds filter; the data IS the quarter).
+  const fk = rptFrozenKey(MTG.period);
   const data = fk ? (((REPORTING_SNAP.tables.meetings || {})[fk]) || []) : (MTG.data || []);
   const byF = document.getElementById('mtgFilterGeneratedBy')?.value || '';
   // every multi-select must pass: empty set = no filtering on that field
@@ -6817,6 +6828,8 @@ function rptDateLabel(period, section) {
     return 'Q1 2026 (Jan–Mar) · 🔒 Frozen';
   } else if(period==='q2') {
     return 'Q2 2026 (Apr–Jun) · 🔒 Frozen';
+  } else if(period==='q3') {
+    return 'Q3 2026 (Jul–Sep) · 🔒 Frozen';
   } else if(period==='custom' && section) {
     const cs = RPT[section]?.customStart;
     const ce = RPT[section]?.customEnd;
@@ -6829,7 +6842,7 @@ function rptDateLabel(period, section) {
 function setRptPeriod(section, period) {
   RPT[section].period = period;
   // Update chip active states — mql/sql use 'all' instead of 'qtd'
-  const chips = ['mql','sql'].includes(section) ? ['all','7d','30d','qtd','q1','q2','custom'] : ['7d','30d','qtd','q1','q2','custom'];
+  const chips = ['mql','sql'].includes(section) ? ['all','7d','30d','qtd','q1','q2','q3','custom'] : ['7d','30d','qtd','q1','q2','q3','custom'];
   chips.forEach(p => {
     const el = document.getElementById(`${section}-${p}`);
     if(el) el.classList.toggle('active', p===period);
