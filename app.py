@@ -1102,13 +1102,26 @@ SFDC_NAME_MAP = {
     'SriRam':                'SriRam',
     'Sukhneeth':             'Sukhneet Sukhneet',   # typo seen on opps 13 Aug 2026
     'Sukhneet':              'Sukhneet Sukhneet',
+    # ── Q4 2026 joiners (Vaibhav confirmed 8 Oct 2026: 'Anusha' = 'Anusha Jangra') ──
+    'Anusha':                'Anusha Jangra',       # campaigns say 'Anusha', meetings say 'Anusha Jangra'
+    'Anusha Jangra':         'Anusha Jangra',
+    'Fadi':                  'Mohammad Fadi',
+    'Mohammad Fadi':         'Mohammad Fadi',
+    'Hussain':               'Hussain Abubaker',
+    'Abu Baker':             'Hussain Abubaker',    # Nooks display name
+    'Hussain Abubaker':      'Hussain Abubaker',
+    'Armaan Armaan':         'Armaan',              # SFDC user record is 'Armaan Armaan'
+    'Armaan':                'Armaan',
     # ── Other / alumni SDRs ───────────────────────────────────────────────────
     'Felix':                 'Felix Sam',
     'Felix Sam':             'Felix Sam',
     'Matt Bates':            'Matt',
     'Abhishek Dutta':        'Abhishek',
     'Dushyant':              'Dushyant',
+    'Hursh X':               'Hursh',               # SFDC user record is 'Hursh X'
     'Hursh':                 'Hursh',
+    'Ashish Bhagra':         'Ashish',              # opps say 'Ashish Bhagra', meetings say 'Ashish'
+    'Ashish':                'Ashish',
 }
 
 def norm_sdr(name):
