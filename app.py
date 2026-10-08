@@ -2747,6 +2747,17 @@ process.stdout.write(JSON.stringify(out));
 def api_camps_get():
     return jsonify(load_campaigns())
 
+def _campaign_name_taken(camps, name, exclude_id=None):
+    """Return the existing campaign whose name equals `name` (case- and
+    whitespace-insensitive), or None. Deleted campaigns are not in campaigns.json."""
+    key = ' '.join((name or '').split()).lower()
+    for c in camps:
+        if exclude_id is not None and c.get('id') == exclude_id:
+            continue
+        if ' '.join((c.get('name') or '').split()).lower() == key:
+            return c
+    return None
+
 @app.route('/api/campaigns', methods=['POST'])
 @require_admin
 def api_camps_add():
@@ -2755,6 +2766,12 @@ def api_camps_add():
     if not name:
         return jsonify({'error': 'Campaign name is required'}), 400
     camps = load_campaigns()
+    # Two campaigns can never share a name (Vaibhav, 8 Oct 2026): a duplicate
+    # registration double-counts the same Salesforce leads and splits meetings.
+    dup = _campaign_name_taken(camps, name)
+    if dup:
+        return jsonify({'error': f"A campaign named '{dup['name']}' already exists "
+                                 f"(SDR {dup.get('sdr_owner') or '—'}, start {dup.get('start_date') or '—'})."}), 409
     # Auto-extract SDR if not explicitly provided
     sdr = (d.get('sdr_owner') or '').strip() or extract_sdr(name)
     c = {
@@ -3731,6 +3748,14 @@ def api_linkedin_leads():
 def api_camps_update(cid):
     d = request.json or {}
     camps = load_campaigns()
+    new_name = (d.get('name') or '').strip() if 'name' in d else None
+    if new_name is not None:
+        if not new_name:
+            return jsonify({'error': 'Campaign name is required'}), 400
+        dup = _campaign_name_taken(camps, new_name, exclude_id=cid)
+        if dup:
+            return jsonify({'error': f"A campaign named '{dup['name']}' already exists."}), 409
+        d = {**d, 'name': new_name}
     for i, c in enumerate(camps):
         if c['id'] == cid:
             camps[i] = {**c, **d, 'id': cid}
