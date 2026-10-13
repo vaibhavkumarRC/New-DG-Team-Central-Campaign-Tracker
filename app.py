@@ -5203,7 +5203,12 @@ setup_sf_auth()
 auto_complete_campaigns()
 
 threading.Thread(target=bg_loop, daemon=True).start()
-threading.Thread(target=slack_scheduler_loop, daemon=True).start()
+# Monday 5 PM IST weekly Slack report — SWITCHED OFF on Vaibhav's instruction (13 Oct 2026):
+# "i do not want to send this dashboard's own weekly report in the slack from now onwards".
+# The report code (build_slack_report / send_slack_report / slack_scheduler_loop) is kept
+# intact but the scheduler thread is no longer started. The twice-daily sync message
+# (SLACK_WEBHOOK_URL) is unaffected.
+# threading.Thread(target=slack_scheduler_loop, daemon=True).start()
 
 # ── Nooks Cold Calls tab (read-only Supabase mirror of Rahul's pipeline) ─────
 import cold_calls
