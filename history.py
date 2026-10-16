@@ -116,9 +116,23 @@ def _get_all(path, params, page=1000, order=None):
         out += b; off += page
         if len(b) < page: return out
 
+def _dedupe(rows, on_conflict):
+    """One row per conflict key, last one wins. Postgres rejects an upsert whose single
+    statement carries the same key twice (SQLSTATE 21000 "ON CONFLICT DO UPDATE command
+    cannot affect row a second time") — seen 14 Oct 2026 when a lead with two meeting rows
+    had both change state in one run and produced two `leads` rows in one batch; the chunk
+    then sat in the replay queue failing every sync."""
+    if not on_conflict or not rows: return rows
+    cols = [c.strip() for c in str(on_conflict).split(',') if c.strip()]
+    out = {}
+    for r in rows:
+        out[tuple(r.get(c) for c in cols)] = r
+    return list(out.values())
+
 def _insert(table, rows, on_conflict=None, prefer='resolution=ignore-duplicates', returning=False, count_col=None):
     """Idempotent batched insert; keys normalised per batch; failures → queue."""
     if not rows: return 0
+    rows = _dedupe(rows, on_conflict)
     n = 0; got = []
     # PostgREST bulk insert needs identical keys per request: group by key-set instead of
     # injecting nulls (an explicit null would override a column DEFAULT and break NOT NULL).
@@ -177,7 +191,7 @@ def _replay_queue():
     for it in items:
         try:
             if it['op'] == 'insert':
-                _http('POST', it['table'], {'on_conflict': it['on_conflict']} if it.get('on_conflict') else None, it['rows'], prefer=it.get('prefer', 'resolution=ignore-duplicates') + ',return=minimal')
+                _http('POST', it['table'], {'on_conflict': it['on_conflict']} if it.get('on_conflict') else None, _dedupe(it['rows'], it.get('on_conflict')), prefer=it.get('prefer', 'resolution=ignore-duplicates') + ',return=minimal')
             elif it['op'] == 'patch':
                 _http('PATCH', it['table'], it['params'], it['body'], prefer='return=minimal')
             ok += 1
