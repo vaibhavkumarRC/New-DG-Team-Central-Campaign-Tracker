@@ -238,8 +238,8 @@
       },
       "Ananya Rao": {
         "generated": 57,
-        "done": 14,
-        "sqlgen": 10,
+        "done": 18,
+        "sqlgen": 11,
         "s1": 7
       },
       "Akhilesh Stan": {
@@ -370,7 +370,7 @@
       }
     }
   },
-  "note": "Locked snapshot of SDR Performance Table (meetings generated/done lead-based by Meeting_Generated_on; S1 opp-based by CreatedDate). Frozen 2026-07-02. | q2_cards frozen 2026-07-03 (SDR-wise Performance Card). | 2026-Q3 table + q3_cards frozen 2026-10-05 (meetings generated 1 Jul-30 Sep; S1/NPV = opps created 1 Jul-30 Sep; card calls/emails/leads = Q3-start campaigns).",
+  "note": "Locked snapshot of SDR Performance Table (meetings generated/done lead-based by Meeting_Generated_on; S1 opp-based by CreatedDate). Frozen 2026-07-02. | q2_cards frozen 2026-07-03 (SDR-wise Performance Card). | 2026-Q3 table + q3_cards frozen 2026-10-05 (meetings generated 1 Jul-30 Sep; S1/NPV = opps created 1 Jul-30 Sep; card calls/emails/leads = Q3-start campaigns). | 21 Oct 2026: Ananya Rao Q3 row re-frozen from live on Vaibhav's instruction (Amy Manzo status updated 21 Oct \u2192 done; Laura LeBoeuf converted to S1 after the freeze) PLUS two Q2-booked meetings held in Q3 added to her done count by his instruction (Mark Singer 1 Jul, Stephanie Doyle 22 Jul; generated count unchanged). All other rows unchanged from 5 Oct.",
   "q2_cards": [
     {
       "name": "Soham Saha",
@@ -1679,7 +1679,7 @@
     {
       "name": "Ananya Rao",
       "mGen": 57,
-      "mDone": 14,
+      "mDone": 18,
       "mNoShow": 6,
       "mSql": 1,
       "calls": 8254,
