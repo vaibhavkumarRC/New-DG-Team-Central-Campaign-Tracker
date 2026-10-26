@@ -137,7 +137,7 @@ def backup_data_files():
     import shutil
     stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     _backup_status.clear(); _backup_status.update({'stamp': stamp, 'local': {}, 'github': {}})
-    for path in (LEDGER_FILE, CAMPS_FILE, SEGMENTS_FILE):
+    for path in (LEDGER_FILE, CAMPS_FILE, SEGMENTS_FILE, SDRS_FILE):
         base = os.path.basename(path)
         try:
             if not os.path.exists(path):
@@ -179,7 +179,7 @@ def _github_backup(stamp):
     hdrs = {'Authorization': f'Bearer {token}',
             'Accept': 'application/vnd.github+json',
             'User-Agent': 'dg-dashboard-backup'}
-    for path in (LEDGER_FILE, CAMPS_FILE, SEGMENTS_FILE):
+    for path in (LEDGER_FILE, CAMPS_FILE, SEGMENTS_FILE, SDRS_FILE):
         if not os.path.exists(path):
             continue
         try:
@@ -636,20 +636,49 @@ SF_BASE_URL = os.environ.get('SF_BASE_URL', 'https://data-page-6243.my.salesforc
 NPV_START_DATE = '2026-07-01T00:00:00Z'   # Q3 2026: Opportunities created after 30 June 2026
 
 # ── Admin access ──────────────────────────────────────────────────────────────
-# Set ADMIN_TOKEN env-var to override the default before sharing the URL.
+# ADMIN_TOKEN comes ONLY from the environment (Railway variable). There is no
+# built-in fallback any more: the old hardcoded default lived in this public
+# repo and was used on 24 Oct 2026 to write fake campaigns/SDRs/segments.
+# With the variable missing or blank every admin route fails CLOSED (403) and
+# a loud warning is printed at startup. Surrounding whitespace is ignored, so a
+# pasted trailing newline cannot silently break the token.
 # Admin URL  →  http://localhost:5001/?admin=<token>
 # Viewer URL →  http://localhost:5001/
-ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN', 'rc-admin-2026')
+ADMIN_TOKEN = (os.environ.get('ADMIN_TOKEN') or '').strip() or None
+if not ADMIN_TOKEN:
+    print('[admin] WARNING: ADMIN_TOKEN is not set — every admin route is disabled (fail closed)')
+
+def _client_ip():
+    """Real caller address behind Railway's proxy (first X-Forwarded-For hop),
+    else the socket address. Logging only — never used for auth decisions."""
+    xff = (request.headers.get('X-Forwarded-For') or '').split(',')[0].strip()
+    return xff or (request.remote_addr or '-')
 
 def require_admin(f):
     """Decorator: rejects write requests that don't carry the correct admin token."""
     @wraps(f)
     def decorated(*args, **kwargs):
         token = (request.headers.get('X-Admin-Token') or '').strip()
-        if token != ADMIN_TOKEN:
+        if not ADMIN_TOKEN or not token or token != ADMIN_TOKEN:
+            print(f'[admin-write] DENIED ip={_client_ip()} {request.method} {request.path}')
             return jsonify({'error': 'Unauthorized — admin token required'}), 403
         return f(*args, **kwargs)
     return decorated
+
+@app.after_request
+def _log_admin_writes(resp):
+    """Audit line for every write to the API and every request that presented
+    an admin token, with the real client IP. Railway's default access log only
+    shows its internal proxy address (100.64.x.x), which made the 24 Oct 2026
+    intrusion untraceable. Format: [admin-write] ip=… METHOD /path -> status"""
+    try:
+        if request.path.startswith('/api/') and (request.method in ('POST', 'PUT', 'PATCH', 'DELETE')
+                                                 or request.headers.get('X-Admin-Token')):
+            print(f'[admin-write] ip={_client_ip()} {request.method} {request.path} -> {resp.status_code} '
+                  f'ua={(request.headers.get("User-Agent") or "-")[:60]!r}')
+    except Exception:
+        pass
+    return resp
 
 cache = {
     'campaigns': [], 'sdr_stats': [],
@@ -2072,8 +2101,8 @@ def api_data():
 @app.route('/api/check-admin', methods=['POST'])
 def api_check_admin():
     """Validate an admin token sent from the browser."""
-    token = (request.json or {}).get('token', '').strip()
-    return jsonify({'ok': token == ADMIN_TOKEN})
+    token = ((request.json or {}).get('token') or '').strip()
+    return jsonify({'ok': bool(ADMIN_TOKEN) and bool(token) and token == ADMIN_TOKEN})
 
 @app.route('/api/sync', methods=['POST'])
 @require_admin
@@ -3928,8 +3957,32 @@ def api_sdrs_add():
     if name not in DEFAULT_SDRS and name not in custom:
         custom.append(name)
         save_sdrs(custom)
+        print(f'[sdrs] added {name!r} to the dropdown')
     all_sdrs = sorted(set(DEFAULT_SDRS) | set(custom), key=str.lower)
     return jsonify({'sdrs': all_sdrs, 'defaults': DEFAULT_SDRS})
+
+@app.route('/api/sdrs/<path:name>', methods=['DELETE'])
+@require_admin
+def api_sdrs_delete(name):
+    """Remove a custom SDR name from the dropdown (built-in DEFAULT_SDRS cannot be
+    removed here). Refused while any campaign still carries the name as its SDR
+    owner, so a live campaign can never lose its owner."""
+    name = (name or '').strip()
+    if not name:
+        return jsonify({'error': 'SDR name required'}), 400
+    if name in DEFAULT_SDRS:
+        return jsonify({'error': 'built-in SDR; edit DEFAULT_SDRS to remove it'}), 409
+    in_use = sum(1 for c in load_campaigns() if (c.get('sdr_owner') or '').strip() == name)
+    if in_use:
+        return jsonify({'error': f'{in_use} campaign(s) still use this SDR — change their owner first', 'in_use': in_use}), 409
+    custom = load_sdrs()
+    if name not in custom:
+        return jsonify({'error': 'no such custom SDR'}), 404
+    custom = [x for x in custom if x != name]
+    save_sdrs(custom)
+    all_sdrs = sorted(set(DEFAULT_SDRS) | set(custom), key=str.lower)
+    print(f'[sdrs] removed {name!r} from the dropdown')
+    return jsonify({'removed': name, 'sdrs': all_sdrs})
 
 # ── SDR Reporting 2026 – Meeting Leads ───────────────────────────────────────
 

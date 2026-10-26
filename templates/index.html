@@ -7554,7 +7554,7 @@ function ccToggleF(key, val, on) {
 async function ccRefreshData(btn) {
   btn.textContent = '↻ Refreshing… (~1 min)'; btn.disabled = true;
   try {
-    const r = await fetch('/api/cold-calls/refresh', { method: 'POST', headers: { 'X-Admin-Token': (localStorage.getItem('adminToken') || 'rc-admin-2026') } });
+    const r = await fetch('/api/cold-calls/refresh', { method: 'POST', headers: { 'X-Admin-Token': (S.adminToken || sessionStorage.getItem('adminToken') || '') } });
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || 'refresh failed');
     CC.meta = await ccGet('/api/cold-calls/meta');
